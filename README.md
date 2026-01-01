@@ -109,6 +109,7 @@ _governator/
 ```
 .governator/
 ├── next_ticket_id
+├── worker_timeout_seconds
 ├── global_worker_cap
 └── worker_caps
 ```
@@ -141,6 +142,7 @@ Governator limits concurrent work using:
 
 - `.governator/global_worker_cap` for the global cap (default `1`)
 - `.governator/worker_caps` for per-role caps (default `1` when absent)
+- `.governator/worker_timeout_seconds` for worker timeouts (default `900`)
 
 In-flight assignments are tracked in `_governator/in-flight.log` with one line
 per task:

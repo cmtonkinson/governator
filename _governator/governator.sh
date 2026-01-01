@@ -20,6 +20,7 @@ WORKER_CAPS_FILE="${DB_DIR}/worker_caps"
 AUDIT_LOG="${DB_DIR}/audit.log"
 WORKER_PROCESSES_LOG="${DB_DIR}/worker-processes.log"
 RETRY_COUNTS_LOG="${DB_DIR}/retry-counts.log"
+WORKER_TIMEOUT_FILE="${DB_DIR}/worker_timeout_seconds"
 WORKER_ROLES_DIR="${STATE_DIR}/worker-roles"
 SPECIAL_ROLES_DIR="${STATE_DIR}/special-roles"
 TEMPLATES_DIR="${STATE_DIR}/templates"
@@ -153,6 +154,11 @@ read_global_cap() {
   read_numeric_file "${GLOBAL_CAP_FILE}" "1"
 }
 
+# Read the worker timeout in seconds (defaults to 900).
+read_worker_timeout_seconds() {
+  read_numeric_file "${WORKER_TIMEOUT_FILE}" "900"
+}
+
 # Read per-worker cap from worker_caps (defaults to 1).
 read_worker_cap() {
   local role="$1"
@@ -225,6 +231,9 @@ ensure_db_dir() {
   fi
   touch "${AUDIT_LOG}"
   touch "${WORKER_PROCESSES_LOG}" "${RETRY_COUNTS_LOG}"
+  if [[ ! -f "${WORKER_TIMEOUT_FILE}" ]]; then
+    printf '900\n' > "${WORKER_TIMEOUT_FILE}"
+  fi
 }
 
 # Read the next ticket id from disk, defaulting to 1.
@@ -319,6 +328,7 @@ record_worker_process() {
   local pid="$3"
   local tmp_dir="$4"
   local branch="$5"
+  local started_at="$6"
 
   local tmp_file
   tmp_file="$(mktemp)"
@@ -329,7 +339,7 @@ record_worker_process() {
     }
     { print }
   ' "${WORKER_PROCESSES_LOG}" > "${tmp_file}"
-  printf '%s | %s | %s | %s | %s\n' "${task_name}" "${worker}" "${pid}" "${tmp_dir}" "${branch}" >> "${tmp_file}"
+  printf '%s | %s | %s | %s | %s | %s\n' "${task_name}" "${worker}" "${pid}" "${tmp_dir}" "${branch}" "${started_at}" >> "${tmp_file}"
   mv "${tmp_file}" "${WORKER_PROCESSES_LOG}"
 }
 
@@ -370,6 +380,7 @@ get_worker_process() {
         print parts[3]
         print parts[4]
         print parts[5]
+        print parts[6]
         exit 0
       }
     }
@@ -872,9 +883,11 @@ spawn_worker_for_task() {
 
   local branch_name="worker/${worker}/${task_name}"
   local pid
+  local started_at
+  started_at="$(date +%s)"
   pid="$(run_codex_worker_detached "${tmp_dir}" "${prompt}")"
   if [[ -n "${pid}" ]]; then
-    record_worker_process "${task_name}" "${worker}" "${pid}" "${tmp_dir}" "${branch_name}"
+    record_worker_process "${task_name}" "${worker}" "${pid}" "${tmp_dir}" "${branch_name}" "${started_at}"
     if [[ -n "${audit_message}" ]]; then
       audit_log "${task_name}" "${audit_message}"
     fi
@@ -916,9 +929,24 @@ check_zombie_workers() {
 
     local pid="${proc_info[0]:-}"
     local tmp_dir="${proc_info[1]:-}"
+    local started_at="${proc_info[3]:-}"
+    local timeout
+    timeout="$(read_worker_timeout_seconds)"
+
     if [[ -n "${pid}" ]] && kill -0 "${pid}" >/dev/null 2>&1; then
-      continue
-    fi
+      if [[ -n "${started_at}" && "${started_at}" =~ ^[0-9]+$ ]]; then
+        local now
+        now="$(date +%s)"
+        local elapsed=$((now - started_at))
+        if [[ "${elapsed}" -le "${timeout}" ]]; then
+          continue
+        fi
+        audit_log "${task_name}" "worker ${worker} exceeded timeout (${elapsed}s)"
+        kill -9 "${pid}" >/dev/null 2>&1 || true
+      else
+        continue
+      fi
+    }
 
     audit_log "${task_name}" "worker ${worker} exited before pushing branch"
 
