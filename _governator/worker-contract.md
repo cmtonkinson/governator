@@ -1,24 +1,20 @@
 # Worker Contract
-
 This document defines the binding execution rules for all workers. Failure to
 comply with this contract invalidates the work and will result in rejection.
 This contract applies to all workers unless explicitly overridden by
 role-specific instructions.
 
 ## 1. Execution Model
-
 You are executing **one assigned task** under **one defined role**. You must
 operate strictly within the authority and constraints of your assigned role and
 task.
 
 ## 2. Required Inputs (Read in Order)
-
 Before taking any action, you must read in full:
 - `README.md`, the authoritative overview/description of the system. You must
   never modify this file.
 
 ## 3. Scope Rules
-
 You must:
 - Perform only the work explicitly requested in the assigned task.
 - Modify only files necessary to complete the task.
@@ -32,7 +28,6 @@ You must not:
 If the task is underspecified or ambiguous, do not guess.
 
 ## 4. Version Control Rules
-
 You are operating in an isolated git branch created for this task. You may
 create commits as needed. You must create clear and descriptive commit messages.
 
@@ -57,7 +52,6 @@ The seven rules of writing git commit messages:
 7. Use the body to explain what and why vs. how
 
 ## 5. Blocking Conditions
-
 You must block the task if you cannot proceed safely and correctly. Blocking
 conditions include (but are not limited to):
 - Missing or ambiguous requirements
@@ -66,7 +60,6 @@ conditions include (but are not limited to):
 - Unclear file ownership or modification boundaries
 
 ### How to Block
-
 1. Move the assigned task file to `_control/task-blocked/`.
 2. Append a section titled `## Blocking Reason` to the task file.
 3. Clearly describe:
@@ -76,7 +69,6 @@ conditions include (but are not limited to):
 Do not make speculative changes when blocked.
 
 ## 6. Completing the Task
-
 When you believe the task is complete:
 1. Append a section titled `## Worker Summary` to the task file.
 - Describe what was changed.
@@ -90,7 +82,6 @@ When you believe the task is complete:
 4. Then exit.
 
 ## 7. Proposing Additional Work (Optional)
-
 If you identify clearly separable follow-up work:
 - Do not expand the current task.
 - Do not modify additional files.
@@ -108,9 +99,7 @@ Instead:
 
 The system will decide whether to accept or reject the proposal.
 
-
 ## 8. Exit Conditions
-
 You must exit only after one of the following actions is completed and pushed:
 - The task has been moved to `task-worked`
 - The task has been moved to `task-blocked`
@@ -118,7 +107,6 @@ You must exit only after one of the following actions is completed and pushed:
 You must not continue working after that point.
 
 ## 9. Operating Principle
-
 Correctness and bounded execution are more important than completion. When in
 doubt, block the task.
 
