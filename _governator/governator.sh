@@ -23,8 +23,6 @@ TEMPLATES_DIR="${STATE_DIR}/templates"
 LOCK_FILE="${STATE_DIR}/governator.lock"
 FAILED_MERGES_LOG="${STATE_DIR}/failed-merges.log"
 IN_FLIGHT_LOG="${STATE_DIR}/in-flight.log"
-EXPERTISE_FILE="${STATE_DIR}/expertise.md"
-
 CODEX_BIN="${CODEX_BIN:-codex}"
 CODEX_WORKER_ARGS="${CODEX_WORKER_ARGS:---non-interactive}"
 CODEX_REVIEW_ARGS="${CODEX_REVIEW_ARGS:---non-interactive}"
@@ -318,31 +316,6 @@ join_by() {
   done
 }
 
-# Materialize is_expert.md if expertise modifiers exist.
-create_expert_file() {
-  local dir="$1"
-  if [[ ! -f "${EXPERTISE_FILE}" ]]; then
-    return 0
-  fi
-
-  # Strip comments and whitespace so the prompt is stable and predictable.
-  mapfile -t expertise_lines < <(
-    awk '
-      /^[[:space:]]*#/ { next }
-      /^[[:space:]]*$/ { next }
-      { gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0); print }
-    ' "${EXPERTISE_FILE}"
-  )
-
-  if [[ "${#expertise_lines[@]}" -eq 0 ]]; then
-    return 0
-  fi
-
-  local joined
-  joined="$(join_by ", " "${expertise_lines[@]}")"
-  printf 'You have deep expertise in %s.\n' "${joined}" > "${dir}/is_expert.md"
-}
-
 # Start the worker without blocking this script.
 run_codex_worker_detached() {
   local dir="$1"
@@ -634,14 +607,8 @@ code_review() {
     cp "${TEMPLATES_DIR}/review.json" "${tmp_dir}/review.json"
   fi
 
-  create_expert_file "${tmp_dir}"
-
   local prompt
-  if [[ -f "${tmp_dir}/is_expert.md" ]]; then
-    prompt="Read and follow the instructions in the following files, in this order: _governator/special-roles/reviewer.md, is_expert.md. The task given was ${task_relpath}."
-  else
-    prompt="Read and follow the instructions in the following files, in this order: _governator/special-roles/reviewer.md. The task given was ${task_relpath}."
-  fi
+  prompt="Read and follow the instructions in the following files, in this order: _governator/special-roles/reviewer.md. The task given was ${task_relpath}."
 
   if ! run_codex_reviewer "${tmp_dir}" "${prompt}"; then
     log_warn "Reviewer command failed for ${local_branch}."
@@ -683,14 +650,8 @@ assign_task() {
   git clone "$(git -C "${ROOT_DIR}" remote get-url origin)" "${tmp_dir}" >/dev/null 2>&1
   git -C "${tmp_dir}" checkout -b "worker/${worker}/${task_name}" origin/main >/dev/null 2>&1
 
-  create_expert_file "${tmp_dir}"
-
   local prompt
-  if [[ -f "${tmp_dir}/is_expert.md" ]]; then
-    prompt="Read and follow the instructions in the following files, in this order: _governator/worker_contract.md, _governator/worker-roles/${worker}.md, is_expert.md, _governator/task-assigned/${task_name}.md."
-  else
-    prompt="Read and follow the instructions in the following files, in this order: _governator/worker_contract.md, _governator/worker-roles/${worker}.md, _governator/task-assigned/${task_name}.md."
-  fi
+  prompt="Read and follow the instructions in the following files, in this order: _governator/worker_contract.md, _governator/worker-roles/${worker}.md, _governator/task-assigned/${task_name}.md."
 
   run_codex_worker_detached "${tmp_dir}" "${prompt}"
 

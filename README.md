@@ -176,6 +176,9 @@ Each worker execution:
 - Pushes its branch exactly once
 - Exits
 
+Think of each file we "send" to the worker (ask it to read on boot) as just
+an additional system prompt, because that's effectively what they are.
+
 Workers never:
 - merge to `main`
 - create or modify tasks outside their scope
@@ -230,4 +233,3 @@ planning and review; execution is mechanical.
 
 If a task is ambiguous, it should block. If a decision is architectural,
 it should be explicit. If work cannot be reviewed, it should not be merged.
-
