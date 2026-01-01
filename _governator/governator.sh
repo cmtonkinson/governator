@@ -1167,4 +1167,91 @@ main() {
   assign_pending_tasks
 }
 
-main "$@"
+#############################################################################
+# Internal subcommands (undocumented; intended for testing and ops drills)
+#############################################################################
+#
+# These subcommands are not part of the public interface and may change without
+# notice. They exist to make targeted testing and troubleshooting possible.
+# Each subcommand still enforces the same safety checks (lock, clean git, deps)
+# and operates on real state, so use with care.
+#
+# Usage:
+#   governator.sh                # normal full loop
+#   governator.sh run            # alias for full loop (same as default)
+#   governator.sh process-branches
+#   governator.sh assign-backlog
+#   governator.sh check-zombies
+#   governator.sh cleanup-tmp
+#
+# Subcommand reference:
+# - run:
+#   Runs the normal full loop: lock, clean git, dependency check, ensure DB,
+#   sync main, process worker branches, then assign backlog tasks.
+#
+# - process-branches:
+#   Processes only worker branches (including zombie detection and tmp cleanup).
+#   This is useful to test review/merge behavior without assigning new work.
+#
+# - assign-backlog:
+#   Assigns only backlog tasks. This is useful to validate filename parsing,
+#   role caps, and in-flight handling without processing existing branches.
+#
+# - check-zombies:
+#   Runs zombie detection logic against in-flight workers. If a worker's branch
+#   is missing and the worker is dead or timed out, it retries once and blocks
+#   on the second failure. Does not process branches or assign backlog.
+#
+# - cleanup-tmp:
+#   Removes stale worker tmp directories in /tmp that are older than the worker
+#   timeout and not referenced in the worker process log.
+#
+dispatch_subcommand() {
+  local cmd="${1:-run}"
+
+  case "${cmd}" in
+    run)
+      main
+      ;;
+    process-branches)
+      ensure_lock
+      ensure_clean_git
+      ensure_dependencies
+      ensure_db_dir
+      git_checkout_main
+      git_pull_main
+      process_worker_branches
+      ;;
+    assign-backlog)
+      ensure_lock
+      ensure_clean_git
+      ensure_dependencies
+      ensure_db_dir
+      git_checkout_main
+      git_pull_main
+      assign_pending_tasks
+      ;;
+    check-zombies)
+      ensure_lock
+      ensure_clean_git
+      ensure_dependencies
+      ensure_db_dir
+      git_checkout_main
+      git_pull_main
+      check_zombie_workers
+      ;;
+    cleanup-tmp)
+      ensure_lock
+      ensure_clean_git
+      ensure_dependencies
+      ensure_db_dir
+      cleanup_stale_worker_dirs
+      ;;
+    *)
+      log_error "Unknown subcommand: ${cmd}"
+      exit 1
+      ;;
+  esac
+}
+
+dispatch_subcommand "$@"
