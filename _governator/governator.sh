@@ -608,7 +608,7 @@ code_review() {
   fi
 
   local prompt
-  prompt="Read and follow the instructions in the following files, in this order: _governator/special-roles/reviewer.md. The task given was ${task_relpath}."
+  prompt="Read and follow the instructions in the following files, in this order: _governator/worker-contract.md, _governator/special-roles/reviewer.md, _governator/custom-prompts/_global.md, _governator/custom-prompts/reviewer.md, ${task_relpath}."
 
   if ! run_codex_reviewer "${tmp_dir}" "${prompt}"; then
     log_warn "Reviewer command failed for ${local_branch}."
@@ -650,8 +650,9 @@ assign_task() {
   git clone "$(git -C "${ROOT_DIR}" remote get-url origin)" "${tmp_dir}" >/dev/null 2>&1
   git -C "${tmp_dir}" checkout -b "worker/${worker}/${task_name}" origin/main >/dev/null 2>&1
 
+  local task_relpath="${assigned_file#"${ROOT_DIR}/"}"
   local prompt
-  prompt="Read and follow the instructions in the following files, in this order: _governator/worker_contract.md, _governator/worker-roles/${worker}.md, _governator/task-assigned/${task_name}.md."
+  prompt="Read and follow the instructions in the following files, in this order: _governator/worker-contract.md, _governator/worker-roles/${worker}.md, _governator/custom-prompts/_global.md, _governator/custom-prompts/${worker}.md, ${task_relpath}."
 
   run_codex_worker_detached "${tmp_dir}" "${prompt}"
 

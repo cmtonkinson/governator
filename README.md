@@ -71,13 +71,23 @@ There is no conversational back-and-forth.
 ```
 _governator/
 ├── governator.sh
-├── worker_contract.md
-├── worker-roles/
+├── worker-contract.md
+├── custom-prompts/
+│   ├── _global.md
 │   ├── admin.md
 │   ├── architect.md
 │   ├── data_engineer.md
 │   ├── planner.md
 │   ├── reviewer.md
+│   ├── ruby.md
+│   ├── security_engineer.md
+│   ├── sre.md
+│   └── test_engineer.md
+├── worker-roles/
+│   ├── admin.md
+│   ├── architect.md
+│   ├── data_engineer.md
+│   ├── planner.md
 │   ├── ruby.md
 │   ├── security_engineer.md
 │   ├── sre.md
@@ -169,9 +179,11 @@ All state transitions are explicit and reviewable.
 Each worker execution:
 - Runs non-interactively (e.g. `codex exec`)
 - Reads inputs in order:
-  1. `_governator/worker_contract.md`
+  1. `_governator/worker-contract.md`
   2. `_governator/worker-roles/<role>.md`
-  3. `_governator/task-assigned/<task>.md`
+  3. `_governator/custom-prompts/_global.md`
+  4. `_governator/custom-prompts/<role>.md`
+  5. `_governator/task-assigned/<task>.md`
 - Operates in a fresh clone on a dedicated branch
 - Pushes its branch exactly once
 - Exits
@@ -190,6 +202,15 @@ When a worker moves a task to `task-worked`, Governator invokes the reviewer
 role defined in `_governator/special-roles/reviewer.md`. Review output is
 captured in `review.json`, based on the template in
 `_governator/templates/review.json`.
+
+## Custom Prompts
+
+`_governator/custom-prompts/` contains optional prompt files that are always
+included (even if empty) to give the operator direct control over extra
+instructions:
+
+- `_global.md` applies to all workers and reviewers.
+- `<role>.md` applies to the specific role.
 
 ## Determinism by Design
 
