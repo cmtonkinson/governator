@@ -198,7 +198,7 @@ count_in_flight_role() {
       if (parts[2] == role) {
         count += 1
       }
-    }
+    fi
     END { print count + 0 }
   ' "${IN_FLIGHT_LOG}"
 }
@@ -325,7 +325,7 @@ worker_process_set() {
     $0 ~ / \| / {
       split($0, parts, " \\| ")
       if (parts[1] == task && parts[2] == worker_name) next
-    }
+    fi
     { print }
   ' "${WORKER_PROCESSES_LOG}" > "${tmp_file}"
   printf '%s | %s | %s | %s | %s | %s\n' "${task_name}" "${worker}" "${pid}" "${tmp_dir}" "${branch}" "${started_at}" >> "${tmp_file}"
@@ -987,7 +987,7 @@ check_zombie_workers() {
       else
         continue
       fi
-    }
+    fi
 
     audit_log "${task_name}" "worker ${worker} exited before pushing branch"
 
