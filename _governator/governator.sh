@@ -321,6 +321,16 @@ audit_log() {
   printf '%s %s -> %s\n' "$(date -u +"%Y-%m-%dT%H:%MZ")" "${task_name}" "${message}" >> "${AUDIT_LOG}"
 }
 
+# Read a file mtime in epoch seconds (BSD/GNU stat compatible).
+file_mtime_epoch() {
+  local path="$1"
+  if stat -f %m "${path}" >/dev/null 2>&1; then
+    stat -f %m "${path}"
+    return 0
+  fi
+  stat -c %Y "${path}"
+}
+
 # Record the worker process that owns a task.
 record_worker_process() {
   local task_name="$1"
@@ -386,6 +396,51 @@ get_worker_process() {
     }
     END { exit 1 }
   ' "${WORKER_PROCESSES_LOG}"
+}
+
+# Remove stale worker tmp dirs that are not tracked as active.
+cleanup_stale_worker_dirs() {
+  local timeout
+  timeout="$(read_worker_timeout_seconds)"
+  local now
+  now="$(date +%s)"
+
+  local active_dirs=()
+  if [[ -f "${WORKER_PROCESSES_LOG}" ]]; then
+    while IFS=' | ' read -r task_name worker pid tmp_dir branch started_at; do
+      if [[ -n "${tmp_dir}" ]]; then
+        active_dirs+=("${tmp_dir}")
+      fi
+    done < "${WORKER_PROCESSES_LOG}"
+  fi
+
+  local dir
+  while IFS= read -r dir; do
+    if [[ -z "${dir}" ]]; then
+      continue
+    fi
+    local active=0
+    local active_dir
+    for active_dir in "${active_dirs[@]}"; do
+      if [[ "${active_dir}" == "${dir}" ]]; then
+        active=1
+        break
+      fi
+    done
+    if [[ "${active}" -eq 1 ]]; then
+      continue
+    fi
+
+    local mtime
+    mtime="$(file_mtime_epoch "${dir}")"
+    if [[ -z "${mtime}" || ! "${mtime}" =~ ^[0-9]+$ ]]; then
+      continue
+    fi
+    local age=$((now - mtime))
+    if [[ "${age}" -ge "${timeout}" ]]; then
+      rm -rf "${dir}"
+    fi
+  done < <(find /tmp -maxdepth 1 -type d -name "governator-${PROJECT_NAME}-*" 2>/dev/null)
 }
 
 # Read the retry count for a task (defaults to 0).
@@ -1083,6 +1138,7 @@ process_worker_branches() {
   git_fetch_origin
 
   check_zombie_workers
+  cleanup_stale_worker_dirs
 
   local branch
   while IFS= read -r branch; do
