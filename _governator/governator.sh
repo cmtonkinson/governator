@@ -326,6 +326,16 @@ file_mtime_epoch() {
   stat -c %Y "${path}" 2> /dev/null || return 1
 }
 
+# Normalize tmp paths so /tmp and /private/tmp compare consistently.
+normalize_tmp_path() {
+  local path="$1"
+  if [[ -d "/private/tmp" && "${path}" == /tmp/* ]]; then
+    printf '%s\n' "/private${path}"
+    return 0
+  fi
+  printf '%s\n' "${path}"
+}
+
 # Record the worker process that owns a task.
 worker_process_set() {
   local task_name="$1"
@@ -395,6 +405,11 @@ worker_process_get() {
 
 # Remove stale worker tmp dirs that are not tracked as active.
 cleanup_stale_worker_dirs() {
+  local tmp_root="/tmp"
+  if [[ -d "/private/tmp" ]]; then
+    tmp_root="/private/tmp"
+  fi
+
   local timeout
   timeout="$(read_worker_timeout_seconds)"
   local now
@@ -404,7 +419,7 @@ cleanup_stale_worker_dirs() {
   if [[ -f "${WORKER_PROCESSES_LOG}" ]]; then
     while IFS=' | ' read -r task_name worker pid tmp_dir branch started_at; do
       if [[ -n "${tmp_dir}" ]]; then
-        active_dirs+=("${tmp_dir}")
+        active_dirs+=("$(normalize_tmp_path "${tmp_dir}")")
       fi
     done < "${WORKER_PROCESSES_LOG}"
   fi
@@ -414,6 +429,7 @@ cleanup_stale_worker_dirs() {
     if [[ -z "${dir}" ]]; then
       continue
     fi
+    dir="$(normalize_tmp_path "${dir}")"
     local active=0
     local active_dir
     for active_dir in "${active_dirs[@]}"; do
@@ -435,7 +451,7 @@ cleanup_stale_worker_dirs() {
     if [[ "${age}" -ge "${timeout}" ]]; then
       rm -rf "${dir}"
     fi
-  done < <(find /tmp -maxdepth 1 -type d -name "governator-${PROJECT_NAME}-*" 2> /dev/null)
+  done < <(find "${tmp_root}" -maxdepth 1 -type d -name "governator-${PROJECT_NAME}-*" 2> /dev/null)
 }
 
 # Read the retry count for a task (defaults to 0).
@@ -660,16 +676,8 @@ extract_worker_from_task() {
   if [[ -z "${suffix}" || "${suffix}" == "${task_name}" ]]; then
     return 1
   fi
-
-  local role
-  while IFS= read -r role; do
-    if [[ "${suffix}" == "${role}" ]]; then
-      printf '%s' "${role}"
-      return 0
-    fi
-  done < <(list_available_workers)
-
-  return 1
+  printf '%s' "${suffix}"
+  return 0
 }
 
 # Check whether a task is already in flight.
