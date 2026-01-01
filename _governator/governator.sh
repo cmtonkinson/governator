@@ -18,6 +18,8 @@ NEXT_TICKET_FILE="${DB_DIR}/next_ticket_id"
 GLOBAL_CAP_FILE="${DB_DIR}/global_worker_cap"
 WORKER_CAPS_FILE="${DB_DIR}/worker_caps"
 AUDIT_LOG="${DB_DIR}/audit.log"
+WORKER_PROCESSES_LOG="${DB_DIR}/worker-processes.log"
+RETRY_COUNTS_LOG="${DB_DIR}/retry-counts.log"
 WORKER_ROLES_DIR="${STATE_DIR}/worker-roles"
 SPECIAL_ROLES_DIR="${STATE_DIR}/special-roles"
 TEMPLATES_DIR="${STATE_DIR}/templates"
@@ -222,6 +224,7 @@ ensure_db_dir() {
     mkdir -p "${DB_DIR}"
   fi
   touch "${AUDIT_LOG}"
+  touch "${WORKER_PROCESSES_LOG}" "${RETRY_COUNTS_LOG}"
 }
 
 # Read the next ticket id from disk, defaulting to 1.
@@ -308,6 +311,139 @@ audit_log() {
   local message="$2"
   printf '%s %s -> %s\n' "$(date -u +"%Y-%m-%dT%H:%MZ")" "${task_name}" "${message}" >> "${AUDIT_LOG}"
 }
+
+# Record the worker process that owns a task.
+record_worker_process() {
+  local task_name="$1"
+  local worker="$2"
+  local pid="$3"
+  local tmp_dir="$4"
+  local branch="$5"
+
+  local tmp_file
+  tmp_file="$(mktemp)"
+  awk -v task="${task_name}" -v worker_name="${worker}" '
+    $0 ~ / \| / {
+      split($0, parts, " \\| ")
+      if (parts[1] == task && parts[2] == worker_name) next
+    }
+    { print }
+  ' "${WORKER_PROCESSES_LOG}" > "${tmp_file}"
+  printf '%s | %s | %s | %s | %s\n' "${task_name}" "${worker}" "${pid}" "${tmp_dir}" "${branch}" >> "${tmp_file}"
+  mv "${tmp_file}" "${WORKER_PROCESSES_LOG}"
+}
+
+# Remove a worker process record.
+clear_worker_process() {
+  local task_name="$1"
+  local worker="$2"
+
+  if [[ ! -f "${WORKER_PROCESSES_LOG}" ]]; then
+    return 0
+  fi
+
+  local tmp_file
+  tmp_file="$(mktemp)"
+  awk -v task="${task_name}" -v worker_name="${worker}" '
+    $0 ~ / \| / {
+      split($0, parts, " \\| ")
+      if (parts[1] == task && parts[2] == worker_name) next
+    }
+    { print }
+  ' "${WORKER_PROCESSES_LOG}" > "${tmp_file}"
+  mv "${tmp_file}" "${WORKER_PROCESSES_LOG}"
+}
+
+# Lookup a worker process record.
+get_worker_process() {
+  local task_name="$1"
+  local worker="$2"
+
+  if [[ ! -f "${WORKER_PROCESSES_LOG}" ]]; then
+    return 1
+  fi
+
+  awk -v task="${task_name}" -v worker_name="${worker}" '
+    $0 ~ / \| / {
+      split($0, parts, " \\| ")
+      if (parts[1] == task && parts[2] == worker_name) {
+        print parts[3]
+        print parts[4]
+        print parts[5]
+        exit 0
+      }
+    }
+    END { exit 1 }
+  ' "${WORKER_PROCESSES_LOG}"
+}
+
+# Read the retry count for a task (defaults to 0).
+read_retry_count() {
+  local task_name="$1"
+  if [[ ! -f "${RETRY_COUNTS_LOG}" ]]; then
+    printf '0\n'
+    return 0
+  fi
+
+  local count
+  count="$(
+    awk -v task="${task_name}" '
+      $0 ~ / \| / {
+        split($0, parts, " \\| ")
+        if (parts[1] == task) {
+          print parts[2]
+          exit 0
+        }
+      }
+      END { exit 1 }
+    ' "${RETRY_COUNTS_LOG}" || true
+  )"
+
+  if [[ -z "${count}" || ! "${count}" =~ ^[0-9]+$ ]]; then
+    printf '0\n'
+    return 0
+  fi
+  printf '%s\n' "${count}"
+}
+
+# Write the retry count for a task.
+write_retry_count() {
+  local task_name="$1"
+  local count="$2"
+
+  local tmp_file
+  tmp_file="$(mktemp)"
+  if [[ -f "${RETRY_COUNTS_LOG}" ]]; then
+    awk -v task="${task_name}" '
+      $0 ~ / \| / {
+        split($0, parts, " \\| ")
+        if (parts[1] == task) next
+      }
+      { print }
+    ' "${RETRY_COUNTS_LOG}" > "${tmp_file}"
+  fi
+  printf '%s | %s\n' "${task_name}" "${count}" >> "${tmp_file}"
+  mv "${tmp_file}" "${RETRY_COUNTS_LOG}"
+}
+
+# Clear the retry count for a task.
+clear_retry_count() {
+  local task_name="$1"
+  if [[ ! -f "${RETRY_COUNTS_LOG}" ]]; then
+    return 0
+  fi
+
+  local tmp_file
+  tmp_file="$(mktemp)"
+  awk -v task="${task_name}" '
+    $0 ~ / \| / {
+      split($0, parts, " \\| ")
+      if (parts[1] == task) next
+    }
+    { print }
+  ' "${RETRY_COUNTS_LOG}" > "${tmp_file}"
+  mv "${tmp_file}" "${RETRY_COUNTS_LOG}"
+}
 # Join arguments by a delimiter.
 join_by() {
   local delimiter="$1"
@@ -332,6 +468,7 @@ run_codex_worker_detached() {
     (
       cd "${dir}"
       GOV_PROMPT="${prompt}" nohup bash -c "${CODEX_WORKER_CMD}" >/dev/null 2>&1 &
+      echo $!
     )
     return 0
   fi
@@ -342,6 +479,7 @@ run_codex_worker_detached() {
   (
     cd "${dir}"
     nohup "${CODEX_BIN}" exec "${args[@]}" --message "${prompt}" >/dev/null 2>&1 &
+    echo $!
   )
 }
 
@@ -409,6 +547,10 @@ remove_in_flight_entry() {
     ' "${IN_FLIGHT_LOG}" > "${tmp_file}"
   fi
   mv "${tmp_file}" "${IN_FLIGHT_LOG}"
+  if [[ -n "${worker_name}" ]]; then
+    clear_worker_process "${task_name}" "${worker_name}"
+  fi
+  clear_retry_count "${task_name}"
 }
 
 # Find a task file in any task-* directory by base name.
@@ -654,19 +796,7 @@ assign_task() {
   git -C "${ROOT_DIR}" commit -m "Assign task ${task_name}"
   git -C "${ROOT_DIR}" push origin main
 
-  local tmp_dir
-  tmp_dir="$(mktemp -d "/tmp/governator-${PROJECT_NAME}-${worker}-${task_name}-XXXXXX")"
-
-  git clone "$(git -C "${ROOT_DIR}" remote get-url origin)" "${tmp_dir}" >/dev/null 2>&1
-  git -C "${tmp_dir}" checkout -b "worker/${worker}/${task_name}" origin/main >/dev/null 2>&1
-
-  local task_relpath="${assigned_file#"${ROOT_DIR}/"}"
-  local prompt
-  prompt="Read and follow the instructions in the following files, in this order: _governator/worker-contract.md, _governator/worker-roles/${worker}.md, _governator/custom-prompts/_global.md, _governator/custom-prompts/${worker}.md, ${task_relpath}."
-
-  run_codex_worker_detached "${tmp_dir}" "${prompt}"
-
-  log_info "Worker started for ${task_name} on ${worker} in ${tmp_dir}"
+  spawn_worker_for_task "${assigned_file}" "${worker}" ""
 }
 
 # Assign tasks in backlog based on role prefix/suffix in filename.
@@ -719,6 +849,108 @@ assign_pending_tasks() {
     assign_task "${task_file}" "${worker}"
     printf '%s -> %s\n' "${task_name}" "${worker}" >> "${IN_FLIGHT_LOG}"
   done < <(find "${STATE_DIR}/task-backlog" -maxdepth 1 -type f -name '*.md' | sort)
+}
+
+# Spawn a worker for a task file with shared setup.
+spawn_worker_for_task() {
+  local task_file="$1"
+  local worker="$2"
+  local audit_message="$3"
+
+  local task_name
+  task_name="$(basename "${task_file}" .md)"
+
+  local tmp_dir
+  tmp_dir="$(mktemp -d "/tmp/governator-${PROJECT_NAME}-${worker}-${task_name}-XXXXXX")"
+
+  git clone "$(git -C "${ROOT_DIR}" remote get-url origin)" "${tmp_dir}" >/dev/null 2>&1
+  git -C "${tmp_dir}" checkout -b "worker/${worker}/${task_name}" origin/main >/dev/null 2>&1
+
+  local task_relpath="${task_file#"${ROOT_DIR}/"}"
+  local prompt
+  prompt="Read and follow the instructions in the following files, in this order: _governator/worker-contract.md, _governator/worker-roles/${worker}.md, _governator/custom-prompts/_global.md, _governator/custom-prompts/${worker}.md, ${task_relpath}."
+
+  local branch_name="worker/${worker}/${task_name}"
+  local pid
+  pid="$(run_codex_worker_detached "${tmp_dir}" "${prompt}")"
+  if [[ -n "${pid}" ]]; then
+    record_worker_process "${task_name}" "${worker}" "${pid}" "${tmp_dir}" "${branch_name}"
+    if [[ -n "${audit_message}" ]]; then
+      audit_log "${task_name}" "${audit_message}"
+    fi
+    log_info "Worker started for ${task_name} on ${worker} in ${tmp_dir}"
+  else
+    log_warn "Failed to capture worker pid for ${task_name}."
+  fi
+}
+
+# Handle missing branches with dead workers.
+check_zombie_workers() {
+  touch_logs
+
+  if [[ ! -f "${IN_FLIGHT_LOG}" ]]; then
+    return 0
+  fi
+
+  local line
+  while IFS= read -r line; do
+    if [[ -z "${line}" ]]; then
+      continue
+    fi
+    if [[ "${line}" != *" -> "* ]]; then
+      continue
+    fi
+
+    local task_name="${line%% -> *}"
+    local worker="${line##* -> }"
+    local branch="worker/${worker}/${task_name}"
+
+    if git -C "${ROOT_DIR}" show-ref --verify --quiet "refs/remotes/origin/${branch}"; then
+      continue
+    fi
+
+    local proc_info=()
+    if ! mapfile -t proc_info < <(get_worker_process "${task_name}" "${worker}"); then
+      continue
+    fi
+
+    local pid="${proc_info[0]:-}"
+    local tmp_dir="${proc_info[1]:-}"
+    if [[ -n "${pid}" ]] && kill -0 "${pid}" >/dev/null 2>&1; then
+      continue
+    fi
+
+    audit_log "${task_name}" "worker ${worker} exited before pushing branch"
+
+    if [[ -n "${tmp_dir}" && -d "${tmp_dir}" ]]; then
+      rm -rf "${tmp_dir}"
+    fi
+
+    local retry_count
+    retry_count="$(read_retry_count "${task_name}")"
+    retry_count=$((retry_count + 1))
+    write_retry_count "${task_name}" "${retry_count}"
+
+    if [[ "${retry_count}" -ge 2 ]]; then
+      local task_file
+      if task_file="$(task_file_for_name "${task_name}")"; then
+        annotate_blocked "${task_file}" "Worker exited before pushing branch twice; blocking task."
+        mv "${task_file}" "${STATE_DIR}/task-blocked/$(basename "${task_file}")"
+        audit_log "${task_name}" "moved to task-blocked"
+        git -C "${ROOT_DIR}" add "${STATE_DIR}"
+        git -C "${ROOT_DIR}" commit -m "Block task ${task_name} on retry failure"
+        git -C "${ROOT_DIR}" push origin main
+      fi
+      remove_in_flight_entry "${task_name}" "${worker}"
+      clear_worker_process "${task_name}" "${worker}"
+      return 0
+    fi
+
+    local task_file
+    if task_file="$(task_file_for_name "${task_name}")"; then
+      spawn_worker_for_task "${task_file}" "${worker}" "retry started for ${worker}"
+    fi
+  done < "${IN_FLIGHT_LOG}"
 }
 
 # Process a single worker branch: review, move task, merge, cleanup.
@@ -821,6 +1053,8 @@ process_worker_branch() {
 process_worker_branches() {
   touch_logs
   git_fetch_origin
+
+  check_zombie_workers
 
   local branch
   while IFS= read -r branch; do
