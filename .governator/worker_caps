@@ -1,0 +1,3 @@
+# Per-role concurrency caps.
+# Format: role: number
+# Example: data_engineer: 2
