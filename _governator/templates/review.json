@@ -1,0 +1,9 @@
+{
+  "result": "approve" | "reject" | "block",
+  "reviewer_model": "gpt-5.20-codex",
+  "timestamp": "2026-01-01T20:45:00Z",
+  "comments": [
+    "Good modularization of new function.",
+    "Consider improving error messaging if rejected."
+  ]
+}

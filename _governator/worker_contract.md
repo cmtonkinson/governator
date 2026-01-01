@@ -41,6 +41,7 @@ Before exiting, you must, in order:
 - Push this branch exactly once, as your final action.
 
 You MAY `fetch` from `origin` and `rebase` onto `main` before you push.
+Do not commit any file changes within the _governator/ directory.
 
 You must not:
 - Modify any other branch or tag (including `main`).
