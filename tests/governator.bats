@@ -1,10 +1,9 @@
 #!/usr/bin/env bats
 
 setup() {
-  REPO_DIR="${BATS_TMPDIR}/repo"
-  ORIGIN_DIR="${BATS_TMPDIR}/origin.git"
-  BIN_DIR="${BATS_TMPDIR}/bin"
-  mkdir -p "${REPO_DIR}" "${BIN_DIR}"
+  REPO_DIR="$(mktemp -d "${BATS_TMPDIR}/repo.XXXXXX")"
+  ORIGIN_DIR="$(mktemp -d "${BATS_TMPDIR}/origin.XXXXXX")"
+  BIN_DIR="$(mktemp -d "${BATS_TMPDIR}/bin.XXXXXX")"
 
   cp -R "${BATS_TEST_DIRNAME}/../_governator" "${REPO_DIR}/_governator"
   cp -R "${BATS_TEST_DIRNAME}/../.governator" "${REPO_DIR}/.governator"

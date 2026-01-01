@@ -64,7 +64,6 @@ log_error() {
   log_with_level "ERROR" "$@"
 }
 
-
 # Remove lock on exit.
 cleanup_lock() {
   if [[ -f "${LOCK_FILE}" ]]; then
@@ -95,11 +94,11 @@ ensure_dependencies() {
   local missing=()
   local dep
   for dep in awk date find git mktemp nohup stat sgpt; do
-    if ! command -v "${dep}" >/dev/null 2>&1; then
+    if ! command -v "${dep}" > /dev/null 2>&1; then
       missing+=("${dep}")
     fi
   done
-  if ! command -v "${CODEX_BIN}" >/dev/null 2>&1; then
+  if ! command -v "${CODEX_BIN}" > /dev/null 2>&1; then
     missing+=("${CODEX_BIN}")
   fi
   if [[ "${#missing[@]}" -gt 0 ]]; then
@@ -109,7 +108,7 @@ ensure_dependencies() {
 }
 # Checkout main quietly.
 git_checkout_main() {
-  git -C "${ROOT_DIR}" checkout main >/dev/null 2>&1
+  git -C "${ROOT_DIR}" checkout main > /dev/null 2>&1
 }
 
 # Pull main from origin.
@@ -215,7 +214,7 @@ count_in_flight_role() {
       if (parts[2] == role) {
         count += 1
       }
-    fi
+    }
     END { print count + 0 }
   ' "${IN_FLIGHT_LOG}"
 }
@@ -320,11 +319,11 @@ audit_log() {
 # Read a file mtime in epoch seconds (BSD/GNU stat compatible).
 file_mtime_epoch() {
   local path="$1"
-  if stat -f %m "${path}" >/dev/null 2>&1; then
-    stat -f %m "${path}" 2>/dev/null || return 1
+  if stat -f %m "${path}" > /dev/null 2>&1; then
+    stat -f %m "${path}" 2> /dev/null || return 1
     return 0
   fi
-  stat -c %Y "${path}" 2>/dev/null || return 1
+  stat -c %Y "${path}" 2> /dev/null || return 1
 }
 
 # Record the worker process that owns a task.
@@ -342,7 +341,7 @@ worker_process_set() {
     $0 ~ / \| / {
       split($0, parts, " \\| ")
       if (parts[1] == task && parts[2] == worker_name) next
-    fi
+    }
     { print }
   ' "${WORKER_PROCESSES_LOG}" > "${tmp_file}"
   printf '%s | %s | %s | %s | %s | %s\n' "${task_name}" "${worker}" "${pid}" "${tmp_dir}" "${branch}" "${started_at}" >> "${tmp_file}"
@@ -436,7 +435,7 @@ cleanup_stale_worker_dirs() {
     if [[ "${age}" -ge "${timeout}" ]]; then
       rm -rf "${dir}"
     fi
-  done < <(find /tmp -maxdepth 1 -type d -name "governator-${PROJECT_NAME}-*" 2>/dev/null)
+  done < <(find /tmp -maxdepth 1 -type d -name "governator-${PROJECT_NAME}-*" 2> /dev/null)
 }
 
 # Read the retry count for a task (defaults to 0).
@@ -529,7 +528,7 @@ run_codex_worker_detached() {
   if [[ -n "${CODEX_WORKER_CMD:-}" ]]; then
     (
       cd "${dir}"
-      GOV_PROMPT="${prompt}" nohup bash -c "${CODEX_WORKER_CMD}" >/dev/null 2>&1 &
+      GOV_PROMPT="${prompt}" nohup bash -c "${CODEX_WORKER_CMD}" > /dev/null 2>&1 &
       echo $!
     )
     return 0
@@ -540,7 +539,7 @@ run_codex_worker_detached() {
   read -r -a args <<< "${CODEX_WORKER_ARGS}"
   (
     cd "${dir}"
-    nohup "${CODEX_BIN}" exec "${args[@]}" --message "${prompt}" >/dev/null 2>&1 &
+    nohup "${CODEX_BIN}" exec "${args[@]}" --message "${prompt}" > /dev/null 2>&1 &
     echo $!
   )
 }
@@ -628,7 +627,7 @@ task_file_for_name() {
   local matches=()
   while IFS= read -r path; do
     matches+=("${path}")
-  done < <(find "${STATE_DIR}" -maxdepth 2 -type f -path "${STATE_DIR}/task-*/${task_name}.md" 2>/dev/null || true)
+  done < <(find "${STATE_DIR}" -maxdepth 2 -type f -path "${STATE_DIR}/task-*/${task_name}.md" 2> /dev/null || true)
 
   if [[ "${#matches[@]}" -eq 0 ]]; then
     return 1
@@ -783,8 +782,8 @@ parse_review_json() {
   fi
 
   # Use Python for strict JSON parsing; shell parsing is error-prone.
-  if command -v python3 >/dev/null 2>&1; then
-    if ! python3 - "${file}" <<'PY'
+  if command -v python3 > /dev/null 2>&1; then
+    if ! python3 - "${file}" << 'PY'; then
 import json
 import sys
 
@@ -800,7 +799,6 @@ print(result)
 for comment in comments:
     print(comment)
 PY
-    then
       printf 'block\nFailed to parse review.json\n'
     fi
     return 0
@@ -818,9 +816,9 @@ code_review() {
   local tmp_dir
   tmp_dir="$(mktemp -d "/tmp/governator-${PROJECT_NAME}-reviewer-${local_branch//\//-}-XXXXXX")"
 
-  git clone "$(git -C "${ROOT_DIR}" remote get-url origin)" "${tmp_dir}" >/dev/null 2>&1
-  git -C "${tmp_dir}" fetch origin >/dev/null 2>&1
-  git -C "${tmp_dir}" checkout -B "${local_branch}" "${remote_branch}" >/dev/null 2>&1
+  git clone "$(git -C "${ROOT_DIR}" remote get-url origin)" "${tmp_dir}" > /dev/null 2>&1
+  git -C "${tmp_dir}" fetch origin > /dev/null 2>&1
+  git -C "${tmp_dir}" checkout -B "${local_branch}" "${remote_branch}" > /dev/null 2>&1
 
   # Seed with a template to guide reviewers toward the expected schema.
   if [[ -f "${TEMPLATES_DIR}/review.json" ]]; then
@@ -932,8 +930,8 @@ spawn_worker_for_task() {
   local tmp_dir
   tmp_dir="$(mktemp -d "/tmp/governator-${PROJECT_NAME}-${worker}-${task_name}-XXXXXX")"
 
-  git clone "$(git -C "${ROOT_DIR}" remote get-url origin)" "${tmp_dir}" >/dev/null 2>&1
-  git -C "${tmp_dir}" checkout -b "worker/${worker}/${task_name}" origin/main >/dev/null 2>&1
+  git clone "$(git -C "${ROOT_DIR}" remote get-url origin)" "${tmp_dir}" > /dev/null 2>&1
+  git -C "${tmp_dir}" checkout -b "worker/${worker}/${task_name}" origin/main > /dev/null 2>&1
 
   local task_relpath="${task_file#"${ROOT_DIR}/"}"
   local prompt
@@ -991,7 +989,7 @@ check_zombie_workers() {
     local timeout
     timeout="$(read_worker_timeout_seconds)"
 
-    if [[ -n "${pid}" ]] && kill -0 "${pid}" >/dev/null 2>&1; then
+    if [[ -n "${pid}" ]] && kill -0 "${pid}" > /dev/null 2>&1; then
       if [[ -n "${started_at}" && "${started_at}" =~ ^[0-9]+$ ]]; then
         local now
         now="$(date +%s)"
@@ -1000,7 +998,7 @@ check_zombie_workers() {
           continue
         fi
         audit_log "${task_name}" "worker ${worker} exceeded timeout (${elapsed}s)"
-        kill -9 "${pid}" >/dev/null 2>&1 || true
+        kill -9 "${pid}" > /dev/null 2>&1 || true
       else
         continue
       fi
@@ -1047,7 +1045,7 @@ process_worker_branch() {
   worker_name="${worker_name%%/*}"
 
   git_fetch_origin
-  git -C "${ROOT_DIR}" checkout -B "${local_branch}" "${remote_branch}" >/dev/null 2>&1
+  git -C "${ROOT_DIR}" checkout -B "${local_branch}" "${remote_branch}" > /dev/null 2>&1
 
   local task_name
   task_name="${local_branch##*/}"
@@ -1058,9 +1056,9 @@ process_worker_branch() {
     log_warn "No task file found for ${task_name}, skipping merge."
     printf '%s %s missing task file\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "${local_branch}" >> "${FAILED_MERGES_LOG}"
     in_flight_remove "${task_name}" "${worker_name}"
-    git -C "${ROOT_DIR}" branch -D "${local_branch}" >/dev/null 2>&1 || true
-    git -C "${ROOT_DIR}" push origin --delete "${local_branch}" >/dev/null 2>&1 || true
-    find /tmp -maxdepth 1 -type d -name "governator-${PROJECT_NAME}-${worker_name}-${task_name}-*" -exec rm -rf {} + >/dev/null 2>&1 || true
+    git -C "${ROOT_DIR}" branch -D "${local_branch}" > /dev/null 2>&1 || true
+    git -C "${ROOT_DIR}" push origin --delete "${local_branch}" > /dev/null 2>&1 || true
+    find /tmp -maxdepth 1 -type d -name "governator-${PROJECT_NAME}-${worker_name}-${task_name}-*" -exec rm -rf {} + > /dev/null 2>&1 || true
     return 0
   fi
 
@@ -1129,10 +1127,10 @@ process_worker_branch() {
 
   in_flight_remove "${task_name}" "${worker_name}"
 
-  git -C "${ROOT_DIR}" branch -D "${local_branch}" >/dev/null 2>&1 || true
-  git -C "${ROOT_DIR}" push origin --delete "${local_branch}" >/dev/null 2>&1 || true
+  git -C "${ROOT_DIR}" branch -D "${local_branch}" > /dev/null 2>&1 || true
+  git -C "${ROOT_DIR}" push origin --delete "${local_branch}" > /dev/null 2>&1 || true
 
-  find /tmp -maxdepth 1 -type d -name "governator-${PROJECT_NAME}-${worker_name}-${task_name}-*" -exec rm -rf {} + >/dev/null 2>&1 || true
+  find /tmp -maxdepth 1 -type d -name "governator-${PROJECT_NAME}-${worker_name}-${task_name}-*" -exec rm -rf {} + > /dev/null 2>&1 || true
 }
 
 # Iterate all worker branches, skipping those logged as failed merges.
@@ -1157,8 +1155,8 @@ process_worker_branches() {
 
 # Script entrypoint.
 main() {
-  ensure_lock
   ensure_clean_git
+  ensure_lock
   ensure_dependencies
   ensure_db_dir
   git_checkout_main
@@ -1214,8 +1212,8 @@ dispatch_subcommand() {
       main
       ;;
     process-branches)
-      ensure_lock
       ensure_clean_git
+      ensure_lock
       ensure_dependencies
       ensure_db_dir
       git_checkout_main
@@ -1223,8 +1221,8 @@ dispatch_subcommand() {
       process_worker_branches
       ;;
     assign-backlog)
-      ensure_lock
       ensure_clean_git
+      ensure_lock
       ensure_dependencies
       ensure_db_dir
       git_checkout_main
@@ -1232,8 +1230,8 @@ dispatch_subcommand() {
       assign_pending_tasks
       ;;
     check-zombies)
-      ensure_lock
       ensure_clean_git
+      ensure_lock
       ensure_dependencies
       ensure_db_dir
       git_checkout_main
@@ -1241,8 +1239,8 @@ dispatch_subcommand() {
       check_zombie_workers
       ;;
     cleanup-tmp)
-      ensure_lock
       ensure_clean_git
+      ensure_lock
       ensure_dependencies
       ensure_db_dir
       cleanup_stale_worker_dirs
