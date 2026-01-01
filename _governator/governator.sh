@@ -90,6 +90,23 @@ ensure_clean_git() {
   fi
 }
 
+# Ensure required commands exist before running.
+ensure_dependencies() {
+  local missing=()
+  local dep
+  for dep in awk date find git mktemp nohup stat sgpt; do
+    if ! command -v "${dep}" >/dev/null 2>&1; then
+      missing+=("${dep}")
+    fi
+  done
+  if ! command -v "${CODEX_BIN}" >/dev/null 2>&1; then
+    missing+=("${CODEX_BIN}")
+  fi
+  if [[ "${#missing[@]}" -gt 0 ]]; then
+    log_error "Missing dependencies: ${missing[*]}"
+    exit 1
+  fi
+}
 # Checkout main quietly.
 git_checkout_main() {
   git -C "${ROOT_DIR}" checkout main >/dev/null 2>&1
@@ -1142,6 +1159,7 @@ process_worker_branches() {
 main() {
   ensure_lock
   ensure_clean_git
+  ensure_dependencies
   ensure_db_dir
   git_checkout_main
   git_pull_main
