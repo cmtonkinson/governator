@@ -56,15 +56,21 @@ There is no conversational back-and-forth.
 _governator/
 ├── governator.sh
 ├── worker_contract.md
-├── roles/
+├── worker-roles/
+│   ├── admin.md
 │   ├── architect.md
+│   ├── data_engineer.md
 │   ├── planner.md
 │   ├── reviewer.md
 │   ├── ruby.md
-│   ├── data_engineer.md
 │   ├── security_engineer.md
 │   ├── sre.md
-│   └── admin.md
+│   └── test_engineer.md
+├── special-roles/
+│   └── reviewer.md
+├── templates/
+│   ├── review.json
+│   └── ticket.md
 ├── task-backlog/
 ├── task-assigned/
 ├── task-worked/
@@ -74,6 +80,13 @@ _governator/
 └── task-proposed/
 ```
 
+```
+.governator/
+├── next_ticket_id
+├── global_worker_cap
+└── worker_caps
+```
+
 ### Key Concepts
 
 - **Worker Contract** defines global, non-negotiable execution rules for all workers.
@@ -81,6 +94,34 @@ _governator/
 - **Roles** define authority and constraints for each type of worker (what they may and may not do).
 
 - **Tasks** markdown files representing one unit of work, flowing through lifecycle directories.
+
+## Ticket Naming and Assignment
+
+Tasks are assigned to roles by their filename suffix. Filenames are kebab-case
+and use a three-digit numeric id prefix:
+
+- Example: `001-create-database-data_engineer.md`
+- Example: `002-use-bundler-ruby.md`
+
+Governator derives the role from the suffix after the last dash. If the suffix
+does not match a role file in `_governator/worker-roles/`, the task is blocked.
+
+The `templates/ticket.md` file is the stub for new tasks. `next_ticket_id`
+stores the next auto-increment id.
+
+## Concurrency Controls
+
+Governator limits concurrent work using:
+
+- `.governator/global_worker_cap` for the global cap (default `1`)
+- `.governator/worker_caps` for per-role caps (default `1` when absent)
+
+In-flight assignments are tracked in `_governator/in-flight.log` with one line
+per task:
+
+```
+001-create-database-data_engineer -> data_engineer
+```
 
 ## Task Lifecycle
 
@@ -111,10 +152,10 @@ All state transitions are explicit and reviewable.
 
 Each worker execution:
 - Runs non-interactively (e.g. `codex exec`)
-- Reads exactly three inputs, in order:
-  1. `worker_contract.md`
-  2. a role file from `roles/`
-  3. one task file from `task-assigned/`
+- Reads inputs in order:
+  1. `_governator/worker_contract.md`
+  2. `_governator/worker-roles/<role>.md`
+  3. `_governator/task-assigned/<task>.md`
 - Operates in a fresh clone on a dedicated branch
 - Pushes its branch exactly once
 - Exits
@@ -123,6 +164,13 @@ Workers never:
 - merge to `main`
 - create or modify tasks outside their scope
 - retain memory between runs
+
+## Review Flow
+
+When a worker moves a task to `task-worked`, Governator invokes the reviewer
+role defined in `_governator/special-roles/reviewer.md`. Review output is
+captured in `review.json`, based on the template in
+`_governator/templates/review.json`.
 
 ## Determinism by Design
 
@@ -145,7 +193,6 @@ This makes the system:
 
 ## Requirements
 - git
-- [shell_gpt](https://github.com/TheR1D/shell_gpt)
 - cron (or equivalent scheduler)
 - one or more non-interactive LLM CLIs (e.g. Codex, Claude)
 - a fully-baked `README.md`
@@ -176,4 +223,3 @@ It is intended for:
 - constrained, reviewable LLM execution
 
 Use at your own risk, preferably while sleeping.
-
