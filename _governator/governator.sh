@@ -11,80 +11,59 @@ IFS=$'\n\t'
 # tasks. It is intentionally explicit about filesystem and git transitions.
 #
 #############################################################################
+
+#############################################################################
+# Configuration
+#############################################################################
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STATE_DIR="${ROOT_DIR}/_governator"
 DB_DIR="${ROOT_DIR}/.governator"
+
 NEXT_TICKET_FILE="${DB_DIR}/next_ticket_id"
 GLOBAL_CAP_FILE="${DB_DIR}/global_worker_cap"
 WORKER_CAPS_FILE="${DB_DIR}/worker_caps"
+WORKER_TIMEOUT_FILE="${DB_DIR}/worker_timeout_seconds"
+
 AUDIT_LOG="${DB_DIR}/audit.log"
 WORKER_PROCESSES_LOG="${DB_DIR}/worker-processes.log"
 RETRY_COUNTS_LOG="${DB_DIR}/retry-counts.log"
-WORKER_TIMEOUT_FILE="${DB_DIR}/worker_timeout_seconds"
+
 WORKER_ROLES_DIR="${STATE_DIR}/worker-roles"
-SPECIAL_ROLES_DIR="${STATE_DIR}/special-roles"
 TEMPLATES_DIR="${STATE_DIR}/templates"
 LOCK_FILE="${STATE_DIR}/governator.lock"
 FAILED_MERGES_LOG="${STATE_DIR}/failed-merges.log"
 IN_FLIGHT_LOG="${STATE_DIR}/in-flight.log"
+
 CODEX_BIN="${CODEX_BIN:-codex}"
 CODEX_WORKER_ARGS="${CODEX_WORKER_ARGS:---non-interactive}"
 CODEX_REVIEW_ARGS="${CODEX_REVIEW_ARGS:---non-interactive}"
 
-PROJECT_NAME="$(basename "${ROOT_DIR}")"
-USE_RG=0
+DEFAULT_GLOBAL_CAP=1
+DEFAULT_WORKER_CAP=1
+DEFAULT_TICKET_ID=1
+DEFAULT_WORKER_TIMEOUT_SECONDS=900
 
-if command -v rg >/dev/null 2>&1; then
-  USE_RG=1
-fi
+PROJECT_NAME="$(basename "${ROOT_DIR}")"
 
 # Log with a consistent UTC timestamp prefix.
+log_with_level() {
+  local level="$1"
+  shift
+  printf '[%s] %-5s %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "${level}" "$*"
+}
+
 log_info() {
-  printf '[%s] INFO  %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$*"
+  log_with_level "INFO" "$@"
 }
 
-# Log a warning with timestamp.
 log_warn() {
-  printf '[%s] WARN  %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$*"
+  log_with_level "WARN" "$@"
 }
 
-# Log an error with timestamp.
 log_error() {
-  printf '[%s] ERROR %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$*"
+  log_with_level "ERROR" "$@"
 }
 
-# Fixed-string match abstraction so we can fall back to grep if rg is missing.
-match_fixed() {
-  local pattern="$1"
-  local file="$2"
-  if [[ "${USE_RG}" -eq 1 ]]; then
-    rg -q -F "${pattern}" "${file}"
-    return $?
-  fi
-  grep -qF "${pattern}" "${file}"
-}
-
-# First regex match helper with rg/grep fallback.
-first_match_regex() {
-  local pattern="$1"
-  local file="$2"
-  if [[ "${USE_RG}" -eq 1 ]]; then
-    rg -i -m1 "${pattern}" "${file}"
-    return $?
-  fi
-  grep -i -m1 -E "${pattern}" "${file}"
-}
-
-# Filter out fixed-string matches with rg/grep fallback.
-filter_out_fixed() {
-  local pattern="$1"
-  local file="$2"
-  if [[ "${USE_RG}" -eq 1 ]]; then
-    rg -v -F "${pattern}" "${file}"
-    return $?
-  fi
-  grep -vF "${pattern}" "${file}"
-}
 
 # Remove lock on exit.
 cleanup_lock() {
@@ -151,19 +130,19 @@ read_numeric_file() {
 
 # Read the global concurrency cap (defaults to 1).
 read_global_cap() {
-  read_numeric_file "${GLOBAL_CAP_FILE}" "1"
+  read_numeric_file "${GLOBAL_CAP_FILE}" "${DEFAULT_GLOBAL_CAP}"
 }
 
 # Read the worker timeout in seconds (defaults to 900).
 read_worker_timeout_seconds() {
-  read_numeric_file "${WORKER_TIMEOUT_FILE}" "900"
+  read_numeric_file "${WORKER_TIMEOUT_FILE}" "${DEFAULT_WORKER_TIMEOUT_SECONDS}"
 }
 
 # Read per-worker cap from worker_caps (defaults to 1).
 read_worker_cap() {
   local role="$1"
   if [[ ! -f "${WORKER_CAPS_FILE}" ]]; then
-    printf '1\n'
+    printf '%s\n' "${DEFAULT_WORKER_CAP}"
     return 0
   fi
 
@@ -188,7 +167,7 @@ read_worker_cap() {
   )"
 
   if [[ -z "${cap}" ]]; then
-    printf '1\n'
+    printf '%s\n' "${DEFAULT_WORKER_CAP}"
     return 0
   fi
   printf '%s\n' "${cap}"
@@ -232,7 +211,7 @@ ensure_db_dir() {
   touch "${AUDIT_LOG}"
   touch "${WORKER_PROCESSES_LOG}" "${RETRY_COUNTS_LOG}"
   if [[ ! -f "${WORKER_TIMEOUT_FILE}" ]]; then
-    printf '900\n' > "${WORKER_TIMEOUT_FILE}"
+    printf '%s\n' "${DEFAULT_WORKER_TIMEOUT_SECONDS}" > "${WORKER_TIMEOUT_FILE}"
   fi
 }
 
@@ -240,14 +219,14 @@ ensure_db_dir() {
 read_next_ticket_id() {
   ensure_db_dir
   if [[ ! -f "${NEXT_TICKET_FILE}" ]]; then
-    printf '1\n'
+    printf '%s\n' "${DEFAULT_TICKET_ID}"
     return 0
   fi
 
   local value
   value="$(tr -d '[:space:]' < "${NEXT_TICKET_FILE}")"
   if [[ -z "${value}" ]]; then
-    printf '1\n'
+    printf '%s\n' "${DEFAULT_TICKET_ID}"
     return 0
   fi
   printf '%s\n' "${value}"
@@ -325,14 +304,14 @@ audit_log() {
 file_mtime_epoch() {
   local path="$1"
   if stat -f %m "${path}" >/dev/null 2>&1; then
-    stat -f %m "${path}"
+    stat -f %m "${path}" 2>/dev/null || return 1
     return 0
   fi
-  stat -c %Y "${path}"
+  stat -c %Y "${path}" 2>/dev/null || return 1
 }
 
 # Record the worker process that owns a task.
-record_worker_process() {
+worker_process_set() {
   local task_name="$1"
   local worker="$2"
   local pid="$3"
@@ -354,7 +333,7 @@ record_worker_process() {
 }
 
 # Remove a worker process record.
-clear_worker_process() {
+worker_process_clear() {
   local task_name="$1"
   local worker="$2"
 
@@ -375,7 +354,7 @@ clear_worker_process() {
 }
 
 # Lookup a worker process record.
-get_worker_process() {
+worker_process_get() {
   local task_name="$1"
   local worker="$2"
 
@@ -444,7 +423,7 @@ cleanup_stale_worker_dirs() {
 }
 
 # Read the retry count for a task (defaults to 0).
-read_retry_count() {
+retry_count_get() {
   local task_name="$1"
   if [[ ! -f "${RETRY_COUNTS_LOG}" ]]; then
     printf '0\n'
@@ -473,7 +452,7 @@ read_retry_count() {
 }
 
 # Write the retry count for a task.
-write_retry_count() {
+retry_count_set() {
   local task_name="$1"
   local count="$2"
 
@@ -493,7 +472,7 @@ write_retry_count() {
 }
 
 # Clear the retry count for a task.
-clear_retry_count() {
+retry_count_clear() {
   local task_name="$1"
   if [[ ! -f "${RETRY_COUNTS_LOG}" ]]; then
     return 0
@@ -585,8 +564,15 @@ is_failed_merge_branch() {
   return 1
 }
 
+# Add an in-flight record.
+in_flight_add() {
+  local task_name="$1"
+  local worker_name="$2"
+  printf '%s -> %s\n' "${task_name}" "${worker_name}" >> "${IN_FLIGHT_LOG}"
+}
+
 # Remove an in-flight record when a task completes or is blocked.
-remove_in_flight_entry() {
+in_flight_remove() {
   local task_name="$1"
   local worker_name="$2"
   if [[ ! -f "${IN_FLIGHT_LOG}" ]]; then
@@ -614,9 +600,9 @@ remove_in_flight_entry() {
   fi
   mv "${tmp_file}" "${IN_FLIGHT_LOG}"
   if [[ -n "${worker_name}" ]]; then
-    clear_worker_process "${task_name}" "${worker_name}"
+    worker_process_clear "${task_name}" "${worker_name}"
   fi
-  clear_retry_count "${task_name}"
+  retry_count_clear "${task_name}"
 }
 
 # Find a task file in any task-* directory by base name.
@@ -913,7 +899,7 @@ assign_pending_tasks() {
     fi
 
     assign_task "${task_file}" "${worker}"
-    printf '%s -> %s\n' "${task_name}" "${worker}" >> "${IN_FLIGHT_LOG}"
+    in_flight_add "${task_name}" "${worker}"
   done < <(find "${STATE_DIR}/task-backlog" -maxdepth 1 -type f -name '*.md' | sort)
 }
 
@@ -942,7 +928,7 @@ spawn_worker_for_task() {
   started_at="$(date +%s)"
   pid="$(run_codex_worker_detached "${tmp_dir}" "${prompt}")"
   if [[ -n "${pid}" ]]; then
-    record_worker_process "${task_name}" "${worker}" "${pid}" "${tmp_dir}" "${branch_name}" "${started_at}"
+    worker_process_set "${task_name}" "${worker}" "${pid}" "${tmp_dir}" "${branch_name}" "${started_at}"
     if [[ -n "${audit_message}" ]]; then
       audit_log "${task_name}" "${audit_message}"
     fi
@@ -978,7 +964,7 @@ check_zombie_workers() {
     fi
 
     local proc_info=()
-    if ! mapfile -t proc_info < <(get_worker_process "${task_name}" "${worker}"); then
+    if ! mapfile -t proc_info < <(worker_process_get "${task_name}" "${worker}"); then
       continue
     fi
 
@@ -1010,9 +996,9 @@ check_zombie_workers() {
     fi
 
     local retry_count
-    retry_count="$(read_retry_count "${task_name}")"
+    retry_count="$(retry_count_get "${task_name}")"
     retry_count=$((retry_count + 1))
-    write_retry_count "${task_name}" "${retry_count}"
+    retry_count_set "${task_name}" "${retry_count}"
 
     if [[ "${retry_count}" -ge 2 ]]; then
       local task_file
@@ -1024,8 +1010,8 @@ check_zombie_workers() {
         git -C "${ROOT_DIR}" commit -m "Block task ${task_name} on retry failure"
         git -C "${ROOT_DIR}" push origin main
       fi
-      remove_in_flight_entry "${task_name}" "${worker}"
-      clear_worker_process "${task_name}" "${worker}"
+      in_flight_remove "${task_name}" "${worker}"
+      worker_process_clear "${task_name}" "${worker}"
       return 0
     fi
 
@@ -1054,7 +1040,7 @@ process_worker_branch() {
     # No task to annotate; record and drop the branch.
     log_warn "No task file found for ${task_name}, skipping merge."
     printf '%s %s missing task file\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "${local_branch}" >> "${FAILED_MERGES_LOG}"
-    remove_in_flight_entry "${task_name}" "${worker_name}"
+    in_flight_remove "${task_name}" "${worker_name}"
     git -C "${ROOT_DIR}" branch -D "${local_branch}" >/dev/null 2>&1 || true
     git -C "${ROOT_DIR}" push origin --delete "${local_branch}" >/dev/null 2>&1 || true
     find /tmp -maxdepth 1 -type d -name "governator-${PROJECT_NAME}-${worker_name}-${task_name}-*" -exec rm -rf {} + >/dev/null 2>&1 || true
@@ -1124,7 +1110,7 @@ process_worker_branch() {
     printf '%s %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "${local_branch}" >> "${FAILED_MERGES_LOG}"
   fi
 
-  remove_in_flight_entry "${task_name}" "${worker_name}"
+  in_flight_remove "${task_name}" "${worker_name}"
 
   git -C "${ROOT_DIR}" branch -D "${local_branch}" >/dev/null 2>&1 || true
   git -C "${ROOT_DIR}" push origin --delete "${local_branch}" >/dev/null 2>&1 || true
