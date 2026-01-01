@@ -1,7 +1,7 @@
 # Governator
 
 Governator is a deterministic, file-driven orchestration system for delegating software development work to
-non-interactive LLM workers (e.g. Codex), reviewing their output, and merging results safely into `main`.
+non-interactive LLM "workers" (e.g. Codex CLI), reviewing their output, and merging results safely into `main`.
 
 It is designed to be dropped into an existing repository, alongside a human-written `README.md`, and left to operate
 autonomously via a cron-driven control loop.
@@ -25,7 +25,7 @@ It is intended for:
 - constrained, reviewable LLM execution
 
 My primary (initially intended) use-case is to get me from 0 to 1 on proofs of
-concept, because we all know it's `PoC || GFTO`, amirite?
+concept, because... `PoC || GFTO`, amirite?
 
 ## Core Idea
 
@@ -147,6 +147,16 @@ per task:
 
 ```
 001-set-up-initial-migrations-data_engineer -> data_engineer
+```
+
+## Audit Log
+
+Governator writes fine-grained lifecycle events to `.governator/audit.log`:
+
+```
+2026-01-01T14:22Z 003-migrate-auth-sso-ruby -> assigned to ruby
+2026-01-01T14:29Z 003-migrate-auth-sso-ruby -> moved to task-worked
+2026-01-01T14:45Z 003-migrate-auth-sso-ruby -> moved to task-done
 ```
 
 ## Task Lifecycle

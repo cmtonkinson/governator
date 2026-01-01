@@ -17,6 +17,7 @@ DB_DIR="${ROOT_DIR}/.governator"
 NEXT_TICKET_FILE="${DB_DIR}/next_ticket_id"
 GLOBAL_CAP_FILE="${DB_DIR}/global_worker_cap"
 WORKER_CAPS_FILE="${DB_DIR}/worker_caps"
+AUDIT_LOG="${DB_DIR}/audit.log"
 WORKER_ROLES_DIR="${STATE_DIR}/worker-roles"
 SPECIAL_ROLES_DIR="${STATE_DIR}/special-roles"
 TEMPLATES_DIR="${STATE_DIR}/templates"
@@ -220,6 +221,7 @@ ensure_db_dir() {
   if [[ ! -d "${DB_DIR}" ]]; then
     mkdir -p "${DB_DIR}"
   fi
+  touch "${AUDIT_LOG}"
 }
 
 # Read the next ticket id from disk, defaulting to 1.
@@ -300,6 +302,12 @@ append_section() {
   } >> "${file}"
 }
 
+# Append a lifecycle event to the audit log.
+audit_log() {
+  local task_name="$1"
+  local message="$2"
+  printf '%s %s -> %s\n' "$(date -u +"%Y-%m-%dT%H:%MZ")" "${task_name}" "${message}" >> "${AUDIT_LOG}"
+}
 # Join arguments by a delimiter.
 join_by() {
   local delimiter="$1"
@@ -503,6 +511,7 @@ block_task_from_backlog() {
   local blocked_file="${STATE_DIR}/task-blocked/${task_name}.md"
   mv "${task_file}" "${blocked_file}"
   annotate_blocked "${blocked_file}" "${reason}"
+  audit_log "${task_name}" "moved to task-blocked"
 
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
   git -C "${ROOT_DIR}" commit -m "Block task ${task_name}"
@@ -639,6 +648,7 @@ assign_task() {
   local assigned_file="${STATE_DIR}/task-assigned/${task_name}.md"
   mv "${task_file}" "${assigned_file}"
   annotate_assignment "${assigned_file}" "${worker}"
+  audit_log "${task_name}" "assigned to ${worker}"
 
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
   git -C "${ROOT_DIR}" commit -m "Assign task ${task_name}"
@@ -679,13 +689,13 @@ assign_pending_tasks() {
     local worker
     if ! worker="$(extract_worker_from_task "${task_file}")"; then
       log_warn "Missing required role for ${task_name}, blocking."
-      block_task_from_backlog "${task_file}" "Missing required role in frontmatter."
+      block_task_from_backlog "${task_file}" "Missing required role in filename suffix."
       continue
     fi
 
     if [[ ! -f "${WORKER_ROLES_DIR}/${worker}.md" ]]; then
       log_warn "Unknown role ${worker} for ${task_name}, blocking."
-      block_task_from_backlog "${task_file}" "Unknown role ${worker} referenced in frontmatter."
+      block_task_from_backlog "${task_file}" "Unknown role ${worker} referenced in filename suffix."
       continue
     fi
     local total_count
@@ -745,27 +755,33 @@ process_worker_branch() {
       mapfile -t review_lines < <(code_review "${remote_branch}" "${local_branch}" "${task_file#"${ROOT_DIR}/"}")
       local decision="${review_lines[0]:-block}"
       annotate_review "${task_file}" "${decision}" "${review_lines[@]:1}"
+      audit_log "${task_name}" "moved to task-worked"
 
       case "${decision}" in
         approve)
           mv "${task_file}" "${STATE_DIR}/task-done/$(basename "${task_file}")"
+          audit_log "${task_name}" "moved to task-done"
           ;;
         reject)
           mv "${task_file}" "${STATE_DIR}/task-assigned/$(basename "${task_file}")"
+          audit_log "${task_name}" "moved to task-assigned"
           ;;
         *)
           mv "${task_file}" "${STATE_DIR}/task-blocked/$(basename "${task_file}")"
+          audit_log "${task_name}" "moved to task-blocked"
           ;;
       esac
       ;;
     task-feedback)
       annotate_feedback "${task_file}"
       mv "${task_file}" "${STATE_DIR}/task-assigned/$(basename "${task_file}")"
+      audit_log "${task_name}" "moved to task-assigned"
       ;;
     *)
       log_warn "Unexpected task state ${task_dir} for ${task_name}, blocking."
       annotate_blocked "${task_file}" "Unexpected task state ${task_dir} during processing."
       mv "${task_file}" "${STATE_DIR}/task-blocked/$(basename "${task_file}")"
+      audit_log "${task_name}" "moved to task-blocked"
       ;;
   esac
 
@@ -784,6 +800,7 @@ process_worker_branch() {
       # Keep main's task state authoritative; block and surface the failure.
       annotate_merge_failure "${main_task_file}" "${local_branch}"
       mv "${main_task_file}" "${STATE_DIR}/task-blocked/$(basename "${main_task_file}")"
+      audit_log "${task_name}" "moved to task-blocked"
       git -C "${ROOT_DIR}" add "${STATE_DIR}"
       git -C "${ROOT_DIR}" commit -m "Block task ${task_name} on merge failure"
       git -C "${ROOT_DIR}" push origin main
