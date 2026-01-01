@@ -11,6 +11,22 @@ live on disk and in git.
 
 ---
 
+## Why?
+
+This project is experimental and opinionated. It was created because as I got
+more time-efficient at vibe coding with CLI agents, and found some patterns that
+work well for me, I began to imagine a system that could automate some of the
+same-y manual labor out of the process. I hope this will prove to be a useful
+starting point. Use at your own risk.
+
+It is intended for:
+- autonomous code generation
+- long-running background development
+- constrained, reviewable LLM execution
+
+My primary (initially intended) use-case is to get me from 0 to 1 on proofs of
+concept, because we all know it's `PoC || GFTO`, amirite?
+
 ## Core Idea
 
 Governator enforces a strict separation of concerns:
@@ -120,7 +136,7 @@ In-flight assignments are tracked in `_governator/in-flight.log` with one line
 per task:
 
 ```
-001-create-database-data_engineer -> data_engineer
+001-set-up-initial-migrations-data_engineer -> data_engineer
 ```
 
 ## Task Lifecycle
@@ -137,9 +153,9 @@ A task moves through directories as its state changes:
    - Includes a worker-written summary
 4. `task-blocked/`
    - Worker cannot proceed safely
-   - Includes an explicit blocking reason
+   - Includes a worker-written blocking reason
 5. `task-feedback/`
-   - Reviewer feedback requiring rework
+   - The assigned worker needs additional guidance
 6. `task-done/`
    - Task accepted and merged into `main`
 7. `task-proposed/`
@@ -183,7 +199,6 @@ Governator intentionally avoids:
 If something matters, it must exist:
 - as a file
 - in git
-- or in the README
 
 This makes the system:
 - auditable
@@ -192,8 +207,12 @@ This makes the system:
 - safe to automate
 
 ## Requirements
+
+The Governator itself is a single self-contained bash script.
+
+It requires:
 - git
-- cron (or equivalent scheduler)
+- cron (or some other means of invocation)
 - one or more non-interactive LLM CLIs (e.g. Codex, Claude)
 - a fully-baked `README.md`
   - overview
@@ -202,24 +221,13 @@ This makes the system:
   - constraints
   - high-level architecture
 
-The Governator script itself is shell-based and intentionally simple.
-
 ## Philosophy
 
 Correctness and bounded execution matter more than speed or cleverness.
 
-Governator treats LLMs as workers, not collaborators. Creativity lives in planning and review; execution is mechanical.
+Governator treats LLMs as workers, not collaborators. Creativity lives in
+planning and review; execution is mechanical.
 
-If a task is ambiguous, it should block. If a decision is architectural, it should be explicit. If work cannot be
-reviewed, it should not be merged.
+If a task is ambiguous, it should block. If a decision is architectural,
+it should be explicit. If work cannot be reviewed, it should not be merged.
 
-## Status
-
-This project is experimental and opinionated.
-
-It is intended for:
-- autonomous code generation
-- long-running background development
-- constrained, reviewable LLM execution
-
-Use at your own risk, preferably while sleeping.
