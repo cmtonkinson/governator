@@ -19,6 +19,17 @@ write_task() {
 EOF
 }
 
+create_worker_branch() {
+  local task_name="$1"
+  local worker="$2"
+  repo_git checkout -b "worker/${worker}/${task_name}" >/dev/null
+  printf '%s\n' "work ${task_name}" > "${REPO_DIR}/work-${task_name}.txt"
+  repo_git add "work-${task_name}.txt"
+  repo_git commit -m "Work ${task_name}" >/dev/null
+  repo_git push -u origin "worker/${worker}/${task_name}" >/dev/null
+  repo_git checkout main >/dev/null
+}
+
 setup() {
   REPO_DIR="$(mktemp -d "${BATS_TMPDIR}/repo.XXXXXX")"
   ORIGIN_DIR="$(mktemp -d "${BATS_TMPDIR}/origin.XXXXXX")"
@@ -36,6 +47,7 @@ setup() {
 
   git init --bare "${ORIGIN_DIR}" >/dev/null
   repo_git remote add origin "${ORIGIN_DIR}"
+  repo_git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
   repo_git push -u origin main >/dev/null
 
   cat > "${BIN_DIR}/sgpt" <<'EOF'
@@ -160,4 +172,40 @@ EOF
 
   [ -d "${active_dir}" ]
   [ ! -d "${stale_dir}" ]
+}
+
+@test "process-branches approves worked task and moves to done" {
+  write_task "task-worked" "010-review-ruby"
+  echo "010-review-ruby -> ruby" >> "${REPO_DIR}/_governator/in-flight.log"
+  echo "010-review-ruby | ruby | 999999 | /tmp/governator-test | worker/ruby/010-review-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  commit_all "Prepare worked task"
+
+  create_worker_branch "010-review-ruby" "ruby"
+  export CODEX_REVIEW_CMD='cat > review.json <<'"'"'EOF'"'"'
+{"result":"approve","comments":["looks good"]}
+EOF'
+
+  run bash "${REPO_DIR}/_governator/governator.sh" process-branches
+  [ "$status" -eq 0 ]
+
+  [ -f "${REPO_DIR}/_governator/task-done/010-review-ruby.md" ]
+  run grep -F "Decision: approve" "${REPO_DIR}/_governator/task-done/010-review-ruby.md"
+  [ "$status" -eq 0 ]
+  run grep -F "010-review-ruby -> ruby" "${REPO_DIR}/_governator/in-flight.log"
+  [ "$status" -ne 0 ]
+}
+
+@test "process-branches moves feedback task back to assigned" {
+  write_task "task-feedback" "011-feedback-ruby"
+  echo "011-feedback-ruby -> ruby" >> "${REPO_DIR}/_governator/in-flight.log"
+  commit_all "Prepare feedback task"
+
+  create_worker_branch "011-feedback-ruby" "ruby"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" process-branches
+  [ "$status" -eq 0 ]
+
+  [ -f "${REPO_DIR}/_governator/task-assigned/011-feedback-ruby.md" ]
+  run grep -F "## Feedback" "${REPO_DIR}/_governator/task-assigned/011-feedback-ruby.md"
+  [ "$status" -eq 0 ]
 }

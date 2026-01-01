@@ -576,7 +576,7 @@ run_codex_reviewer() {
 
 # List remote worker branches.
 list_worker_branches() {
-  git -C "${ROOT_DIR}" for-each-ref --format='%(refname:short)' refs/remotes/origin/worker/* || true
+  git -C "${ROOT_DIR}" for-each-ref --format='%(refname:short)' refs/remotes/origin/worker/*/* || true
 }
 
 # Check whether a branch is recorded as a failed merge.
@@ -755,7 +755,7 @@ annotate_review() {
     {
       printf '\nComments:\n'
       for comment in "${comments[@]}"; do
-        printf '- %s\n' "${comment}"
+        printf -- '- %s\n' "${comment}"
       done
     } >> "${task_file}"
   fi
