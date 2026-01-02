@@ -1,0 +1,22 @@
+stages:
+  - test
+
+variables:
+  SCRIPT_DIR: "${CI_PROJECT_DIR}/scripts"
+
+lint-and-test:
+  image: python:3.11-slim
+  stage: test
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends git curl ca-certificates
+    - pip install --no-cache-dir bats-core sgpt
+  script:
+    - |
+      if [[ -z "${SGPT_API_KEY:-}" ]]; then
+        echo "SGPT_API_KEY is required for sgpt-backed tests"
+        exit 1
+      fi
+      export SGPT_MODEL="${SGPT_MODEL:-gpt-4o-mini}"
+      cd "$CI_PROJECT_DIR"
+      ./scripts/all-tests.sh

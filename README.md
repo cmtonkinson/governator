@@ -287,3 +287,13 @@ Dependencies for development testing live in `scripts/common.sh` and include:
 Governator also exposes "hidden" subcommands (for targeted testing and ops
 drills). They are intentionally undocumented; check `_governator/governator.sh`
 for the full list and behavior.
+
+### GitLab CI
+
+The included `.gitlab-ci.yml` job installs `sgpt` and runs `./scripts/all-tests.sh`. To keep CI non-interactive:
+
+- Define `SGPT_API_KEY` as a masked, protected GitLab CI variable that holds the API key used by `sgpt`.
+- Define `SGPT_MODEL` if you want to pin a cheaper/faster model (it defaults to `gpt-4o-mini` when unset).
+
+Once those variables are set, the pipeline can hit the real service without manual token entry.
+
