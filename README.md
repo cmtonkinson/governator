@@ -106,7 +106,7 @@ _governator/
 │   ├── security_engineer.md
 │   ├── sre.md
 │   └── test_engineer.md
-├── worker-roles/
+├── roles-worker/
 │   ├── admin.md
 │   ├── architect.md
 │   ├── data_engineer.md
@@ -115,7 +115,7 @@ _governator/
 │   ├── security_engineer.md
 │   ├── sre.md
 │   └── test_engineer.md
-├── special-roles/
+├── roles-special/
 │   └── reviewer.md
 ├── templates/
 │   ├── review.json
@@ -152,7 +152,7 @@ and use a three-digit numeric id prefix:
 - Example: `002-use-bundler-ruby.md`
 
 Governator derives the role from the suffix after the last dash. If the suffix
-does not match a role file in `_governator/worker-roles/`, the task is blocked.
+does not match a role file in `_governator/roles-worker/`, the task is blocked.
 
 The `templates/ticket.md` file is the stub for new tasks. `next_ticket_id`
 stores the next auto-increment id.
@@ -209,7 +209,7 @@ Each worker execution:
 - Runs non-interactively (e.g. `codex exec`)
 - Reads inputs in order:
   1. `_governator/worker-contract.md`
-  2. `_governator/worker-roles/<role>.md`
+  2. `_governator/roles-worker/<role>.md`
   3. `_governator/custom-prompts/_global.md`
   4. `_governator/custom-prompts/<role>.md`
   5. `_governator/task-assigned/<task>.md`
@@ -227,7 +227,7 @@ Workers never:
 
 ## Review Flow
 When a worker moves a task to `task-worked`, Governator invokes the reviewer
-role defined in `_governator/special-roles/reviewer.md`. Review output is
+role defined in `_governator/roles-special/reviewer.md`. Review output is
 captured in `review.json`, based on the template in
 `_governator/templates/review.json`.
 

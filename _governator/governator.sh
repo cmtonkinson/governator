@@ -28,7 +28,7 @@ AUDIT_LOG="${DB_DIR}/audit.log"
 WORKER_PROCESSES_LOG="${DB_DIR}/worker-processes.log"
 RETRY_COUNTS_LOG="${DB_DIR}/retry-counts.log"
 
-WORKER_ROLES_DIR="${STATE_DIR}/worker-roles"
+WORKER_ROLES_DIR="${STATE_DIR}/roles-worker"
 TEMPLATES_DIR="${STATE_DIR}/templates"
 LOCK_FILE="${STATE_DIR}/governator.lock"
 FAILED_MERGES_LOG="${STATE_DIR}/failed-merges.log"
@@ -581,7 +581,7 @@ abort_task() {
   in_flight_remove "${task_name}" "${worker}"
 
   local blocked_dest="${STATE_DIR}/task-blocked/${task_name}.md"
-  git_checkout_main
+  sync_main
   if [[ "${task_file}" != "${blocked_dest}" ]]; then
     move_task_file "${task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "aborted by operator"
   else
@@ -1181,7 +1181,7 @@ block_task_from_backlog() {
   local task_file="$1"
   local reason="$2"
 
-  git_checkout_main
+  sync_main
 
   local task_name
   task_name="$(basename "${task_file}" .md)"
@@ -1299,7 +1299,7 @@ code_review() {
   fi
 
   local prompt
-  prompt="Read and follow the instructions in the following files, in this order: _governator/worker-contract.md, _governator/special-roles/reviewer.md, _governator/custom-prompts/_global.md, _governator/custom-prompts/reviewer.md, ${task_relpath}."
+  prompt="Read and follow the instructions in the following files, in this order: _governator/worker-contract.md, _governator/roles-special/reviewer.md, _governator/custom-prompts/_global.md, _governator/custom-prompts/reviewer.md, ${task_relpath}."
 
   if ! run_codex_reviewer "${tmp_dir}" "${prompt}"; then
     log_warn "Reviewer command failed for ${local_branch}."
@@ -1322,15 +1322,14 @@ assign_task() {
   local task_file="$1"
   local worker="$2"
 
-  git_checkout_main
+  sync_main
 
   local task_name
   task_name="$(basename "${task_file}" .md)"
 
   local assigned_file="${STATE_DIR}/task-assigned/${task_name}.md"
-  mv "${task_file}" "${assigned_file}"
-  annotate_assignment "${assigned_file}" "${worker}"
-  audit_log "${task_name}" "assigned to ${worker}"
+  annotate_assignment "${task_file}" "${worker}"
+  move_task_file "${task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "assigned to ${worker}"
 
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
   git -C "${ROOT_DIR}" commit -m "Assign task ${task_name}"
@@ -1433,7 +1432,7 @@ spawn_worker_for_task() {
 
   local task_relpath="${task_file#"${ROOT_DIR}/"}"
   local prompt
-  prompt="Read and follow the instructions in the following files, in this order: _governator/worker-contract.md, _governator/worker-roles/${worker}.md, _governator/custom-prompts/_global.md, _governator/custom-prompts/${worker}.md, ${task_relpath}."
+  prompt="Read and follow the instructions in the following files, in this order: _governator/worker-contract.md, _governator/roles-worker/${worker}.md, _governator/custom-prompts/_global.md, _governator/custom-prompts/${worker}.md, ${task_relpath}."
 
   local branch_name="worker/${worker}/${task_name}"
   local pid
@@ -1459,17 +1458,9 @@ check_zombie_workers() {
     return 0
   fi
 
-  local line
-  while IFS= read -r line; do
-    if [[ -z "${line}" ]]; then
-      continue
-    fi
-    if [[ "${line}" != *" -> "* ]]; then
-      continue
-    fi
-
-    local task_name="${line%% -> *}"
-    local worker="${line##* -> }"
+  local task_name
+  local worker
+  while IFS='|' read -r task_name worker; do
     local branch="worker/${worker}/${task_name}"
 
     if git -C "${ROOT_DIR}" show-ref --verify --quiet "refs/remotes/origin/${branch}"; then
@@ -1529,7 +1520,7 @@ check_zombie_workers() {
     if task_file="$(task_file_for_name "${task_name}")"; then
       spawn_worker_for_task "${task_file}" "${worker}" "retry started for ${worker}"
     fi
-  done < "${IN_FLIGHT_LOG}"
+  done < <(in_flight_entries)
 }
 
 # Process a single worker branch: review, move task, merge, cleanup.
@@ -1768,7 +1759,7 @@ check_zombies_action() {
 }
 
 print_help() {
-  cat <<'EOF'
+  cat << 'EOF'
 Usage: governator.sh [command]
 
 Public commands:
@@ -1785,7 +1776,7 @@ EOF
 dispatch_subcommand() {
   local cmd="${1:-run}"
   case "${cmd}" in
-    -h|--help)
+    -h | --help)
       print_help
       return 0
       ;;
