@@ -157,6 +157,22 @@ git_fetch_origin() {
   git -C "${ROOT_DIR}" fetch origin --prune
 }
 
+# Delete a worker branch locally and on origin (best-effort).
+delete_worker_branch() {
+  local branch="$1"
+  if [[ -z "${branch}" || "${branch}" == "main" || "${branch}" == "origin/main" ]]; then
+    return 0
+  fi
+  git -C "${ROOT_DIR}" branch -D "${branch}" > /dev/null 2>&1 || true
+  if ! git -C "${ROOT_DIR}" push origin --delete "${branch}" > /dev/null 2>&1; then
+    log_warn "Failed to delete remote branch ${branch} with --delete"
+  fi
+  if ! git -C "${ROOT_DIR}" push origin :"refs/heads/${branch}" > /dev/null 2>&1; then
+    log_warn "Failed to delete remote branch ${branch} with explicit refs/heads"
+  fi
+  git -C "${ROOT_DIR}" fetch origin --prune > /dev/null 2>&1 || true
+}
+
 # Ensure state logs exist so reads do not fail.
 touch_logs() {
   touch "${FAILED_MERGES_LOG}" "${IN_FLIGHT_LOG}"
@@ -401,17 +417,28 @@ print_task_queue_summary() {
   done
 }
 
-print_stage_task_list() {
+format_task_label() {
+  local path="$1"
+  task_label "${path}"
+}
+
+format_blocked_task() {
+  local path="$1"
+  printf '%s (%s)' "$(task_label "${path}")" "$(extract_block_reason "${path}")"
+}
+
+print_task_list() {
   local title="$1"
   local dir="$2"
-  local limit="${3:-5}"
+  local formatter="$3"
+  local limit="${4:-0}"
   printf '%s:\n' "${title}"
   local printed=0
   local path
   while IFS= read -r path; do
     printed=$((printed + 1))
-    printf '  - %s\n' "$(task_label "${path}")"
-    if [[ "${printed}" -ge "${limit}" ]]; then
+    printf '  - %s\n' "$("${formatter}" "${path}")"
+    if [[ "${limit}" -gt 0 && "${printed}" -ge "${limit}" ]]; then
       break
     fi
   done < <(list_task_files_in_dir "${dir}")
@@ -420,17 +447,15 @@ print_stage_task_list() {
   fi
 }
 
+print_stage_task_list() {
+  local title="$1"
+  local dir="$2"
+  local limit="${3:-5}"
+  print_task_list "${title}" "${dir}" format_task_label "${limit}"
+}
+
 print_blocked_tasks_summary() {
-  printf 'Blocked tasks:\n'
-  local printed=0
-  local path
-  while IFS= read -r path; do
-    printed=$((printed + 1))
-    printf '  - %s (%s)\n' "$(task_label "${path}")" "$(extract_block_reason "${path}")"
-  done < <(list_task_files_in_dir "${STATE_DIR}/task-blocked")
-  if [[ "${printed}" -eq 0 ]]; then
-    printf '  (none)\n'
-  fi
+  print_task_list "Blocked tasks" "${STATE_DIR}/task-blocked" format_blocked_task
 }
 
 print_inflight_summary() {
@@ -547,26 +572,20 @@ abort_task() {
   fi
 
   if [[ -n "${tmp_dir}" && -d "${tmp_dir}" ]]; then
-    rm -rf "${tmp_dir}"
+    cleanup_tmp_dir "${tmp_dir}"
   fi
+  cleanup_worker_tmp_dirs "${worker}" "${task_name}"
 
-  if [[ -n "${branch}" && "${branch}" != "main" && "${branch}" != "origin/main" ]]; then
-    git -C "${ROOT_DIR}" branch -D "${branch}" > /dev/null 2>&1 || true
-    if ! git -C "${ROOT_DIR}" push origin --delete "${branch}" > /dev/null 2>&1; then
-      log_warn "Failed to delete remote branch ${branch} with --delete"
-    fi
-    if ! git -C "${ROOT_DIR}" push origin :"refs/heads/${branch}" > /dev/null 2>&1; then
-      log_warn "Failed to delete remote branch ${branch} with explicit refs/heads"
-    fi
-    git -C "${ROOT_DIR}" fetch origin --prune > /dev/null 2>&1 || true
-  fi
+  delete_worker_branch "${branch}"
 
   in_flight_remove "${task_name}" "${worker}"
 
   local blocked_dest="${STATE_DIR}/task-blocked/${task_name}.md"
   git_checkout_main
   if [[ "${task_file}" != "${blocked_dest}" ]]; then
-    mv "${task_file}" "${blocked_dest}"
+    move_task_file "${task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "aborted by operator"
+  else
+    audit_log "${task_name}" "aborted by operator"
   fi
 
   local aborted_at
@@ -578,7 +597,6 @@ PID: ${pid:-n/a}
 Branch: ${branch:-n/a}"
   annotate_abort "${blocked_dest}" "${abort_meta}"
   annotate_blocked "${blocked_dest}" "Aborted by operator command."
-  audit_log "${task_name}" "aborted by operator"
 
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
   git -C "${ROOT_DIR}" commit -m "Abort task ${task_name}"
@@ -698,6 +716,30 @@ normalize_tmp_path() {
     return 0
   fi
   printf '%s\n' "${path}"
+}
+
+cleanup_tmp_dir() {
+  local dir="$1"
+  if [[ -n "${dir}" && -d "${dir}" ]]; then
+    rm -rf "${dir}"
+  fi
+}
+
+cleanup_worker_tmp_dirs() {
+  local worker="$1"
+  local task_name="$2"
+  if [[ -z "${worker}" || -z "${task_name}" ]]; then
+    return 0
+  fi
+  local roots=(/tmp)
+  if [[ -d "/private/tmp" ]]; then
+    roots+=(/private/tmp)
+  fi
+
+  local root
+  for root in "${roots[@]}"; do
+    find "${root}" -maxdepth 1 -type d -name "governator-${PROJECT_NAME}-${worker}-${task_name}-*" -exec rm -rf {} + > /dev/null 2>&1 || true
+  done
 }
 
 # Filter worker process log entries by task and worker.
@@ -866,7 +908,7 @@ cleanup_stale_worker_dirs() {
       if [[ "${dry_run}" == "--dry-run" ]]; then
         printf '%s\n' "${dir}"
       else
-        rm -rf "${dir}"
+        cleanup_tmp_dir "${dir}"
       fi
     fi
   done < <(find "${tmp_root}" -maxdepth 1 -type d -name "governator-${PROJECT_NAME}-*" 2> /dev/null)
@@ -1024,12 +1066,17 @@ in_flight_remove() {
 }
 
 # Find a task file in any task-* directory by base name.
+find_task_files() {
+  local pattern="$1"
+  find "${STATE_DIR}" -maxdepth 2 -type f -path "${STATE_DIR}/task-*/${pattern}.md" 2> /dev/null | sort
+}
+
 task_file_for_name() {
   local task_name="$1"
   local matches=()
   while IFS= read -r path; do
     matches+=("${path}")
-  done < <(find "${STATE_DIR}" -maxdepth 2 -type f -path "${STATE_DIR}/task-*/${task_name}.md" 2> /dev/null || true)
+  done < <(find_task_files "${task_name}" || true)
 
   if [[ "${#matches[@]}" -eq 0 ]]; then
     return 1
@@ -1049,7 +1096,7 @@ task_file_for_prefix() {
   local path
   while IFS= read -r path; do
     matches+=("${path}")
-  done < <(find "${STATE_DIR}" -maxdepth 2 -type f -path "${STATE_DIR}/task-*/${prefix}*.md" 2> /dev/null | sort)
+  done < <(find_task_files "${prefix}*" || true)
 
   if [[ "${#matches[@]}" -eq 0 ]]; then
     return 1
@@ -1073,18 +1120,34 @@ list_available_workers() {
   done < <(find "${WORKER_ROLES_DIR}" -maxdepth 1 -type f -name '*.md' | sort)
 }
 
-# Extract the required worker role from the task filename suffix.
-extract_worker_from_task() {
+role_exists() {
+  local role="$1"
+  [[ -f "${WORKER_ROLES_DIR}/${role}.md" ]]
+}
+
+parse_task_metadata() {
   local task_file="$1"
   local task_name
   task_name="$(basename "${task_file}" .md)"
 
-  local suffix="${task_name##*-}"
-  if [[ -z "${suffix}" || "${suffix}" == "${task_name}" ]]; then
+  local role="${task_name##*-}"
+  if [[ -z "${role}" || "${role}" == "${task_name}" ]]; then
     return 1
   fi
-  printf '%s' "${suffix}"
-  return 0
+  local short_name="${task_name%-"${role}"}"
+  printf '%s\n' "${task_name}" "${short_name}" "${role}"
+}
+
+# Extract the required worker role from the task filename suffix.
+extract_worker_from_task() {
+  local task_file="$1"
+  local metadata_text
+  if ! metadata_text="$(parse_task_metadata "${task_file}")"; then
+    return 1
+  fi
+  local metadata=()
+  mapfile -t metadata <<< "${metadata_text}"
+  printf '%s' "${metadata[2]}"
 }
 
 # Check whether a task is already in flight.
@@ -1124,9 +1187,8 @@ block_task_from_backlog() {
   task_name="$(basename "${task_file}" .md)"
 
   local blocked_file="${STATE_DIR}/task-blocked/${task_name}.md"
-  mv "${task_file}" "${blocked_file}"
+  move_task_file "${task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
   annotate_blocked "${blocked_file}" "${reason}"
-  audit_log "${task_name}" "moved to task-blocked"
 
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
   git -C "${ROOT_DIR}" commit -m "Block task ${task_name}"
@@ -1173,8 +1235,8 @@ annotate_blocked() {
 
 annotate_abort() {
   local task_file="$1"
-  local metadata="$2"
-  append_section "${task_file}" "## Abort" "${metadata}"
+  local abort_metadata="$2"
+  append_section "${task_file}" "## Abort" "${abort_metadata}"
 }
 
 # Record a merge failure for reviewer visibility.
@@ -1245,7 +1307,7 @@ code_review() {
 
   local review_output=()
   mapfile -t review_output < <(parse_review_json "${tmp_dir}/review.json")
-  rm -rf "${tmp_dir}"
+  cleanup_tmp_dir "${tmp_dir}"
 
   if [[ "${#review_output[@]}" -eq 0 ]]; then
     printf 'block\nReview output missing\n'
@@ -1277,6 +1339,32 @@ assign_task() {
   spawn_worker_for_task "${assigned_file}" "${worker}" ""
 }
 
+# Check caps for a worker/task pair; prints reason on failure.
+can_assign_task() {
+  local worker="$1"
+  local task_name="$2"
+
+  local total_count
+  total_count="$(count_in_flight_total)"
+  local global_cap
+  global_cap="$(read_global_cap)"
+  if [[ "${total_count}" -ge "${global_cap}" ]]; then
+    printf 'Global worker cap reached (%s/%s), skipping %s.' "${total_count}" "${global_cap}" "${task_name}"
+    return 1
+  fi
+
+  local role_count
+  role_count="$(count_in_flight_role "${worker}")"
+  local role_cap
+  role_cap="$(read_worker_cap "${worker}")"
+  if [[ "${role_count}" -ge "${role_cap}" ]]; then
+    printf 'Role %s at cap (%s/%s) for %s, skipping.' "${worker}" "${role_count}" "${role_cap}" "${task_name}"
+    return 1
+  fi
+
+  return 0
+}
+
 # Assign tasks in backlog based on role prefix/suffix in filename.
 assign_pending_tasks() {
   touch_logs
@@ -1287,40 +1375,32 @@ assign_pending_tasks() {
       continue
     fi
 
-    local task_name
-    task_name="$(basename "${task_file}" .md)"
+    local metadata_text
+    if ! metadata_text="$(parse_task_metadata "${task_file}")"; then
+      local task_name
+      task_name="$(basename "${task_file}" .md)"
+      log_warn "Missing required role for ${task_name}, blocking."
+      block_task_from_backlog "${task_file}" "Missing required role in filename suffix."
+      continue
+    fi
+    local metadata=()
+    mapfile -t metadata <<< "${metadata_text}"
+    local task_name="${metadata[0]}"
+    local worker="${metadata[2]}"
 
     if in_flight_has_task "${task_name}"; then
       continue
     fi
 
-    local worker
-    if ! worker="$(extract_worker_from_task "${task_file}")"; then
-      log_warn "Missing required role for ${task_name}, blocking."
-      block_task_from_backlog "${task_file}" "Missing required role in filename suffix."
-      continue
-    fi
-
-    if [[ ! -f "${WORKER_ROLES_DIR}/${worker}.md" ]]; then
+    if ! role_exists "${worker}"; then
       log_warn "Unknown role ${worker} for ${task_name}, blocking."
       block_task_from_backlog "${task_file}" "Unknown role ${worker} referenced in filename suffix."
       continue
     fi
-    local total_count
-    total_count="$(count_in_flight_total)"
-    local global_cap
-    global_cap="$(read_global_cap)"
-    if [[ "${total_count}" -ge "${global_cap}" ]]; then
-      log_warn "Global worker cap reached (${total_count}/${global_cap}), skipping ${task_name}."
-      continue
-    fi
 
-    local role_count
-    role_count="$(count_in_flight_role "${worker}")"
-    local role_cap
-    role_cap="$(read_worker_cap "${worker}")"
-    if [[ "${role_count}" -ge "${role_cap}" ]]; then
-      log_warn "Role ${worker} at cap (${role_count}/${role_cap}) for ${task_name}, skipping."
+    local cap_note
+    if ! cap_note="$(can_assign_task "${worker}" "${task_name}")"; then
+      log_warn "${cap_note}"
       continue
     fi
 
@@ -1424,9 +1504,7 @@ check_zombie_workers() {
 
     audit_log "${task_name}" "worker ${worker} exited before pushing branch"
 
-    if [[ -n "${tmp_dir}" && -d "${tmp_dir}" ]]; then
-      rm -rf "${tmp_dir}"
-    fi
+    cleanup_tmp_dir "${tmp_dir}"
 
     local retry_count
     retry_count="$(retry_count_get "${task_name}")"
@@ -1437,8 +1515,7 @@ check_zombie_workers() {
       local task_file
       if task_file="$(task_file_for_name "${task_name}")"; then
         annotate_blocked "${task_file}" "Worker exited before pushing branch twice; blocking task."
-        mv "${task_file}" "${STATE_DIR}/task-blocked/$(basename "${task_file}")"
-        audit_log "${task_name}" "moved to task-blocked"
+        move_task_file "${task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
         git -C "${ROOT_DIR}" add "${STATE_DIR}"
         git -C "${ROOT_DIR}" commit -m "Block task ${task_name} on retry failure"
         git -C "${ROOT_DIR}" push origin main
@@ -1474,9 +1551,8 @@ process_worker_branch() {
     log_warn "No task file found for ${task_name}, skipping merge."
     printf '%s %s missing task file\n' "$(timestamp_utc_seconds)" "${local_branch}" >> "${FAILED_MERGES_LOG}"
     in_flight_remove "${task_name}" "${worker_name}"
-    git -C "${ROOT_DIR}" branch -D "${local_branch}" > /dev/null 2>&1 || true
-    git -C "${ROOT_DIR}" push origin --delete "${local_branch}" > /dev/null 2>&1 || true
-    find /tmp -maxdepth 1 -type d -name "governator-${PROJECT_NAME}-${worker_name}-${task_name}-*" -exec rm -rf {} + > /dev/null 2>&1 || true
+    delete_worker_branch "${local_branch}"
+    cleanup_worker_tmp_dirs "${worker_name}" "${task_name}"
     return 0
   fi
 
@@ -1539,10 +1615,8 @@ process_worker_branch() {
 
   in_flight_remove "${task_name}" "${worker_name}"
 
-  git -C "${ROOT_DIR}" branch -D "${local_branch}" > /dev/null 2>&1 || true
-  git -C "${ROOT_DIR}" push origin --delete "${local_branch}" > /dev/null 2>&1 || true
-
-  find /tmp -maxdepth 1 -type d -name "governator-${PROJECT_NAME}-${worker_name}-${task_name}-*" -exec rm -rf {} + > /dev/null 2>&1 || true
+  delete_worker_branch "${local_branch}"
+  cleanup_worker_tmp_dirs "${worker_name}" "${task_name}"
 }
 
 # Iterate all worker branches, skipping those logged as failed merges.
