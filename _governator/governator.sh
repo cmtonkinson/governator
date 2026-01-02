@@ -33,6 +33,8 @@ TEMPLATES_DIR="${STATE_DIR}/templates"
 LOCK_FILE="${STATE_DIR}/governator.lock"
 FAILED_MERGES_LOG="${STATE_DIR}/failed-merges.log"
 IN_FLIGHT_LOG="${STATE_DIR}/in-flight.log"
+SYSTEM_LOCK_FILE="${DB_DIR}/governator.locked"
+SYSTEM_LOCK_PATH="${SYSTEM_LOCK_FILE#"${ROOT_DIR}/"}"
 
 CODEX_BIN="${CODEX_BIN:-codex}"
 CODEX_WORKER_ARGS="${CODEX_WORKER_ARGS:---non-interactive}"
@@ -97,7 +99,12 @@ ensure_lock() {
 
 # Avoid processing while the repo has local edits.
 ensure_clean_git() {
-  if [[ -n "$(git -C "${ROOT_DIR}" status --porcelain)" ]]; then
+  local status
+  status="$(git -C "${ROOT_DIR}" status --porcelain 2> /dev/null || true)"
+  if [[ -n "${status}" && -n "${SYSTEM_LOCK_PATH}" ]]; then
+    status="$(printf '%s\n' "${status}" | grep -v -F -- "${SYSTEM_LOCK_PATH}" || true)"
+  fi
+  if [[ -n "${status}" ]]; then
     log_warn "Local git changes detected, exiting."
     exit 0
   fi
@@ -244,6 +251,250 @@ ensure_db_dir() {
   if [[ ! -f "${WORKER_TIMEOUT_FILE}" ]]; then
     printf '%s\n' "${DEFAULT_WORKER_TIMEOUT_SECONDS}" > "${WORKER_TIMEOUT_FILE}"
   fi
+}
+
+system_locked() {
+  [[ -f "${SYSTEM_LOCK_FILE}" ]]
+}
+
+locked_since() {
+  if [[ -f "${SYSTEM_LOCK_FILE}" ]]; then
+    cat "${SYSTEM_LOCK_FILE}"
+    return 0
+  fi
+  return 1
+}
+
+lock_governator() {
+  ensure_db_dir
+  printf '%s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" > "${SYSTEM_LOCK_FILE}"
+}
+
+unlock_governator() {
+  ensure_db_dir
+  rm -f "${SYSTEM_LOCK_FILE}"
+}
+
+format_duration() {
+  local seconds="$1"
+  if [[ -z "${seconds}" || "${seconds}" -lt 0 ]]; then
+    printf 'n/a'
+    return
+  fi
+  local hours=$((seconds / 3600))
+  local minutes=$((seconds / 60 % 60))
+  local secs=$((seconds % 60))
+  if [[ "${hours}" -gt 0 ]]; then
+    printf '%dh%02dm%02ds' "${hours}" "${minutes}" "${secs}"
+  elif [[ "${minutes}" -gt 0 ]]; then
+    printf '%dm%02ds' "${minutes}" "${secs}"
+  else
+    printf '%02ds' "${secs}"
+  fi
+}
+
+list_task_files_in_dir() {
+  local dir="$1"
+  if [[ ! -d "${dir}" ]]; then
+    return 0
+  fi
+  local path
+  while IFS= read -r path; do
+    local base
+    base="$(basename "${path}")"
+    if [[ "${base}" == ".keep" ]]; then
+      continue
+    fi
+    printf '%s\n' "${path}"
+  done < <(find "${dir}" -maxdepth 1 -type f -name '*.md' 2> /dev/null | sort)
+}
+
+count_task_files() {
+  local dir="$1"
+  local count=0
+  local path
+  while IFS= read -r path; do
+    count=$((count + 1))
+  done < <(list_task_files_in_dir "${dir}")
+  printf '%s\n' "${count}"
+}
+
+task_label() {
+  local file="$1"
+  local name
+  name="$(basename "${file}" .md)"
+  local role
+  if role="$(extract_worker_from_task "${file}" 2> /dev/null)"; then
+    printf '%s (%s)' "${name}" "${role}"
+  else
+    printf '%s' "${name}"
+  fi
+}
+
+extract_block_reason() {
+  local file="$1"
+  local reason
+  reason="$(
+    awk '
+      /^## Governator Block/ {
+        while (getline && $0 ~ /^[[:space:]]*$/) {}
+        if ($0 != "") {
+          print
+          exit
+        }
+      }
+    ' "${file}" 2> /dev/null
+  )"
+  if [[ -z "${reason}" ]]; then
+    reason="$(
+      awk '
+        /^## Merge Failure/ {
+          while (getline && $0 ~ /^[[:space:]]*$/) {}
+          if ($0 != "") {
+            print
+            exit
+          }
+        }
+      ' "${file}" 2> /dev/null
+    )"
+  fi
+  if [[ -z "${reason}" ]]; then
+    reason="reason unavailable"
+  fi
+  printf '%s\n' "${reason}"
+}
+
+print_task_queue_summary() {
+  local entries=(
+    "task-backlog:Backlog"
+    "task-assigned:Assigned"
+    "task-worked:Awaiting review"
+    "task-feedback:Feedback"
+    "task-blocked:Blocked"
+    "task-done:Done"
+  )
+  printf 'Task queues:\n'
+  local pair
+  for pair in "${entries[@]}"; do
+    local dir="${pair%%:*}"
+    local label="${pair##*:}"
+    local count
+    count="$(count_task_files "${STATE_DIR}/${dir}")"
+    printf '  %-22s %s\n' "${label}:" "${count}"
+  done
+}
+
+print_stage_task_list() {
+  local title="$1"
+  local dir="$2"
+  local limit="${3:-5}"
+  printf '%s:\n' "${title}"
+  local printed=0
+  local path
+  while IFS= read -r path; do
+    printed=$((printed + 1))
+    printf '  - %s\n' "$(task_label "${path}")"
+    if [[ "${printed}" -ge "${limit}" ]]; then
+      break
+    fi
+  done < <(list_task_files_in_dir "${dir}")
+  if [[ "${printed}" -eq 0 ]]; then
+    printf '  (none)\n'
+  fi
+}
+
+print_blocked_tasks_summary() {
+  printf 'Blocked tasks:\n'
+  local printed=0
+  local path
+  while IFS= read -r path; do
+    printed=$((printed + 1))
+    printf '  - %s (%s)\n' "$(task_label "${path}")" "$(extract_block_reason "${path}")"
+  done < <(list_task_files_in_dir "${STATE_DIR}/task-blocked")
+  if [[ "${printed}" -eq 0 ]]; then
+    printf '  (none)\n'
+  fi
+}
+
+print_inflight_summary() {
+  local total
+  total="$(count_in_flight_total)"
+  printf 'In-flight workers (%s):\n' "${total}"
+  if [[ ! -f "${IN_FLIGHT_LOG}" ]]; then
+    printf '  (none)\n'
+    return
+  fi
+  local now
+  now="$(date +%s)"
+  local printed=0
+  local line
+  while IFS= read -r line; do
+    if [[ -z "${line}" || "${line}" != *" -> "* ]]; then
+      continue
+    fi
+    local task="${line%% -> *}"
+    local worker="${line##* -> }"
+    local branch="n/a"
+    local pid="n/a"
+    local age="n/a"
+    local info=()
+    mapfile -t info < <(worker_process_get "${task}" "${worker}" 2> /dev/null)
+    if [[ "${#info[@]}" -gt 0 ]]; then
+      pid="${info[0]:-n/a}"
+      branch="${info[2]:-n/a}"
+      local started="${info[3]:-}"
+      if [[ "${started}" =~ ^[0-9]+$ ]]; then
+        local elapsed=$((now - started))
+        age="$(format_duration "${elapsed}")"
+      fi
+    fi
+    printf '  %-28s %-12s %-28s PID:%-6s age:%s\n' "${task}" "${worker}" "${branch}" "${pid}" "${age}"
+    printed=$((printed + 1))
+  done < "${IN_FLIGHT_LOG}"
+  if [[ "${printed}" -eq 0 ]]; then
+    printf '  (none)\n'
+  fi
+}
+
+print_activity_snapshot() {
+  print_inflight_summary
+  printf '\n'
+  print_stage_task_list "Pending reviews" "${STATE_DIR}/task-worked"
+  printf '\n'
+  print_blocked_tasks_summary
+}
+
+status_dashboard() {
+  local locked_note=''
+  if system_locked; then
+    local since
+    if since="$(locked_since)"; then
+      locked_note=" (LOCKED since ${since})"
+    else
+      locked_note=' (LOCKED)'
+    fi
+  fi
+  printf 'Governator Status%s\n' "${locked_note}"
+  print_task_queue_summary
+  printf '\n'
+  print_inflight_summary
+  printf '\n'
+  print_stage_task_list "Pending reviews" "${STATE_DIR}/task-worked"
+  printf '\n'
+  print_blocked_tasks_summary
+  if system_locked; then
+    printf '\nNOTE: Governator is locked; no new activity will start and data may be stale.\n'
+  fi
+}
+
+handle_locked_state() {
+  local context="$1"
+  if system_locked; then
+    printf 'Governator is locked; skipping %s. Active work snapshot:\n' "${context}"
+    print_activity_snapshot
+    return 0
+  fi
+  return 1
 }
 
 # Read the next ticket id from disk, defaulting to 1.
@@ -1192,9 +1443,12 @@ process_worker_branches() {
 # Script entrypoint.
 main() {
   ensure_clean_git
-  ensure_lock
   ensure_dependencies
   ensure_db_dir
+  if handle_locked_state "run"; then
+    return 0
+  fi
+  ensure_lock
   git_checkout_main
   git_pull_main
   process_worker_branches
@@ -1213,6 +1467,9 @@ main() {
 # Usage:
 #   governator.sh                # normal full loop
 #   governator.sh run            # alias for full loop (same as default)
+#   governator.sh status
+#   governator.sh lock
+#   governator.sh unlock
 #   governator.sh process-branches
 #   governator.sh assign-backlog
 #   governator.sh check-zombies
@@ -1231,6 +1488,17 @@ main() {
 # - run:
 #   Runs the normal full loop: lock, clean git, dependency check, ensure DB,
 #   sync main, process worker branches, then assign backlog tasks.
+
+# - status:
+#   Prints a dashboard with queue counts, in-flight workers, pending reviews,
+#   and blocked tasks.
+
+# - lock:
+#   Marks the system as locked, prints the active work snapshot, and prevents
+#   any further activity from starting.
+
+# - unlock:
+#   Clears the lock so new activity can run again.
 #
 # - process-branches:
 #   Processes only worker branches (including zombie detection and tmp cleanup).
@@ -1287,11 +1555,43 @@ dispatch_subcommand() {
     run)
       main
       ;;
+    status)
+      ensure_db_dir
+      status_dashboard
+      ;;
+    lock)
+      ensure_db_dir
+      if system_locked; then
+        local since
+        if since="$(locked_since)"; then
+          printf 'Governator already locked since %s\n' "${since}"
+        else
+          printf 'Governator already locked\n'
+        fi
+      else
+        lock_governator
+        printf 'Governator locked at %s\n' "$(locked_since)"
+      fi
+      printf 'Active work snapshot:\n'
+      print_activity_snapshot
+      ;;
+    unlock)
+      ensure_db_dir
+      if system_locked; then
+        unlock_governator
+        printf 'Governator unlocked\n'
+      else
+        printf 'Governator already unlocked\n'
+      fi
+      ;;
     process-branches)
       ensure_clean_git
       ensure_lock
       ensure_dependencies
       ensure_db_dir
+      if handle_locked_state "processing worker branches"; then
+        return 0
+      fi
       git_checkout_main
       git_pull_main
       process_worker_branches
@@ -1301,6 +1601,9 @@ dispatch_subcommand() {
       ensure_lock
       ensure_dependencies
       ensure_db_dir
+      if handle_locked_state "assigning backlog tasks"; then
+        return 0
+      fi
       git_checkout_main
       git_pull_main
       assign_pending_tasks
@@ -1310,6 +1613,9 @@ dispatch_subcommand() {
       ensure_lock
       ensure_dependencies
       ensure_db_dir
+      if handle_locked_state "checking zombie workers"; then
+        return 0
+      fi
       git_checkout_main
       git_pull_main
       check_zombie_workers

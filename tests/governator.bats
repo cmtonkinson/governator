@@ -382,3 +382,43 @@ EOF
   run grep -F "${active_dir}" <<< "${output}"
   [ "$status" -ne 0 ]
 }
+
+@test "lock command writes a lock file and reports active snapshot" {
+  run bash "${REPO_DIR}/_governator/governator.sh" lock
+  [ "$status" -eq 0 ]
+  [ -f "${REPO_DIR}/.governator/governator.locked" ]
+  run grep -F "Active work snapshot" <<< "${output}"
+  [ "$status" -eq 0 ]
+}
+
+@test "status command notes the locked state" {
+  run bash "${REPO_DIR}/_governator/governator.sh" lock
+  [ "$status" -eq 0 ]
+  run bash "${REPO_DIR}/_governator/governator.sh" status
+  [ "$status" -eq 0 ]
+  run grep -F "LOCKED" <<< "${output}"
+  [ "$status" -eq 0 ]
+}
+
+@test "locked state stops assign-backlog" {
+  write_task "task-backlog" "018-lock-test-ruby"
+  commit_all "Add lock test task"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" lock
+  [ "$status" -eq 0 ]
+
+  run bash "${REPO_DIR}/_governator/governator.sh" assign-backlog
+  [ "$status" -eq 0 ]
+  run grep -F "Governator is locked" <<< "${output}"
+  [ "$status" -eq 0 ]
+  [ -f "${REPO_DIR}/_governator/task-backlog/018-lock-test-ruby.md" ]
+}
+
+@test "unlock removes the lock file" {
+  run bash "${REPO_DIR}/_governator/governator.sh" lock
+  [ "$status" -eq 0 ]
+
+  run bash "${REPO_DIR}/_governator/governator.sh" unlock
+  [ "$status" -eq 0 ]
+  [ ! -f "${REPO_DIR}/.governator/governator.locked" ]
+}

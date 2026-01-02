@@ -1,5 +1,4 @@
 # Governator
-
 Governator is a deterministic, file-driven orchestration system for delegating software development work to
 non-interactive LLM "workers" (e.g. Codex CLI), reviewing their output, and merging results safely into `main`.
 
@@ -12,33 +11,43 @@ live on disk and in git.
 ---
 
 ## Installation
-
 From your project root, run:
 
 ```bash
 curl -fsSL https://gitlab.com/cmtonkinson/governator/-/archive/main/governator-main.tar.gz \
   | tar -xz --strip-components=1 -f - governator-main/_governator
 ```
+
+## Quickstart
+Governator exposes a small set of public subcommands for operators or cron jobs:
+
+- `governator.sh` (or `governator.sh run`): execute the normal loop (lock, checks, process worker branches, assign backlog tasks).
+- `governator.sh status`: show a dashboard of queue counts, in-flight workers, pending reviews, and blockers (emits a locked notice when the system is locked).
+- `governator.sh lock`: prevent any new work from starting, report the current in-flight snapshot, and keep running workers/reviews untouched.
+- `governator.sh unlock`: clear the lock and allow new activity to resume.
+
+Schedule the default `run` invocation via cron, and use `status`/`lock`/`unlock` interactively when you need visibility or control.
+
 ---
 
 ## Why?
+I created this project because as I became more time-efficient vibe coding with
+CLI agents, and found some patterns that work well for me, I began to notice
+some repetition in my workflow. I wanted a simple, no-overhead, understandable
+system that could automate some of the same-y manual labor out of the process. I
+hope this will prove to be a useful starting point.
 
-This project is experimental and opinionated. It was created because as I got
-more time-efficient at vibe coding with CLI agents, and found some patterns that
-work well for me, I began to imagine a system that could automate some of the
-same-y manual labor out of the process. I hope this will prove to be a useful
-starting point. Use at your own risk.
+Use at your own risk; this should be considered beta as of 2026-01-01.
 
 It is intended for:
 - autonomous code generation
 - long-running background development
 - constrained, reviewable LLM execution
 
-My primary (initially intended) use-case is to get me from 0 to 1 on proofs of
+My primary (or at least first) use-case is to get me from 0 to 1 on a proofs of
 concept, because... `PoC || GFTO`, amirite?
 
 ## Core Idea
-
 Governator enforces a strict separation of concerns:
 
 - Governator Owns:
@@ -61,7 +70,6 @@ All coordination happens through:
 There is no conversational back-and-forth.
 
 ## High-Level Workflow
-
 1. You write a `README.md` for your project.
    - this is the only authoritative description of intent
    - workers never modify it
@@ -125,7 +133,6 @@ _governator/
 ```
 
 ### Key Concepts
-
 - **Worker Contract** defines global, non-negotiable execution rules for all workers.
 
 - **Roles** define authority and constraints for each type of worker (what they may and may not do).
@@ -133,7 +140,6 @@ _governator/
 - **Tasks** markdown files representing one unit of work, flowing through lifecycle directories.
 
 ## Ticket Naming and Assignment
-
 Tasks are assigned to roles by their filename suffix. Filenames are kebab-case
 and use a three-digit numeric id prefix:
 
@@ -147,7 +153,6 @@ The `templates/ticket.md` file is the stub for new tasks. `next_ticket_id`
 stores the next auto-increment id.
 
 ## Concurrency Controls
-
 Governator limits concurrent work using:
 
 - `.governator/global_worker_cap` for the global cap (default `1`)
@@ -162,7 +167,6 @@ per task:
 ```
 
 ## Audit Log
-
 Governator writes fine-grained lifecycle events to `.governator/audit.log`:
 
 ```
@@ -172,7 +176,6 @@ Governator writes fine-grained lifecycle events to `.governator/audit.log`:
 ```
 
 ## Task Lifecycle
-
 A task moves through directories as its state changes:
 
 1. `task-backlog/`
@@ -197,7 +200,6 @@ A task moves through directories as its state changes:
 All state transitions are explicit and reviewable.
 
 ## Worker Execution Model
-
 Each worker execution:
 - Runs non-interactively (e.g. `codex exec`)
 - Reads inputs in order:
@@ -219,14 +221,12 @@ Workers never:
 - retain memory between runs
 
 ## Review Flow
-
 When a worker moves a task to `task-worked`, Governator invokes the reviewer
 role defined in `_governator/special-roles/reviewer.md`. Review output is
 captured in `review.json`, based on the template in
 `_governator/templates/review.json`.
 
 ## Custom Prompts
-
 `_governator/custom-prompts/` contains optional prompt files that are always
 included (even if empty) to give the operator direct control over extra
 instructions:
@@ -235,7 +235,6 @@ instructions:
 - `<role>.md` applies to the specific role.
 
 ## Determinism by Design
-
 Governator intentionally avoids:
 - chat-based orchestration
 - shared agent memory
@@ -253,8 +252,8 @@ This makes the system:
 - safe to automate
 
 ## Requirements
-
-The Governator itself is a single self-contained bash script.
+The Governator itself is a single self-contained bash script. It will check to
+ensure all of the prereqs met, and whine stubbornly if not.
 
 It requires:
 - git
@@ -268,7 +267,6 @@ It requires:
   - high-level architecture
 
 ## Philosophy
-
 Correctness and bounded execution matter more than speed or cleverness.
 
 Governator treats LLMs as workers, not collaborators. Creativity lives in
@@ -278,7 +276,6 @@ If a task is ambiguous, it should block. If a decision is architectural,
 it should be explicit. If work cannot be reviewed, it should not be merged.
 
 ## Hacking
-
 Use `scripts/all-tests.sh` to run the full suite.
 
 Dependencies for development testing live in `scripts/common.sh` and include:
