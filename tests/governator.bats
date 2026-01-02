@@ -422,3 +422,35 @@ EOF
   [ "$status" -eq 0 ]
   [ ! -f "${REPO_DIR}/.governator/governator.locked" ]
 }
+
+@test "abort terminates worker, removes tmp dir, and blocks task" {
+  write_task "task-assigned" "019-abort-ruby"
+  printf '%s\n' "019-abort-ruby -> ruby" >> "${REPO_DIR}/_governator/in-flight.log"
+  tmp_dir="$(mktemp -d "${BATS_TMPDIR}/worker-XXXXXX")"
+  sleep 60 >/dev/null &
+  pid=$!
+  printf '%s | %s | %s | %s | worker/ruby/019-abort-ruby | 0\n' "019-abort-ruby" "ruby" "${pid}" "${tmp_dir}" >> "${REPO_DIR}/.governator/worker-processes.log"
+  commit_all "Prepare abort task"
+
+  create_worker_branch "019-abort-ruby" "ruby"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" abort 019
+  [ "$status" -eq 0 ]
+
+  run kill -0 "${pid}" >/dev/null 2>&1
+  [ "$status" -ne 0 ]
+  kill -9 "${pid}" >/dev/null 2>&1 || true
+  wait "${pid}" >/dev/null 2>&1 || true
+
+  [ ! -d "${tmp_dir}" ]
+  [ -f "${REPO_DIR}/_governator/task-blocked/019-abort-ruby.md" ]
+  run grep -F "## Abort" "${REPO_DIR}/_governator/task-blocked/019-abort-ruby.md"
+  [ "$status" -eq 0 ]
+  run grep -F "Aborted by operator" "${REPO_DIR}/_governator/task-blocked/019-abort-ruby.md"
+  [ "$status" -eq 0 ]
+
+  run grep -F "019-abort-ruby -> ruby" "${REPO_DIR}/_governator/in-flight.log"
+  [ "$status" -ne 0 ]
+
+  [ ! -f "${ORIGIN_DIR}/refs/heads/worker/ruby/019-abort-ruby" ]
+}

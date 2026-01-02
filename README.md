@@ -25,6 +25,7 @@ Governator exposes a small set of public subcommands for operators or cron jobs:
 - `governator.sh status`: show a dashboard of queue counts, in-flight workers, pending reviews, and blockers (emits a locked notice when the system is locked).
 - `governator.sh lock`: prevent any new work from starting, report the current in-flight snapshot, and keep running workers/reviews untouched.
 - `governator.sh unlock`: clear the lock and allow new activity to resume.
+- `governator.sh abort <ticket-prefix>`: terminate the agent working on the matching ticket, clean up its temp branch/dir, annotate the ticket as aborted, and move it to the blocked queue.
 
 Schedule the default `run` invocation via cron, and use `status`/`lock`/`unlock` interactively when you need visibility or control.
 

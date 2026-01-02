@@ -497,6 +497,85 @@ handle_locked_state() {
   return 1
 }
 
+abort_task() {
+  local prefix="$1"
+  if [[ -z "${prefix:-}" ]]; then
+    log_error "Usage: abort <task-prefix>"
+    exit 1
+  fi
+
+  local task_file
+  if ! task_file="$(task_file_for_prefix "${prefix}")"; then
+    log_error "No task matches prefix ${prefix}"
+    exit 1
+  fi
+
+  local task_name
+  task_name="$(basename "${task_file}" .md)"
+  local worker
+  if ! worker="$(extract_worker_from_task "${task_file}" 2> /dev/null)"; then
+    worker=""
+  fi
+
+  local worker_info=()
+  local pid=""
+  local tmp_dir=""
+  local branch=""
+  if mapfile -t worker_info < <(worker_process_get "${task_name}" "${worker}" 2> /dev/null); then
+    pid="${worker_info[0]:-}"
+    tmp_dir="${worker_info[1]:-}"
+    branch="${worker_info[2]:-}"
+  fi
+  local expected_branch="worker/${worker}/${task_name}"
+  if [[ -z "${branch}" ]]; then
+    branch="${expected_branch}"
+  fi
+
+  if [[ -n "${pid}" ]]; then
+    if kill -0 "${pid}" > /dev/null 2>&1; then
+      kill -9 "${pid}" > /dev/null 2>&1 || true
+    fi
+  fi
+
+  if [[ -n "${tmp_dir}" && -d "${tmp_dir}" ]]; then
+    rm -rf "${tmp_dir}"
+  fi
+
+  if [[ -n "${branch}" && "${branch}" != "main" && "${branch}" != "origin/main" ]]; then
+    git -C "${ROOT_DIR}" branch -D "${branch}" > /dev/null 2>&1 || true
+    if ! git -C "${ROOT_DIR}" push origin --delete "${branch}" > /dev/null 2>&1; then
+      log_warn "Failed to delete remote branch ${branch} with --delete"
+    fi
+    if ! git -C "${ROOT_DIR}" push origin :"refs/heads/${branch}" > /dev/null 2>&1; then
+      log_warn "Failed to delete remote branch ${branch} with explicit refs/heads"
+    fi
+    git -C "${ROOT_DIR}" fetch origin --prune > /dev/null 2>&1 || true
+  fi
+
+  in_flight_remove "${task_name}" "${worker}"
+
+  local blocked_dest="${STATE_DIR}/task-blocked/${task_name}.md"
+  git_checkout_main
+  if [[ "${task_file}" != "${blocked_dest}" ]]; then
+    mv "${task_file}" "${blocked_dest}"
+  fi
+
+  local aborted_at
+  aborted_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  local abort_meta
+  abort_meta="Aborted by operator on ${aborted_at}
+Worker: ${worker:-n/a}
+PID: ${pid:-n/a}
+Branch: ${branch:-n/a}"
+  annotate_abort "${blocked_dest}" "${abort_meta}"
+  annotate_blocked "${blocked_dest}" "Aborted by operator command."
+  audit_log "${task_name}" "aborted by operator"
+
+  git -C "${ROOT_DIR}" add "${STATE_DIR}"
+  git -C "${ROOT_DIR}" commit -m "Abort task ${task_name}"
+  git -C "${ROOT_DIR}" push origin main
+}
+
 # Read the next ticket id from disk, defaulting to 1.
 read_next_ticket_id() {
   ensure_db_dir
@@ -926,6 +1005,27 @@ task_file_for_name() {
   printf '%s\n' "${matches[0]}"
 }
 
+task_file_for_prefix() {
+  local prefix="$1"
+  if [[ -z "${prefix}" ]]; then
+    return 1
+  fi
+  local matches=()
+  local path
+  while IFS= read -r path; do
+    matches+=("${path}")
+  done < <(find "${STATE_DIR}" -maxdepth 2 -type f -path "${STATE_DIR}/task-*/${prefix}*.md" 2> /dev/null | sort)
+
+  if [[ "${#matches[@]}" -eq 0 ]]; then
+    return 1
+  fi
+  if [[ "${#matches[@]}" -gt 1 ]]; then
+    log_error "Multiple task files match prefix ${prefix}; please be more specific."
+    return 1
+  fi
+  printf '%s\n' "${matches[0]}"
+}
+
 # Enumerate non-reviewer worker roles.
 list_available_workers() {
   local worker
@@ -1044,6 +1144,12 @@ annotate_blocked() {
   local task_file="$1"
   local reason="$2"
   append_section "${task_file}" "## Governator Block" "${reason}"
+}
+
+annotate_abort() {
+  local task_file="$1"
+  local metadata="$2"
+  append_section "${task_file}" "## Abort" "${metadata}"
 }
 
 # Record a merge failure for reviewer visibility.
@@ -1583,6 +1689,16 @@ dispatch_subcommand() {
       else
         printf 'Governator already unlocked\n'
       fi
+      ;;
+    abort)
+      ensure_clean_git
+      ensure_dependencies
+      ensure_db_dir
+      if [[ -z "${1:-}" ]]; then
+        log_error "Usage: abort <task-prefix>"
+        exit 1
+      fi
+      abort_task "${1}"
       ;;
     process-branches)
       ensure_clean_git
