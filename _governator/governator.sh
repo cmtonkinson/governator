@@ -64,6 +64,20 @@ log_error() {
   log_with_level "ERROR" "$@"
 }
 
+# Append visible separators to per-task worker logs before each new worker starts.
+append_worker_log_separator() {
+  local log_file="$1"
+  local separator
+  separator="$(printf '=%.0s' {1..80})"
+  {
+    printf '\n\n'
+    printf '%s\n' "${separator}"
+    printf '%s\n' "${separator}"
+    printf '%s\n' "${separator}"
+    printf '\n\n'
+  } >> "${log_file}"
+}
+
 # Remove lock on exit.
 cleanup_lock() {
   if [[ -f "${LOCK_FILE}" ]]; then
@@ -224,6 +238,7 @@ ensure_db_dir() {
   if [[ ! -d "${DB_DIR}" ]]; then
     mkdir -p "${DB_DIR}"
   fi
+  mkdir -p "${DB_DIR}/logs"
   touch "${AUDIT_LOG}"
   touch "${WORKER_PROCESSES_LOG}" "${RETRY_COUNTS_LOG}"
   if [[ ! -f "${WORKER_TIMEOUT_FILE}" ]]; then
@@ -546,10 +561,11 @@ join_by() {
 run_codex_worker_detached() {
   local dir="$1"
   local prompt="$2"
+  local log_file="$3"
   if [[ -n "${CODEX_WORKER_CMD:-}" ]]; then
     (
       cd "${dir}"
-      GOV_PROMPT="${prompt}" nohup bash -c "${CODEX_WORKER_CMD}" > /dev/null 2>&1 &
+      GOV_PROMPT="${prompt}" nohup bash -c "${CODEX_WORKER_CMD}" >> "${log_file}" 2>&1 &
       echo $!
     )
     return 0
@@ -560,7 +576,7 @@ run_codex_worker_detached() {
   read -r -a args <<< "${CODEX_WORKER_ARGS}"
   (
     cd "${dir}"
-    nohup "${CODEX_BIN}" exec "${args[@]}" --message "${prompt}" > /dev/null 2>&1 &
+    nohup "${CODEX_BIN}" exec "${args[@]}" --message "${prompt}" >> "${log_file}" 2>&1 &
     echo $!
   )
 }
@@ -943,6 +959,13 @@ spawn_worker_for_task() {
   local tmp_dir
   tmp_dir="$(mktemp -d "/tmp/governator-${PROJECT_NAME}-${worker}-${task_name}-XXXXXX")"
 
+  local log_dir
+  log_dir="${DB_DIR}/logs"
+  mkdir -p "${log_dir}"
+  local log_file
+  log_file="${log_dir}/${task_name}.log"
+  append_worker_log_separator "${log_file}"
+
   git clone "$(git -C "${ROOT_DIR}" remote get-url origin)" "${tmp_dir}" > /dev/null 2>&1
   git -C "${tmp_dir}" checkout -b "worker/${worker}/${task_name}" origin/main > /dev/null 2>&1
 
@@ -954,7 +977,7 @@ spawn_worker_for_task() {
   local pid
   local started_at
   started_at="$(date +%s)"
-  pid="$(run_codex_worker_detached "${tmp_dir}" "${prompt}")"
+  pid="$(run_codex_worker_detached "${tmp_dir}" "${prompt}" "${log_file}")"
   if [[ -n "${pid}" ]]; then
     worker_process_set "${task_name}" "${worker}" "${pid}" "${tmp_dir}" "${branch_name}" "${started_at}"
     if [[ -n "${audit_message}" ]]; then
