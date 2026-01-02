@@ -5,7 +5,7 @@ variables:
   SCRIPT_DIR: "${CI_PROJECT_DIR}/scripts"
 
 lint-and-test:
-  image: python:3.11-slim
+  image: python:latest
   stage: test
   before_script:
     - apt-get update
