@@ -410,6 +410,7 @@ cleanup_stale_worker_dirs() {
     tmp_root="/private/tmp"
   fi
 
+  local dry_run="${1:-}"
   local timeout
   timeout="$(read_worker_timeout_seconds)"
   local now
@@ -449,7 +450,11 @@ cleanup_stale_worker_dirs() {
     fi
     local age=$((now - mtime))
     if [[ "${age}" -ge "${timeout}" ]]; then
-      rm -rf "${dir}"
+      if [[ "${dry_run}" == "--dry-run" ]]; then
+        printf '%s\n' "${dir}"
+      else
+        rm -rf "${dir}"
+      fi
     fi
   done < <(find "${tmp_root}" -maxdepth 1 -type d -name "governator-${PROJECT_NAME}-*" 2> /dev/null)
 }
@@ -1188,7 +1193,16 @@ main() {
 #   governator.sh process-branches
 #   governator.sh assign-backlog
 #   governator.sh check-zombies
-#   governator.sh cleanup-tmp
+#   governator.sh cleanup-tmp [--dry-run]
+#   governator.sh parse-review <file>
+#   governator.sh list-workers
+#   governator.sh extract-role <task-file>
+#   governator.sh read-caps [role]
+#   governator.sh count-in-flight [role]
+#   governator.sh format-ticket-id <number>
+#   governator.sh allocate-ticket-id
+#   governator.sh normalize-tmp-path <path>
+#   governator.sh audit-log <task> <message>
 #
 # Subcommand reference:
 # - run:
@@ -1210,10 +1224,41 @@ main() {
 #
 # - cleanup-tmp:
 #   Removes stale worker tmp directories in /tmp that are older than the worker
-#   timeout and not referenced in the worker process log.
+#   timeout and not referenced in the worker process log. Use --dry-run to list
+#   candidates without removing them.
+#
+# - parse-review:
+#   Prints the parsed review result and comments from a review.json file.
+#
+# - list-workers:
+#   Prints the available worker roles, one per line.
+#
+# - extract-role:
+#   Prints the role suffix extracted from a task filename (or exits non-zero).
+#
+# - read-caps:
+#   Prints the global cap plus per-role caps. If a role is supplied, prints only
+#   that role's cap.
+#
+# - count-in-flight:
+#   Prints the total in-flight count. If a role is supplied, prints only that
+#   role's in-flight count.
+#
+# - format-ticket-id:
+#   Formats a numeric ticket id to zero-padded 3 digits.
+#
+# - allocate-ticket-id:
+#   Reserves and prints the next ticket id (increments the stored counter).
+#
+# - normalize-tmp-path:
+#   Normalizes /tmp paths to their /private/tmp equivalents.
+#
+# - audit-log:
+#   Appends a line to the audit log with the provided task name and message.
 #############################################################################
 dispatch_subcommand() {
   local cmd="${1:-run}"
+  shift || true
 
   case "${cmd}" in
     run)
@@ -1251,7 +1296,108 @@ dispatch_subcommand() {
       ensure_lock
       ensure_dependencies
       ensure_db_dir
-      cleanup_stale_worker_dirs
+      cleanup_stale_worker_dirs "${1:-}"
+      ;;
+    parse-review)
+      ensure_clean_git
+      ensure_lock
+      ensure_dependencies
+      ensure_db_dir
+      if [[ -z "${1:-}" ]]; then
+        log_error "Usage: parse-review <file>"
+        exit 1
+      fi
+      parse_review_json "${1}"
+      ;;
+    list-workers)
+      ensure_clean_git
+      ensure_lock
+      ensure_dependencies
+      ensure_db_dir
+      list_available_workers
+      ;;
+    extract-role)
+      ensure_clean_git
+      ensure_lock
+      ensure_dependencies
+      ensure_db_dir
+      if [[ -z "${1:-}" ]]; then
+        log_error "Usage: extract-role <task-file>"
+        exit 1
+      fi
+      if ! extract_worker_from_task "${1}"; then
+        exit 1
+      fi
+      ;;
+    read-caps)
+      ensure_clean_git
+      ensure_lock
+      ensure_dependencies
+      ensure_db_dir
+      if [[ -n "${1:-}" ]]; then
+        read_worker_cap "${1}"
+      else
+        local global_cap
+        global_cap="$(read_global_cap)"
+        printf 'global %s\n' "${global_cap}"
+        local role
+        while IFS= read -r role; do
+          printf '%s %s\n' "${role}" "$(read_worker_cap "${role}")"
+        done < <(list_available_workers)
+      fi
+      ;;
+    count-in-flight)
+      ensure_clean_git
+      ensure_lock
+      ensure_dependencies
+      ensure_db_dir
+      if [[ -n "${1:-}" ]]; then
+        count_in_flight_role "${1}"
+      else
+        count_in_flight_total
+      fi
+      ;;
+    format-ticket-id)
+      ensure_clean_git
+      ensure_lock
+      ensure_dependencies
+      ensure_db_dir
+      if [[ -z "${1:-}" ]]; then
+        log_error "Usage: format-ticket-id <number>"
+        exit 1
+      fi
+      format_ticket_id "${1}"
+      ;;
+    allocate-ticket-id)
+      ensure_clean_git
+      ensure_lock
+      ensure_dependencies
+      ensure_db_dir
+      allocate_ticket_id
+      ;;
+    normalize-tmp-path)
+      ensure_clean_git
+      ensure_lock
+      ensure_dependencies
+      ensure_db_dir
+      if [[ -z "${1:-}" ]]; then
+        log_error "Usage: normalize-tmp-path <path>"
+        exit 1
+      fi
+      normalize_tmp_path "${1}"
+      ;;
+    audit-log)
+      ensure_clean_git
+      ensure_lock
+      ensure_dependencies
+      ensure_db_dir
+      if [[ -z "${1:-}" || -z "${2:-}" ]]; then
+        log_error "Usage: audit-log <task> <message>"
+        exit 1
+      fi
+      local task_name="${1}"
+      shift
+      audit_log "${task_name}" "$*"
       ;;
     *)
       log_error "Unknown subcommand: ${cmd}"
