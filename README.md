@@ -272,14 +272,9 @@ it should be explicit. If work cannot be reviewed, it should not be merged.
 Use `scripts/all-tests.sh` to run the full suite.
 
 Dependencies for development testing live in `scripts/common.sh` and include:
-- `shellcheck` for shell linting
-- `shfmt` for formatting checks
-- `bats` for test execution
-
-Kinds of tests
-- Linting (`scripts/lint.sh`) checks shell style and formatting.
-- Integration-style Bats tests (`tests/governator.bats`) exercise the
-  subcommands against temporary repos and fake binaries.
+- [shellcheck](https://github.com/koalaman/shellcheck) for shell linting
+- [shfmt](https://github.com/patrickvane/shfmt) for formatting checks
+- [bats](https://github.com/bats-core/bats-core) for test execution
 
 Governator also exposes "hidden" subcommands (for targeted testing and ops
 drills). They are intentionally undocumented; check `_governator/governator.sh`
