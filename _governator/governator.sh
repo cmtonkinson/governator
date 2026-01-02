@@ -1663,11 +1663,6 @@ main() {
 # and operates on real state, so use with care.
 #
 # Usage:
-#   governator.sh                # normal full loop
-#   governator.sh run            # alias for full loop (same as default)
-#   governator.sh status
-#   governator.sh lock
-#   governator.sh unlock
 #   governator.sh process-branches
 #   governator.sh assign-backlog
 #   governator.sh check-zombies
@@ -1686,17 +1681,6 @@ main() {
 # - run:
 #   Runs the normal full loop: lock, clean git, dependency check, ensure DB,
 #   sync main, process worker branches, then assign backlog tasks.
-
-# - status:
-#   Prints a dashboard with queue counts, in-flight workers, pending reviews,
-#   and blocked tasks.
-
-# - lock:
-#   Marks the system as locked, prints the active work snapshot, and prevents
-#   any further activity from starting.
-
-# - unlock:
-#   Clears the lock so new activity can run again.
 #
 # - process-branches:
 #   Processes only worker branches (including zombie detection and tmp cleanup).
@@ -1783,8 +1767,29 @@ check_zombies_action() {
   check_zombie_workers
 }
 
+print_help() {
+  cat <<'EOF'
+Usage: governator.sh [command]
+
+Public commands:
+  run      Run the normal full loop (default).
+  status   Show queue counts, in-flight workers, and blocked tasks.
+  lock     Prevent new activity from starting and show a work snapshot.
+  unlock   Resume activity after a lock.
+
+Options:
+  -h, --help   Show this help message.
+EOF
+}
+
 dispatch_subcommand() {
   local cmd="${1:-run}"
+  case "${cmd}" in
+    -h|--help)
+      print_help
+      return 0
+      ;;
+  esac
   shift || true
 
   case "${cmd}" in
