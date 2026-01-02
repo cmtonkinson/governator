@@ -50,7 +50,7 @@ PROJECT_NAME="$(basename "${ROOT_DIR}")"
 
 BOOTSTRAP_TASK_NAME="000-architecture-bootstrap"
 BOOTSTRAP_TEMPLATE="${TEMPLATES_DIR}/000-architecture-bootstrap.md"
-BOOTSTRAP_DOCS_DIR="${ROOT_DIR}/.governator/docs"
+BOOTSTRAP_DOCS_DIR="${ROOT_DIR}/_governator/docs"
 BOOTSTRAP_REQUIRED_ARTIFACTS=("asr.md" "arc42.md")
 BOOTSTRAP_OPTIONAL_ARTIFACTS=("personas.md" "wardley.md")
 

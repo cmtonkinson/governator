@@ -24,7 +24,7 @@ production._
 ## Artifact Rules
 - All artifacts MUST use the provided templates in `_governator/templates/`
 - All artifacts MUST be written in markdown
-- All artifacts MUST be stored in the `.governator/docs` directory
+- All artifacts MUST be stored in the `_governator/docs` directory
 - Sections may not be removed
 - Empty sections must be explicitly marked as intentionally omitted, with an
   explanation as to why.

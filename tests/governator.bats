@@ -28,19 +28,19 @@ EOF
 }
 
 complete_bootstrap() {
-  mkdir -p "${REPO_DIR}/.governator/docs"
-  printf '%s\n' "# ASR" > "${REPO_DIR}/.governator/docs/asr.md"
-  printf '%s\n' "# arc42" > "${REPO_DIR}/.governator/docs/arc42.md"
-  printf '%s\n' "# Personas" > "${REPO_DIR}/.governator/docs/personas.md"
-  printf '%s\n' "# Wardley" > "${REPO_DIR}/.governator/docs/wardley.md"
-  printf '%s\n' "# ADR-0001" > "${REPO_DIR}/.governator/docs/adr-0001.md"
+  mkdir -p "${REPO_DIR}/_governator/docs"
+  printf '%s\n' "# ASR" > "${REPO_DIR}/_governator/docs/asr.md"
+  printf '%s\n' "# arc42" > "${REPO_DIR}/_governator/docs/arc42.md"
+  printf '%s\n' "# Personas" > "${REPO_DIR}/_governator/docs/personas.md"
+  printf '%s\n' "# Wardley" > "${REPO_DIR}/_governator/docs/wardley.md"
+  printf '%s\n' "# ADR-0001" > "${REPO_DIR}/_governator/docs/adr-0001.md"
   write_task "task-done" "000-architecture-bootstrap"
   commit_paths "Complete bootstrap" \
-    ".governator/docs/asr.md" \
-    ".governator/docs/arc42.md" \
-    ".governator/docs/personas.md" \
-    ".governator/docs/wardley.md" \
-    ".governator/docs/adr-0001.md" \
+    "_governator/docs/asr.md" \
+    "_governator/docs/arc42.md" \
+    "_governator/docs/personas.md" \
+    "_governator/docs/wardley.md" \
+    "_governator/docs/adr-0001.md" \
     "_governator/task-done/000-architecture-bootstrap.md"
 }
 
