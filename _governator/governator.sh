@@ -47,11 +47,20 @@ DEFAULT_WORKER_TIMEOUT_SECONDS=900
 
 PROJECT_NAME="$(basename "${ROOT_DIR}")"
 
+# Standard UTC timestamp helpers.
+timestamp_utc_seconds() {
+  date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
+timestamp_utc_minutes() {
+  date -u +"%Y-%m-%dT%H:%MZ"
+}
+
 # Log with a consistent UTC timestamp prefix.
 log_with_level() {
   local level="$1"
   shift
-  printf '[%s] %-5s %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "${level}" "$*"
+  printf '[%s] %-5s %s\n' "$(timestamp_utc_seconds)" "${level}" "$*"
 }
 
 log_info() {
@@ -93,7 +102,7 @@ ensure_lock() {
     log_warn "Lock file exists at ${LOCK_FILE}, exiting."
     exit 0
   fi
-  printf '%s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" > "${LOCK_FILE}"
+  printf '%s\n' "$(timestamp_utc_seconds)" > "${LOCK_FILE}"
   trap cleanup_lock EXIT
 }
 
@@ -135,6 +144,12 @@ git_checkout_main() {
 # Pull main from origin.
 git_pull_main() {
   git -C "${ROOT_DIR}" pull origin main
+}
+
+# Sync local main with origin.
+sync_main() {
+  git_checkout_main
+  git_pull_main
 }
 
 # Fetch and prune remote refs.
@@ -211,33 +226,35 @@ read_worker_cap() {
 }
 
 # Count in-flight tasks (all roles).
-count_in_flight_total() {
+in_flight_entries() {
   if [[ ! -f "${IN_FLIGHT_LOG}" ]]; then
-    printf '0\n'
     return 0
   fi
-  awk '
-    $0 ~ / -> / { count += 1 }
-    END { print count + 0 }
-  ' "${IN_FLIGHT_LOG}"
+  awk -F ' -> ' 'NF == 2 { print $1 "|" $2 }' "${IN_FLIGHT_LOG}"
+}
+
+count_in_flight_total() {
+  local count=0
+  local task
+  local worker
+  while IFS='|' read -r task worker; do
+    count=$((count + 1))
+  done < <(in_flight_entries)
+  printf '%s\n' "${count}"
 }
 
 # Count in-flight tasks for a specific role.
 count_in_flight_role() {
   local role="$1"
-  if [[ ! -f "${IN_FLIGHT_LOG}" ]]; then
-    printf '0\n'
-    return 0
-  fi
-  awk -v role="${role}" '
-    $0 ~ / -> / {
-      split($0, parts, " -> ")
-      if (parts[2] == role) {
-        count += 1
-      }
-    }
-    END { print count + 0 }
-  ' "${IN_FLIGHT_LOG}"
+  local count=0
+  local task
+  local worker
+  while IFS='|' read -r task worker; do
+    if [[ "${worker}" == "${role}" ]]; then
+      count=$((count + 1))
+    fi
+  done < <(in_flight_entries)
+  printf '%s\n' "${count}"
 }
 
 # Ensure the simple DB directory exists.
@@ -267,7 +284,7 @@ locked_since() {
 
 lock_governator() {
   ensure_db_dir
-  printf '%s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" > "${SYSTEM_LOCK_FILE}"
+  printf '%s\n' "$(timestamp_utc_seconds)" > "${SYSTEM_LOCK_FILE}"
 }
 
 unlock_governator() {
@@ -420,20 +437,12 @@ print_inflight_summary() {
   local total
   total="$(count_in_flight_total)"
   printf 'In-flight workers (%s):\n' "${total}"
-  if [[ ! -f "${IN_FLIGHT_LOG}" ]]; then
-    printf '  (none)\n'
-    return
-  fi
   local now
   now="$(date +%s)"
   local printed=0
-  local line
-  while IFS= read -r line; do
-    if [[ -z "${line}" || "${line}" != *" -> "* ]]; then
-      continue
-    fi
-    local task="${line%% -> *}"
-    local worker="${line##* -> }"
+  local task
+  local worker
+  while IFS='|' read -r task worker; do
     local branch="n/a"
     local pid="n/a"
     local age="n/a"
@@ -450,7 +459,7 @@ print_inflight_summary() {
     fi
     printf '  %-28s %-12s %-28s PID:%-6s age:%s\n' "${task}" "${worker}" "${branch}" "${pid}" "${age}"
     printed=$((printed + 1))
-  done < "${IN_FLIGHT_LOG}"
+  done < <(in_flight_entries)
   if [[ "${printed}" -eq 0 ]]; then
     printf '  (none)\n'
   fi
@@ -561,7 +570,7 @@ abort_task() {
   fi
 
   local aborted_at
-  aborted_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  aborted_at="$(timestamp_utc_seconds)"
   local abort_meta
   abort_meta="Aborted by operator on ${aborted_at}
 Worker: ${worker:-n/a}
@@ -658,7 +667,17 @@ append_section() {
 audit_log() {
   local task_name="$1"
   local message="$2"
-  printf '%s %s -> %s\n' "$(date -u +"%Y-%m-%dT%H:%MZ")" "${task_name}" "${message}" >> "${AUDIT_LOG}"
+  printf '%s %s -> %s\n' "$(timestamp_utc_minutes)" "${task_name}" "${message}" >> "${AUDIT_LOG}"
+}
+
+# Move a task file to a new queue and record an audit entry.
+move_task_file() {
+  local task_file="$1"
+  local dest_dir="$2"
+  local task_name="$3"
+  local audit_message="$4"
+  mv "${task_file}" "${dest_dir}/$(basename "${task_file}")"
+  audit_log "${task_name}" "${audit_message}"
 }
 
 # Read a file mtime in epoch seconds (BSD/GNU stat compatible).
@@ -681,6 +700,69 @@ normalize_tmp_path() {
   printf '%s\n' "${path}"
 }
 
+# Filter worker process log entries by task and worker.
+filter_worker_process_log() {
+  local task_name="$1"
+  local worker="$2"
+  local tmp_file
+  tmp_file="$(mktemp)"
+  if [[ -f "${WORKER_PROCESSES_LOG}" ]]; then
+    awk -v task="${task_name}" -v worker_name="${worker}" '
+      $0 ~ / \| / {
+        split($0, parts, " \\| ")
+        if (parts[1] == task && parts[2] == worker_name) next
+      }
+      { print }
+    ' "${WORKER_PROCESSES_LOG}" > "${tmp_file}"
+  fi
+  printf '%s\n' "${tmp_file}"
+}
+
+# Filter retry count entries by task.
+filter_retry_counts_log() {
+  local task_name="$1"
+  local tmp_file
+  tmp_file="$(mktemp)"
+  if [[ -f "${RETRY_COUNTS_LOG}" ]]; then
+    awk -v task="${task_name}" '
+      $0 ~ / \| / {
+        split($0, parts, " \\| ")
+        if (parts[1] == task) next
+      }
+      { print }
+    ' "${RETRY_COUNTS_LOG}" > "${tmp_file}"
+  fi
+  printf '%s\n' "${tmp_file}"
+}
+
+# Filter in-flight entries by task and optional worker.
+filter_in_flight_log() {
+  local task_name="$1"
+  local worker_name="${2:-}"
+  local tmp_file
+  tmp_file="$(mktemp)"
+  if [[ -f "${IN_FLIGHT_LOG}" ]]; then
+    if [[ -n "${worker_name}" ]]; then
+      awk -v task="${task_name}" -v worker="${worker_name}" '
+        $0 ~ / -> / {
+          split($0, parts, " -> ")
+          if (parts[1] == task && parts[2] == worker) next
+        }
+        { print }
+      ' "${IN_FLIGHT_LOG}" > "${tmp_file}"
+    else
+      awk -v task="${task_name}" '
+        $0 ~ / -> / {
+          split($0, parts, " -> ")
+          if (parts[1] == task) next
+        }
+        { print }
+      ' "${IN_FLIGHT_LOG}" > "${tmp_file}"
+    fi
+  fi
+  printf '%s\n' "${tmp_file}"
+}
+
 # Record the worker process that owns a task.
 worker_process_set() {
   local task_name="$1"
@@ -691,14 +773,7 @@ worker_process_set() {
   local started_at="$6"
 
   local tmp_file
-  tmp_file="$(mktemp)"
-  awk -v task="${task_name}" -v worker_name="${worker}" '
-    $0 ~ / \| / {
-      split($0, parts, " \\| ")
-      if (parts[1] == task && parts[2] == worker_name) next
-    }
-    { print }
-  ' "${WORKER_PROCESSES_LOG}" > "${tmp_file}"
+  tmp_file="$(filter_worker_process_log "${task_name}" "${worker}")"
   printf '%s | %s | %s | %s | %s | %s\n' "${task_name}" "${worker}" "${pid}" "${tmp_dir}" "${branch}" "${started_at}" >> "${tmp_file}"
   mv "${tmp_file}" "${WORKER_PROCESSES_LOG}"
 }
@@ -713,14 +788,7 @@ worker_process_clear() {
   fi
 
   local tmp_file
-  tmp_file="$(mktemp)"
-  awk -v task="${task_name}" -v worker_name="${worker}" '
-    $0 ~ / \| / {
-      split($0, parts, " \\| ")
-      if (parts[1] == task && parts[2] == worker_name) next
-    }
-    { print }
-  ' "${WORKER_PROCESSES_LOG}" > "${tmp_file}"
+  tmp_file="$(filter_worker_process_log "${task_name}" "${worker}")"
   mv "${tmp_file}" "${WORKER_PROCESSES_LOG}"
 }
 
@@ -839,16 +907,7 @@ retry_count_set() {
   local count="$2"
 
   local tmp_file
-  tmp_file="$(mktemp)"
-  if [[ -f "${RETRY_COUNTS_LOG}" ]]; then
-    awk -v task="${task_name}" '
-      $0 ~ / \| / {
-        split($0, parts, " \\| ")
-        if (parts[1] == task) next
-      }
-      { print }
-    ' "${RETRY_COUNTS_LOG}" > "${tmp_file}"
-  fi
+  tmp_file="$(filter_retry_counts_log "${task_name}")"
   printf '%s | %s\n' "${task_name}" "${count}" >> "${tmp_file}"
   mv "${tmp_file}" "${RETRY_COUNTS_LOG}"
 }
@@ -861,14 +920,7 @@ retry_count_clear() {
   fi
 
   local tmp_file
-  tmp_file="$(mktemp)"
-  awk -v task="${task_name}" '
-    $0 ~ / \| / {
-      split($0, parts, " \\| ")
-      if (parts[1] == task) next
-    }
-    { print }
-  ' "${RETRY_COUNTS_LOG}" > "${tmp_file}"
+  tmp_file="$(filter_retry_counts_log "${task_name}")"
   mv "${tmp_file}" "${RETRY_COUNTS_LOG}"
 }
 # Join arguments by a delimiter.
@@ -963,24 +1015,7 @@ in_flight_remove() {
   fi
 
   local tmp_file
-  tmp_file="$(mktemp)"
-  if [[ -n "${worker_name}" ]]; then
-    awk -v task="${task_name}" -v worker="${worker_name}" '
-      $0 ~ / -> / {
-        split($0, parts, " -> ")
-        if (parts[1] == task && parts[2] == worker) next
-      }
-      { print }
-    ' "${IN_FLIGHT_LOG}" > "${tmp_file}"
-  else
-    awk -v task="${task_name}" '
-      $0 ~ / -> / {
-        split($0, parts, " -> ")
-        if (parts[1] == task) next
-      }
-      { print }
-    ' "${IN_FLIGHT_LOG}" > "${tmp_file}"
-  fi
+  tmp_file="$(filter_in_flight_log "${task_name}" "${worker_name}")"
   mv "${tmp_file}" "${IN_FLIGHT_LOG}"
   if [[ -n "${worker_name}" ]]; then
     worker_process_clear "${task_name}" "${worker_name}"
@@ -1055,36 +1090,26 @@ extract_worker_from_task() {
 # Check whether a task is already in flight.
 in_flight_has_task() {
   local task_name="$1"
-  if [[ ! -f "${IN_FLIGHT_LOG}" ]]; then
-    return 1
-  fi
-  if awk -v task="${task_name}" '
-    $0 ~ / -> / {
-      split($0, parts, " -> ")
-      if (parts[1] == task) { found=1 }
-    }
-    END { exit found ? 0 : 1 }
-  ' "${IN_FLIGHT_LOG}"; then
-    return 0
-  fi
+  local task
+  local worker
+  while IFS='|' read -r task worker; do
+    if [[ "${task}" == "${task_name}" ]]; then
+      return 0
+    fi
+  done < <(in_flight_entries)
   return 1
 }
 
 # Check whether a worker is already in flight.
 in_flight_has_worker() {
   local worker_name="$1"
-  if [[ ! -f "${IN_FLIGHT_LOG}" ]]; then
-    return 1
-  fi
-  if awk -v worker="${worker_name}" '
-    $0 ~ / -> / {
-      split($0, parts, " -> ")
-      if (parts[2] == worker) { found=1 }
-    }
-    END { exit found ? 0 : 1 }
-  ' "${IN_FLIGHT_LOG}"; then
-    return 0
-  fi
+  local task
+  local worker
+  while IFS='|' read -r task worker; do
+    if [[ "${worker}" == "${worker_name}" ]]; then
+      return 0
+    fi
+  done < <(in_flight_entries)
   return 1
 }
 
@@ -1112,7 +1137,7 @@ block_task_from_backlog() {
 annotate_assignment() {
   local task_file="$1"
   local worker="$2"
-  append_section "${task_file}" "## Assignment" "Assigned to ${worker} by Governator on $(date -u +"%Y-%m-%dT%H:%M:%SZ")."
+  append_section "${task_file}" "## Assignment" "Assigned to ${worker} by Governator on $(timestamp_utc_seconds)."
 }
 
 # Record review decision and comments in the task file.
@@ -1136,7 +1161,7 @@ annotate_review() {
 # Add feedback to a task file before reassigning.
 annotate_feedback() {
   local task_file="$1"
-  append_section "${task_file}" "## Feedback" "Moved back to task-assigned for follow-up on $(date -u +"%Y-%m-%dT%H:%M:%SZ")."
+  append_section "${task_file}" "## Feedback" "Moved back to task-assigned for follow-up on $(timestamp_utc_seconds)."
 }
 
 # Capture a blocking reason in the task file.
@@ -1156,7 +1181,7 @@ annotate_abort() {
 annotate_merge_failure() {
   local task_file="$1"
   local branch="$2"
-  append_section "${task_file}" "## Merge Failure" "Unable to fast-forward merge ${branch} into main on $(date -u +"%Y-%m-%dT%H:%M:%SZ")."
+  append_section "${task_file}" "## Merge Failure" "Unable to fast-forward merge ${branch} into main on $(timestamp_utc_seconds)."
 }
 
 # Parse review.json for decision and comments.
@@ -1301,7 +1326,7 @@ assign_pending_tasks() {
 
     assign_task "${task_file}" "${worker}"
     in_flight_add "${task_name}" "${worker}"
-  done < <(find "${STATE_DIR}/task-backlog" -maxdepth 1 -type f -name '*.md' | sort)
+  done < <(list_task_files_in_dir "${STATE_DIR}/task-backlog")
 }
 
 # Spawn a worker for a task file with shared setup.
@@ -1447,7 +1472,7 @@ process_worker_branch() {
   if ! task_file="$(task_file_for_name "${task_name}")"; then
     # No task to annotate; record and drop the branch.
     log_warn "No task file found for ${task_name}, skipping merge."
-    printf '%s %s missing task file\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "${local_branch}" >> "${FAILED_MERGES_LOG}"
+    printf '%s %s missing task file\n' "$(timestamp_utc_seconds)" "${local_branch}" >> "${FAILED_MERGES_LOG}"
     in_flight_remove "${task_name}" "${worker_name}"
     git -C "${ROOT_DIR}" branch -D "${local_branch}" > /dev/null 2>&1 || true
     git -C "${ROOT_DIR}" push origin --delete "${local_branch}" > /dev/null 2>&1 || true
@@ -1468,29 +1493,24 @@ process_worker_branch() {
 
       case "${decision}" in
         approve)
-          mv "${task_file}" "${STATE_DIR}/task-done/$(basename "${task_file}")"
-          audit_log "${task_name}" "moved to task-done"
+          move_task_file "${task_file}" "${STATE_DIR}/task-done" "${task_name}" "moved to task-done"
           ;;
         reject)
-          mv "${task_file}" "${STATE_DIR}/task-assigned/$(basename "${task_file}")"
-          audit_log "${task_name}" "moved to task-assigned"
+          move_task_file "${task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "moved to task-assigned"
           ;;
         *)
-          mv "${task_file}" "${STATE_DIR}/task-blocked/$(basename "${task_file}")"
-          audit_log "${task_name}" "moved to task-blocked"
+          move_task_file "${task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
           ;;
       esac
       ;;
     task-feedback)
       annotate_feedback "${task_file}"
-      mv "${task_file}" "${STATE_DIR}/task-assigned/$(basename "${task_file}")"
-      audit_log "${task_name}" "moved to task-assigned"
+      move_task_file "${task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "moved to task-assigned"
       ;;
     *)
       log_warn "Unexpected task state ${task_dir} for ${task_name}, blocking."
       annotate_blocked "${task_file}" "Unexpected task state ${task_dir} during processing."
-      mv "${task_file}" "${STATE_DIR}/task-blocked/$(basename "${task_file}")"
-      audit_log "${task_name}" "moved to task-blocked"
+      move_task_file "${task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
       ;;
   esac
 
@@ -1508,14 +1528,13 @@ process_worker_branch() {
     if main_task_file="$(task_file_for_name "${task_name}")"; then
       # Keep main's task state authoritative; block and surface the failure.
       annotate_merge_failure "${main_task_file}" "${local_branch}"
-      mv "${main_task_file}" "${STATE_DIR}/task-blocked/$(basename "${main_task_file}")"
-      audit_log "${task_name}" "moved to task-blocked"
+      move_task_file "${main_task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
       git -C "${ROOT_DIR}" add "${STATE_DIR}"
       git -C "${ROOT_DIR}" commit -m "Block task ${task_name} on merge failure"
       git -C "${ROOT_DIR}" push origin main
     fi
 
-    printf '%s %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "${local_branch}" >> "${FAILED_MERGES_LOG}"
+    printf '%s %s\n' "$(timestamp_utc_seconds)" "${local_branch}" >> "${FAILED_MERGES_LOG}"
   fi
 
   in_flight_remove "${task_name}" "${worker_name}"
@@ -1555,8 +1574,7 @@ main() {
     return 0
   fi
   ensure_lock
-  git_checkout_main
-  git_pull_main
+  sync_main
   process_worker_branches
   assign_pending_tasks
 }
@@ -1653,6 +1671,44 @@ main() {
 # - audit-log:
 #   Appends a line to the audit log with the provided task name and message.
 #############################################################################
+ensure_ready_with_lock() {
+  ensure_clean_git
+  ensure_lock
+  ensure_dependencies
+  ensure_db_dir
+}
+
+ensure_ready_no_lock() {
+  ensure_clean_git
+  ensure_dependencies
+  ensure_db_dir
+}
+
+run_locked_action() {
+  local context="$1"
+  shift
+  ensure_ready_with_lock
+  if handle_locked_state "${context}"; then
+    return 0
+  fi
+  "$@"
+}
+
+process_branches_action() {
+  sync_main
+  process_worker_branches
+}
+
+assign_backlog_action() {
+  sync_main
+  assign_pending_tasks
+}
+
+check_zombies_action() {
+  sync_main
+  check_zombie_workers
+}
+
 dispatch_subcommand() {
   local cmd="${1:-run}"
   shift || true
@@ -1691,9 +1747,7 @@ dispatch_subcommand() {
       fi
       ;;
     abort)
-      ensure_clean_git
-      ensure_dependencies
-      ensure_db_dir
+      ensure_ready_no_lock
       if [[ -z "${1:-}" ]]; then
         log_error "Usage: abort <task-prefix>"
         exit 1
@@ -1701,53 +1755,20 @@ dispatch_subcommand() {
       abort_task "${1}"
       ;;
     process-branches)
-      ensure_clean_git
-      ensure_lock
-      ensure_dependencies
-      ensure_db_dir
-      if handle_locked_state "processing worker branches"; then
-        return 0
-      fi
-      git_checkout_main
-      git_pull_main
-      process_worker_branches
+      run_locked_action "processing worker branches" process_branches_action
       ;;
     assign-backlog)
-      ensure_clean_git
-      ensure_lock
-      ensure_dependencies
-      ensure_db_dir
-      if handle_locked_state "assigning backlog tasks"; then
-        return 0
-      fi
-      git_checkout_main
-      git_pull_main
-      assign_pending_tasks
+      run_locked_action "assigning backlog tasks" assign_backlog_action
       ;;
     check-zombies)
-      ensure_clean_git
-      ensure_lock
-      ensure_dependencies
-      ensure_db_dir
-      if handle_locked_state "checking zombie workers"; then
-        return 0
-      fi
-      git_checkout_main
-      git_pull_main
-      check_zombie_workers
+      run_locked_action "checking zombie workers" check_zombies_action
       ;;
     cleanup-tmp)
-      ensure_clean_git
-      ensure_lock
-      ensure_dependencies
-      ensure_db_dir
+      ensure_ready_with_lock
       cleanup_stale_worker_dirs "${1:-}"
       ;;
     parse-review)
-      ensure_clean_git
-      ensure_lock
-      ensure_dependencies
-      ensure_db_dir
+      ensure_ready_with_lock
       if [[ -z "${1:-}" ]]; then
         log_error "Usage: parse-review <file>"
         exit 1
@@ -1755,17 +1776,11 @@ dispatch_subcommand() {
       parse_review_json "${1}"
       ;;
     list-workers)
-      ensure_clean_git
-      ensure_lock
-      ensure_dependencies
-      ensure_db_dir
+      ensure_ready_with_lock
       list_available_workers
       ;;
     extract-role)
-      ensure_clean_git
-      ensure_lock
-      ensure_dependencies
-      ensure_db_dir
+      ensure_ready_with_lock
       if [[ -z "${1:-}" ]]; then
         log_error "Usage: extract-role <task-file>"
         exit 1
@@ -1775,10 +1790,7 @@ dispatch_subcommand() {
       fi
       ;;
     read-caps)
-      ensure_clean_git
-      ensure_lock
-      ensure_dependencies
-      ensure_db_dir
+      ensure_ready_with_lock
       if [[ -n "${1:-}" ]]; then
         read_worker_cap "${1}"
       else
@@ -1792,10 +1804,7 @@ dispatch_subcommand() {
       fi
       ;;
     count-in-flight)
-      ensure_clean_git
-      ensure_lock
-      ensure_dependencies
-      ensure_db_dir
+      ensure_ready_with_lock
       if [[ -n "${1:-}" ]]; then
         count_in_flight_role "${1}"
       else
@@ -1803,10 +1812,7 @@ dispatch_subcommand() {
       fi
       ;;
     format-ticket-id)
-      ensure_clean_git
-      ensure_lock
-      ensure_dependencies
-      ensure_db_dir
+      ensure_ready_with_lock
       if [[ -z "${1:-}" ]]; then
         log_error "Usage: format-ticket-id <number>"
         exit 1
@@ -1814,17 +1820,11 @@ dispatch_subcommand() {
       format_ticket_id "${1}"
       ;;
     allocate-ticket-id)
-      ensure_clean_git
-      ensure_lock
-      ensure_dependencies
-      ensure_db_dir
+      ensure_ready_with_lock
       allocate_ticket_id
       ;;
     normalize-tmp-path)
-      ensure_clean_git
-      ensure_lock
-      ensure_dependencies
-      ensure_db_dir
+      ensure_ready_with_lock
       if [[ -z "${1:-}" ]]; then
         log_error "Usage: normalize-tmp-path <path>"
         exit 1
@@ -1832,10 +1832,7 @@ dispatch_subcommand() {
       normalize_tmp_path "${1}"
       ;;
     audit-log)
-      ensure_clean_git
-      ensure_lock
-      ensure_dependencies
-      ensure_db_dir
+      ensure_ready_with_lock
       if [[ -z "${1:-}" || -z "${2:-}" ]]; then
         log_error "Usage: audit-log <task> <message>"
         exit 1
