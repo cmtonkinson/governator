@@ -11,6 +11,16 @@ live on disk and in git.
 
 ---
 
+## Installation
+
+From your project root, run:
+
+```bash
+curl -fsSL https://gitlab.com/cmtonkinson/governator/-/archive/main/governator-main.tar.gz \
+  | tar -xz --strip-components=1 -f - governator-main/_governator
+```
+---
+
 ## Why?
 
 This project is experimental and opinionated. It was created because as I got
