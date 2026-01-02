@@ -1211,7 +1211,7 @@ main() {
 # - cleanup-tmp:
 #   Removes stale worker tmp directories in /tmp that are older than the worker
 #   timeout and not referenced in the worker process log.
-#
+#############################################################################
 dispatch_subcommand() {
   local cmd="${1:-run}"
 
