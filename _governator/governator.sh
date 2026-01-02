@@ -29,6 +29,7 @@ WORKER_PROCESSES_LOG="${DB_DIR}/worker-processes.log"
 RETRY_COUNTS_LOG="${DB_DIR}/retry-counts.log"
 
 WORKER_ROLES_DIR="${STATE_DIR}/roles-worker"
+SPECIAL_ROLES_DIR="${STATE_DIR}/roles-special"
 TEMPLATES_DIR="${STATE_DIR}/templates"
 LOCK_FILE="${STATE_DIR}/governator.lock"
 FAILED_MERGES_LOG="${STATE_DIR}/failed-merges.log"
@@ -46,6 +47,12 @@ DEFAULT_TICKET_ID=1
 DEFAULT_WORKER_TIMEOUT_SECONDS=900
 
 PROJECT_NAME="$(basename "${ROOT_DIR}")"
+
+BOOTSTRAP_TASK_NAME="000-architecture-bootstrap"
+BOOTSTRAP_TEMPLATE="${TEMPLATES_DIR}/000-architecture-bootstrap.md"
+BOOTSTRAP_DOCS_DIR="${ROOT_DIR}/.governator/docs"
+BOOTSTRAP_REQUIRED_ARTIFACTS=("asr.md" "arc42.md")
+BOOTSTRAP_OPTIONAL_ARTIFACTS=("personas.md" "wardley.md")
 
 # Standard UTC timestamp helpers.
 timestamp_utc_seconds() {
@@ -1005,6 +1012,21 @@ run_codex_worker_detached() {
   )
 }
 
+# Run the worker synchronously (blocking) for special roles.
+run_codex_worker_blocking() {
+  local dir="$1"
+  local prompt="$2"
+  local log_file="$3"
+  if [[ -n "${CODEX_WORKER_CMD:-}" ]]; then
+    (cd "${dir}" && GOV_PROMPT="${prompt}" bash -c "${CODEX_WORKER_CMD}" >> "${log_file}" 2>&1)
+    return $?
+  fi
+
+  local args=()
+  read -r -a args <<< "${CODEX_WORKER_ARGS}"
+  (cd "${dir}" && "${CODEX_BIN}" exec "${args[@]}" --message "${prompt}" >> "${log_file}" 2>&1)
+}
+
 # Run the reviewer synchronously so a review.json is produced.
 run_codex_reviewer() {
   local dir="$1"
@@ -1123,6 +1145,229 @@ list_available_workers() {
 role_exists() {
   local role="$1"
   [[ -f "${WORKER_ROLES_DIR}/${role}.md" ]]
+}
+
+bootstrap_task_path() {
+  local path
+  while IFS= read -r path; do
+    if [[ -n "${path}" ]]; then
+      printf '%s\n' "${path}"
+      return 0
+    fi
+  done < <(find_task_files "${BOOTSTRAP_TASK_NAME}" || true)
+  return 1
+}
+
+bootstrap_task_dir() {
+  local task_file
+  if ! task_file="$(bootstrap_task_path)"; then
+    return 1
+  fi
+  basename "$(dirname "${task_file}")"
+}
+
+ensure_bootstrap_task_exists() {
+  if bootstrap_task_path > /dev/null 2>&1; then
+    return 0
+  fi
+  if [[ ! -f "${BOOTSTRAP_TEMPLATE}" ]]; then
+    log_error "Missing bootstrap template at ${BOOTSTRAP_TEMPLATE}."
+    return 1
+  fi
+
+  local dest="${STATE_DIR}/task-backlog/${BOOTSTRAP_TASK_NAME}.md"
+  cp "${BOOTSTRAP_TEMPLATE}" "${dest}"
+  audit_log "${BOOTSTRAP_TASK_NAME}" "created bootstrap task"
+  git -C "${ROOT_DIR}" add "${dest}" "${AUDIT_LOG}"
+  git -C "${ROOT_DIR}" commit -m "Create architecture bootstrap task"
+  git -C "${ROOT_DIR}" push origin main
+}
+
+artifact_present() {
+  local file="$1"
+  [[ -f "${BOOTSTRAP_DOCS_DIR}/${file}" && -s "${BOOTSTRAP_DOCS_DIR}/${file}" ]]
+}
+
+artifact_skipped_in_task() {
+  local task_file="$1"
+  local artifact="$2"
+  if [[ ! -f "${task_file}" ]]; then
+    return 1
+  fi
+  local base="${artifact%.md}"
+  grep -Eiq "(skip|omit|n/a|not needed).*${base}|${base}.*(skip|omit|n/a|not needed)" "${task_file}"
+}
+
+bootstrap_required_artifacts_ok() {
+  local artifact
+  for artifact in "${BOOTSTRAP_REQUIRED_ARTIFACTS[@]}"; do
+    if ! artifact_present "${artifact}"; then
+      return 1
+    fi
+  done
+  return 0
+}
+
+bootstrap_optional_artifacts_ok() {
+  local task_file
+  if ! task_file="$(bootstrap_task_path)"; then
+    return 1
+  fi
+  local artifact
+  for artifact in "${BOOTSTRAP_OPTIONAL_ARTIFACTS[@]}"; do
+    if artifact_present "${artifact}"; then
+      continue
+    fi
+    if ! artifact_skipped_in_task "${task_file}" "${artifact}"; then
+      return 1
+    fi
+  done
+  return 0
+}
+
+bootstrap_adrs_ok() {
+  if [[ -d "${BOOTSTRAP_DOCS_DIR}" ]]; then
+    if find "${BOOTSTRAP_DOCS_DIR}" -maxdepth 1 -type f -iname 'adr*.md' -print -quit 2> /dev/null | grep -q .; then
+      return 0
+    fi
+  fi
+  local task_file
+  if task_file="$(bootstrap_task_path)"; then
+    if grep -Eiq "no adr|no adrs|adr not required" "${task_file}"; then
+      return 0
+    fi
+  fi
+  return 1
+}
+
+has_non_bootstrap_tasks() {
+  local path
+  while IFS= read -r path; do
+    local base
+    base="$(basename "${path}")"
+    if [[ "${base}" == ".keep" ]]; then
+      continue
+    fi
+    if [[ "${base}" == "${BOOTSTRAP_TASK_NAME}.md" ]]; then
+      continue
+    fi
+    printf '%s\n' "${path}"
+    return 0
+  done < <(find "${STATE_DIR}" -maxdepth 2 -type f -path "${STATE_DIR}/task-*/*" -name '*.md' 2> /dev/null | sort)
+  return 1
+}
+
+bootstrap_requirements_met() {
+  if ! bootstrap_task_path > /dev/null 2>&1; then
+    return 1
+  fi
+  if ! bootstrap_required_artifacts_ok; then
+    return 1
+  fi
+  if ! bootstrap_optional_artifacts_ok; then
+    return 1
+  fi
+  if ! bootstrap_adrs_ok; then
+    return 1
+  fi
+  return 0
+}
+
+architecture_bootstrap_complete() {
+  local task_dir
+  if ! task_dir="$(bootstrap_task_dir)"; then
+    return 1
+  fi
+  if [[ "${task_dir}" != "task-done" ]]; then
+    return 1
+  fi
+  if ! bootstrap_requirements_met; then
+    return 1
+  fi
+  return 0
+}
+
+complete_bootstrap_task_if_ready() {
+  if ! bootstrap_requirements_met; then
+    return 1
+  fi
+  if has_non_bootstrap_tasks > /dev/null 2>&1; then
+    return 1
+  fi
+  if in_flight_has_task "${BOOTSTRAP_TASK_NAME}"; then
+    return 0
+  fi
+  local task_file
+  if ! task_file="$(bootstrap_task_path)"; then
+    return 0
+  fi
+  local task_dir
+  task_dir="$(basename "$(dirname "${task_file}")")"
+  if [[ "${task_dir}" == "task-done" ]]; then
+    return 0
+  fi
+  move_task_file "${task_file}" "${STATE_DIR}/task-done" "${BOOTSTRAP_TASK_NAME}" "moved to task-done"
+  git -C "${ROOT_DIR}" add "${STATE_DIR}"
+  git -C "${ROOT_DIR}" commit -m "Complete architecture bootstrap"
+  git -C "${ROOT_DIR}" push origin main
+  return 0
+}
+
+spawn_special_worker_for_task() {
+  local task_file="$1"
+  local worker="$2"
+  local audit_message="$3"
+
+  local task_name
+  task_name="$(basename "${task_file}" .md)"
+
+  local tmp_dir
+  tmp_dir="$(mktemp -d "/tmp/governator-${PROJECT_NAME}-${worker}-${task_name}-XXXXXX")"
+
+  local log_dir
+  log_dir="${DB_DIR}/logs"
+  mkdir -p "${log_dir}"
+  local log_file
+  log_file="${log_dir}/${task_name}.log"
+  append_worker_log_separator "${log_file}"
+
+  git clone "$(git -C "${ROOT_DIR}" remote get-url origin)" "${tmp_dir}" > /dev/null 2>&1
+  git -C "${tmp_dir}" checkout -b "worker/${worker}/${task_name}" origin/main > /dev/null 2>&1
+
+  local task_relpath="${task_file#"${ROOT_DIR}/"}"
+  local prompt
+  prompt="Read and follow the instructions in the following files, in this order: _governator/worker-contract.md, ${SPECIAL_ROLES_DIR#"${ROOT_DIR}/"}/${worker}.md, _governator/custom-prompts/_global.md, _governator/custom-prompts/${worker}.md, ${task_relpath}."
+
+  local started_at
+  started_at="$(date +%s)"
+  if [[ -n "${audit_message}" ]]; then
+    audit_log "${task_name}" "${audit_message}"
+  fi
+
+  run_codex_worker_blocking "${tmp_dir}" "${prompt}" "${log_file}" || true
+  cleanup_tmp_dir "${tmp_dir}"
+}
+
+assign_bootstrap_task() {
+  local task_file="$1"
+  local worker="architect"
+
+  sync_main
+
+  local task_name
+  task_name="$(basename "${task_file}" .md)"
+
+  local assigned_file="${STATE_DIR}/task-assigned/${task_name}.md"
+  annotate_assignment "${task_file}" "${worker}"
+  move_task_file "${task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "assigned to ${worker}"
+
+  git -C "${ROOT_DIR}" add "${STATE_DIR}"
+  git -C "${ROOT_DIR}" commit -m "Assign task ${task_name}"
+  git -C "${ROOT_DIR}" push origin main
+
+  in_flight_add "${task_name}" "${worker}"
+  spawn_special_worker_for_task "${assigned_file}" "${worker}" ""
+  in_flight_remove "${task_name}" "${worker}"
 }
 
 parse_task_metadata() {
@@ -1367,6 +1612,27 @@ can_assign_task() {
 # Assign tasks in backlog based on role prefix/suffix in filename.
 assign_pending_tasks() {
   touch_logs
+  ensure_bootstrap_task_exists
+  complete_bootstrap_task_if_ready || true
+
+  # Gate normal task assignment until bootstrap completes.
+  if ! architecture_bootstrap_complete; then
+    local blocking_task
+    if blocking_task="$(has_non_bootstrap_tasks)"; then
+      log_warn "Bootstrap incomplete; ignoring task ${blocking_task}."
+    fi
+    local bootstrap_task
+    if bootstrap_task="$(bootstrap_task_path)"; then
+      local task_dir
+      task_dir="$(basename "$(dirname "${bootstrap_task}")")"
+      if [[ "${task_dir}" == "task-backlog" ]]; then
+        if ! in_flight_has_task "${BOOTSTRAP_TASK_NAME}"; then
+          assign_bootstrap_task "${bootstrap_task}"
+        fi
+      fi
+    fi
+    return 0
+  fi
 
   local task_file
   while IFS= read -r task_file; do

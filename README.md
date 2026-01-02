@@ -108,7 +108,6 @@ _governator/
 │   └── test_engineer.md
 ├── roles-worker/
 │   ├── admin.md
-│   ├── architect.md
 │   ├── data_engineer.md
 │   ├── planner.md
 │   ├── ruby.md
@@ -116,6 +115,7 @@ _governator/
 │   ├── sre.md
 │   └── test_engineer.md
 ├── roles-special/
+│   ├── architect.md
 │   └── reviewer.md
 ├── templates/
 │   ├── review.json

@@ -27,6 +27,23 @@ write_task() {
 EOF
 }
 
+complete_bootstrap() {
+  mkdir -p "${REPO_DIR}/.governator/docs"
+  printf '%s\n' "# ASR" > "${REPO_DIR}/.governator/docs/asr.md"
+  printf '%s\n' "# arc42" > "${REPO_DIR}/.governator/docs/arc42.md"
+  printf '%s\n' "# Personas" > "${REPO_DIR}/.governator/docs/personas.md"
+  printf '%s\n' "# Wardley" > "${REPO_DIR}/.governator/docs/wardley.md"
+  printf '%s\n' "# ADR-0001" > "${REPO_DIR}/.governator/docs/adr-0001.md"
+  write_task "task-done" "000-architecture-bootstrap"
+  commit_paths "Complete bootstrap" \
+    ".governator/docs/asr.md" \
+    ".governator/docs/arc42.md" \
+    ".governator/docs/personas.md" \
+    ".governator/docs/wardley.md" \
+    ".governator/docs/adr-0001.md" \
+    "_governator/task-done/000-architecture-bootstrap.md"
+}
+
 create_worker_branch() {
   local task_name="$1"
   local worker="$2"
@@ -74,6 +91,7 @@ EOF
 }
 
 @test "assign-backlog assigns task and logs in-flight" {
+  complete_bootstrap
   write_task "task-backlog" "001-sample-ruby"
   commit_all "Add backlog task"
 
@@ -86,6 +104,7 @@ EOF
 }
 
 @test "assign-backlog blocks tasks missing a role suffix" {
+  complete_bootstrap
   write_task "task-backlog" "002norole"
   commit_all "Add missing role task"
 
@@ -98,6 +117,7 @@ EOF
 }
 
 @test "assign-backlog blocks tasks with unknown roles" {
+  complete_bootstrap
   write_task "task-backlog" "003-unknown-ghost"
   commit_all "Add unknown role task"
 
@@ -110,6 +130,7 @@ EOF
 }
 
 @test "assign-backlog respects global cap" {
+  complete_bootstrap
   write_task "task-backlog" "004-cap-ruby"
   echo "004-busy-ruby -> ruby" >> "${REPO_DIR}/_governator/in-flight.log"
   commit_all "Prepare global cap"
@@ -122,6 +143,7 @@ EOF
 }
 
 @test "assign-backlog respects per-worker cap" {
+  complete_bootstrap
   write_task "task-backlog" "005-cap-ruby"
   echo "006-busy-ruby -> ruby" >> "${REPO_DIR}/_governator/in-flight.log"
   printf '%s\n' "2" > "${REPO_DIR}/.governator/global_worker_cap"
