@@ -1,8 +1,7 @@
 # Worker Contract
-This document defines the binding execution rules for all workers. Failure to
-comply with this contract invalidates the work and will result in rejection.
-This contract applies to all workers unless explicitly overridden by
-role-specific instructions.
+This is your primary binding contract. Failure to comply with this contract
+risks invalidating your work and may result in rejection. This contract applies
+to you at all times unlexx explicitly overridden by later instruction.
 
 ## 1. Execution Model
 You are executing **one assigned task** under **one defined role**. You must
@@ -12,7 +11,7 @@ task.
 ## 2. Required Inputs (Read in Order)
 Before taking any action, you must read in full:
 - `README.md`, the authoritative overview/description of the system. You must
-  never modify this file.
+  not modify this file.
 
 ## 3. Scope Rules
 You must:
