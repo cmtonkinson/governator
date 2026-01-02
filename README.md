@@ -1,4 +1,8 @@
 # Governator
+
+[![pipeline status](https://gitlab.com/cmtonkinson/governator/badges/main/pipeline.svg)](https://gitlab.com/cmtonkinson/governator/pipelines)
+[![latest tag](https://img.shields.io/gitlab/v/tag/77419954?label=latest&tag=latest)](https://gitlab.com/cmtonkinson/governator/-/tags/latest)
+
 Governator is a deterministic, file-driven orchestration system for delegating software development work to
 non-interactive LLM "workers" (e.g. Codex CLI), reviewing their output, and merging results safely into `main`.
 
@@ -296,4 +300,3 @@ The included `.gitlab-ci.yml` job installs `sgpt` and runs `./scripts/all-tests.
 - Define `SGPT_MODEL` if you want to pin a cheaper/faster model (it defaults to `gpt-4o-mini` when unset).
 
 Once those variables are set, the pipeline can hit the real service without manual token entry.
-

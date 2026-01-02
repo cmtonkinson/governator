@@ -9,8 +9,10 @@ lint-and-test:
   stage: test
   before_script:
     - apt-get update
-    - apt-get install -y --no-install-recommends git curl ca-certificates
-    - pip install --no-cache-dir bats-core sgpt
+    - apt-get install -y --no-install-recommends git curl ca-certificates wget shellcheck shfmt
+    - git clone https://github.com/bats-core/bats-core.git /tmp/bats-core
+    - /tmp/bats-core/install.sh /usr/local
+    - pip install --no-cache-dir shell-gpt
   script:
     - |
       if [[ -z "${SGPT_API_KEY:-}" ]]; then
