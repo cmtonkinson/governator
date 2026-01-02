@@ -6,7 +6,7 @@
 Governator is a deterministic, file-driven orchestration system for delegating software development work to
 non-interactive LLM "workers" (e.g. Codex CLI), reviewing their output, and merging results safely into `main`.
 
-It is designed to be dropped into an existing repository, alongside a human-written `README.md`, and left to operate
+It is designed to be dropped into an existing repository, alongside a human-written `GOVERNATOR.md`, and left to operate
 autonomously via a cron-driven control loop.
 
 There is no shared memory, no long-lived agent state, and no hidden context. All state, intent, decisions, and artifacts
@@ -75,7 +75,7 @@ All coordination happens through:
 There is no conversational back-and-forth.
 
 ## High-Level Workflow
-1. You write a `README.md` for your project.
+1. You write a `GOVERNATOR.md` for your project.
    - this is the only authoritative description of intent
    - workers never modify it
 2. You copy the `_governator/` directory into the project root.
@@ -264,7 +264,7 @@ It requires:
 - git
 - cron (or some other means of invocation)
 - one or more non-interactive LLM CLIs (e.g. Codex, Claude)
-- a fully-baked `README.md`
+- a fully-baked `GOVERNATOR.md`
   - overview
   - goals & non-goals
   - assumptions

@@ -6,7 +6,7 @@ repo_git() {
 
 commit_all() {
   local message="$1"
-  repo_git add README.md _governator .governator
+  repo_git add GOVERNATOR.md _governator .governator
   repo_git commit -m "${message}" >/dev/null
   repo_git push origin main >/dev/null
 }
@@ -67,12 +67,12 @@ setup() {
 
   cp -R "${BATS_TEST_DIRNAME}/../_governator" "${REPO_DIR}/_governator"
   cp -R "${BATS_TEST_DIRNAME}/../.governator" "${REPO_DIR}/.governator"
-  cp "${BATS_TEST_DIRNAME}/../README.md" "${REPO_DIR}/README.md"
+  cp "${BATS_TEST_DIRNAME}/../GOVERNATOR.md" "${REPO_DIR}/GOVERNATOR.md"
 
   repo_git init -b main >/dev/null
   repo_git config user.email "test@example.com"
   repo_git config user.name "Test User"
-  repo_git add README.md _governator .governator
+  repo_git add GOVERNATOR.md _governator .governator
   repo_git commit -m "Init" >/dev/null
 
   git init --bare "${ORIGIN_DIR}" >/dev/null

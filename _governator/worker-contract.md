@@ -10,7 +10,7 @@ task.
 
 ## 2. Required Inputs (Read in Order)
 Before taking any action, you must read in full:
-- `README.md`, the authoritative overview/description of the system. You must
+- `GOVERNATOR.md`, the authoritative overview/description of the system. You must
   not modify this file.
 
 ## 3. Scope Rules
@@ -108,4 +108,3 @@ You must not continue working after that point.
 ## 9. Operating Principle
 Correctness and bounded execution are more important than completion. When in
 doubt, block the task.
-

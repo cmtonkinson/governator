@@ -37,7 +37,7 @@ You must not:
 - Write or modify any tests, build scripts, or deployment scripts
 - Build or implmeent solutions directly
 - Speculate about or invent domain/business rules that do not exist in the
-  README
+  GOVERNATOR.md
 
 ## 3. Open Source
 Even for work on proprietary systems, unless explicity instructed otherwse, you
