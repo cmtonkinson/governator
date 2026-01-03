@@ -47,6 +47,7 @@ GITIGNORE_PATH="${ROOT_DIR}/.gitignore"
 CODEX_BIN="${CODEX_BIN:-codex}"
 CODEX_WORKER_ARGS="${CODEX_WORKER_ARGS:-}"
 CODEX_REVIEW_ARGS="${CODEX_REVIEW_ARGS:-}"
+GOV_QUIET=0
 
 DEFAULT_GLOBAL_CAP=1
 DEFAULT_WORKER_CAP=1
@@ -91,15 +92,18 @@ log_with_level() {
 }
 
 log_info() {
+  if [[ "${GOV_QUIET}" -eq 1 ]]; then
+    return 0
+  fi
   log_with_level "INFO" "$@"
 }
 
 log_warn() {
-  log_with_level "WARN" "$@"
+  log_with_level "WARN" "$@" >&2
 }
 
 log_error() {
-  log_with_level "ERROR" "$@"
+  log_with_level "ERROR" "$@" >&2
 }
 
 # Append visible separators to per-task worker logs before each new worker starts.
@@ -143,8 +147,8 @@ ensure_clean_git() {
   if [[ -n "${status}" ]]; then
     status="$(
       printf '%s\n' "${status}" | grep -v -E \
-        '^[[:space:][:alnum:]\?]{2}[[:space:]](_governator/governator\.lock|\.governator/governator\.locked|\.governator/audit\.log|\.governator/worker-processes\.log|\.governator/retry-counts\.log|\.governator/logs/)' \
-        || true
+        '^[[:space:][:alnum:]\?]{2}[[:space:]](_governator/governator\.lock|\.governator/governator\.locked|\.governator/audit\.log|\.governator/worker-processes\.log|\.governator/retry-counts\.log|\.governator/logs/)' ||
+        true
     )"
   fi
   if [[ -n "${status}" ]]; then
@@ -781,11 +785,9 @@ abort_task() {
   if [[ "${task_file}" != "${blocked_dest}" ]]; then
     move_task_file "${task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "aborted by operator"
   else
-    audit_log "${task_name}" "aborted by operator"
+    log_task_event "${task_name}" "aborted by operator"
   fi
 
-  local aborted_at
-  aborted_at="$(timestamp_utc_seconds)"
   local abort_meta
   abort_meta="Aborted by operator.
 Worker: ${worker:-n/a}
@@ -889,6 +891,24 @@ audit_log() {
   printf '%s %s -> %s\n' "$(timestamp_utc_minutes)" "${task_name}" "${message}" >> "${AUDIT_LOG}"
 }
 
+# Record a task event to stdout and the audit log.
+log_task_event() {
+  local task_name="$1"
+  shift
+  local message="$*"
+  log_info "${task_name} -> ${message}"
+  audit_log "${task_name}" "${message}"
+}
+
+# Record a warning-level task event to stdout and the audit log.
+log_task_warn() {
+  local task_name="$1"
+  shift
+  local message="$*"
+  log_warn "${task_name} -> ${message}"
+  audit_log "${task_name}" "${message}"
+}
+
 # Move a task file to a new queue and record an audit entry.
 move_task_file() {
   local task_file="$1"
@@ -896,7 +916,7 @@ move_task_file() {
   local task_name="$3"
   local audit_message="$4"
   mv "${task_file}" "${dest_dir}/$(basename "${task_file}")"
-  audit_log "${task_name}" "${audit_message}"
+  log_task_event "${task_name}" "${audit_message}"
 }
 
 # Read a file mtime in epoch seconds (BSD/GNU stat compatible).
@@ -1488,7 +1508,7 @@ ensure_bootstrap_task_exists() {
 
   local dest="${STATE_DIR}/task-backlog/${BOOTSTRAP_TASK_NAME}.md"
   cp "${template}" "${dest}"
-  audit_log "${BOOTSTRAP_TASK_NAME}" "created bootstrap task"
+  log_task_event "${BOOTSTRAP_TASK_NAME}" "created bootstrap task"
   git -C "${ROOT_DIR}" add "${dest}" "${AUDIT_LOG}"
   git -C "${ROOT_DIR}" commit -q -m "Create architecture bootstrap task"
   git_push_default_branch
@@ -1666,10 +1686,15 @@ spawn_special_worker_for_task() {
   local started_at
   started_at="$(date +%s)"
   if [[ -n "${audit_message}" ]]; then
-    audit_log "${task_name}" "${audit_message}"
+    log_task_event "${task_name}" "${audit_message}"
   fi
 
-  run_codex_worker_blocking "${tmp_dir}" "${prompt}" "${log_file}" || true
+  log_task_event "${task_name}" "starting special worker ${worker}"
+  if run_codex_worker_blocking "${tmp_dir}" "${prompt}" "${log_file}"; then
+    log_task_event "${task_name}" "special worker ${worker} completed"
+  else
+    log_task_warn "${task_name}" "special worker ${worker} exited with error"
+  fi
   cleanup_tmp_dir "${tmp_dir}"
 }
 
@@ -2041,11 +2066,11 @@ spawn_worker_for_task() {
   if [[ -n "${pid}" ]]; then
     worker_process_set "${task_name}" "${worker}" "${pid}" "${tmp_dir}" "${branch_name}" "${started_at}"
     if [[ -n "${audit_message}" ]]; then
-      audit_log "${task_name}" "${audit_message}"
+      log_task_event "${task_name}" "${audit_message}"
     fi
-    log_info "Worker started for ${task_name} on ${worker} in ${tmp_dir}"
+    log_task_event "${task_name}" "worker ${worker} started"
   else
-    log_warn "Failed to capture worker pid for ${task_name}."
+    log_task_warn "${task_name}" "failed to capture worker pid"
   fi
 }
 
@@ -2087,14 +2112,14 @@ check_zombie_workers() {
         if [[ "${elapsed}" -le "${timeout}" ]]; then
           continue
         fi
-        audit_log "${task_name}" "worker ${worker} exceeded timeout (${elapsed}s)"
+        log_task_warn "${task_name}" "worker ${worker} exceeded timeout (${elapsed}s)"
         kill -9 "${pid}" > /dev/null 2>&1 || true
       else
         continue
       fi
     fi
 
-    audit_log "${task_name}" "worker ${worker} exited before pushing branch"
+    log_task_warn "${task_name}" "worker ${worker} exited before pushing branch"
 
     cleanup_tmp_dir "${tmp_dir}"
 
@@ -2159,7 +2184,7 @@ process_worker_branch() {
       mapfile -t review_lines < <(code_review "${remote_branch}" "${local_branch}" "${task_file#"${ROOT_DIR}/"}")
       local decision="${review_lines[0]:-block}"
       annotate_review "${task_file}" "${decision}" "${review_lines[@]:1}"
-      audit_log "${task_name}" "moved to task-worked"
+      log_task_event "${task_name}" "review decision: ${decision}"
 
       case "${decision}" in
         approve)
@@ -2349,6 +2374,27 @@ run_locked_action() {
   "$@"
 }
 
+parse_run_args() {
+  local arg
+  while [[ "$#" -gt 0 ]]; do
+    arg="$1"
+    case "${arg}" in
+      -q | --quiet)
+        GOV_QUIET=1
+        ;;
+      --)
+        shift
+        break
+        ;;
+      *)
+        log_error "Unknown option for run: ${arg}"
+        exit 1
+        ;;
+    esac
+    shift
+  done
+}
+
 process_branches_action() {
   sync_default_branch
   process_worker_branches
@@ -2377,6 +2423,7 @@ Public commands:
 
 Options:
   -h, --help   Show this help message.
+  run -q, --quiet   Suppress stdout during run (errors still surface).
 
 Note: You must run `governator.sh init` before using any other command.
 EOF
@@ -2404,6 +2451,7 @@ dispatch_subcommand() {
 
   case "${cmd}" in
     run)
+      parse_run_args "$@"
       main
       ;;
     init)
@@ -2531,7 +2579,7 @@ dispatch_subcommand() {
       fi
       local task_name="${1}"
       shift
-      audit_log "${task_name}" "$*"
+      log_task_event "${task_name}" "$*"
       ;;
     *)
       log_error "Unknown subcommand: ${cmd}"

@@ -34,14 +34,14 @@ complete_bootstrap() {
   printf '%s\n' "# Personas" > "${REPO_DIR}/_governator/docs/personas.md"
   printf '%s\n' "# Wardley" > "${REPO_DIR}/_governator/docs/wardley.md"
   printf '%s\n' "# ADR-0001" > "${REPO_DIR}/_governator/docs/adr-0001.md"
-  write_task "task-done" "000-architecture-bootstrap"
+  write_task "task-done" "000-architecture-bootstrap-architect"
   commit_paths "Complete bootstrap" \
     "_governator/docs/asr.md" \
     "_governator/docs/arc42.md" \
     "_governator/docs/personas.md" \
     "_governator/docs/wardley.md" \
     "_governator/docs/adr-0001.md" \
-    "_governator/task-done/000-architecture-bootstrap.md"
+    "_governator/task-done/000-architecture-bootstrap-architect.md"
 }
 
 create_worker_branch() {
