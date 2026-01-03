@@ -80,6 +80,9 @@ setup() {
   repo_git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
   repo_git push -u origin main >/dev/null
 
+  printf '%s\n' "new" > "${REPO_DIR}/.governator/project_mode"
+  commit_paths "Set project mode" ".governator/project_mode"
+
   cat > "${BIN_DIR}/sgpt" <<'EOF'
 #!/usr/bin/env bash
 exit 0

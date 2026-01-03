@@ -6,15 +6,18 @@
 Governator is a deterministic, file-driven orchestration system for delegating software development work to
 non-interactive LLM "workers" (e.g. Codex CLI), reviewing their output, and merging results safely into `main`.
 
-It is designed to be dropped into an existing repository, alongside a human-written `GOVERNATOR.md`, and left to operate
-autonomously via a cron-driven control loop.
-
 There is no shared memory, no long-lived agent state, and no hidden context. All state, intent, decisions, and artifacts
 live on disk and in git.
 
 ---
 
-## Installation
+## Quickstart
+1. Install Governator at your project root.
+2. Run `governator.sh init`
+3. Schedule `governator.sh run` to run periodically.
+4. Consider creating a shell alias/function.
+
+### Installation
 From your project root, run:
 
 ```bash
@@ -22,16 +25,46 @@ curl -fsSL https://gitlab.com/cmtonkinson/governator/-/archive/main/governator-m
   | tar -xz --strip-components=1 -f - governator-main/_governator
 ```
 
-## Quickstart
-Governator exposes a small set of public subcommands for operators or cron jobs:
+### Configuration
+You have to run `governator.sh init` before the system will do anything useful.
 
-- `governator.sh` (or `governator.sh run`): execute the normal loop (lock, checks, process worker branches, assign backlog tasks).
-- `governator.sh status`: show a dashboard of queue counts, in-flight workers, pending reviews, and blockers (emits a locked notice when the system is locked).
-- `governator.sh lock`: prevent any new work from starting, report the current in-flight snapshot, and keep running workers/reviews untouched.
-- `governator.sh unlock`: clear the lock and allow new activity to resume.
-- `governator.sh abort <ticket-prefix>`: terminate the agent working on the matching ticket, clean up its temp branch/dir, annotate the ticket as aborted, and move it to the blocked queue.
+The most important question is whether this is a new or existing project: in
+other words, is Governator bringing a brand new idea from 0 to 1, or
+improving/extending an existing codebase? This changes bootstrapping logic and
+decisions about system architecture and documenations.
 
-Schedule the default `run` invocation via cron, and use `status`/`lock`/`unlock` interactively when you need visibility or control.
+### Scheduling
+`governator.sh run` executes one iteration of Governator's main control loop.
+Since the system effectively operates a git-based state machine, the design
+intent is that `governator.sh run` can be scheduled as a cron job or
+similar:
+
+
+```bash
+* * * * * /path/to/governator/governator.sh run
+```
+
+Internally, Governator uses a lock file, so if a `run` takes longer than your
+scheduling interval, it won't cause overlaps or collisions. Other commands such
+as `status` can be invoked at any time.
+
+### Shortcut
+Governator is a cool name but it's annoying to type all the time. I'd recommend
+giving yourself a shortcut.
+
+You could add an alias, but this only works from the project root:
+```sh
+alias gov="_governator/governator.sh"
+```
+
+What I use is a shell function so I can access it from anywhere in the project:
+```sh
+gov() {
+  local root
+  root=$(git rev-parse --show-toplevel 2>/dev/null) || return 1
+  "$root/_governator/governator.sh" "$@"
+}
+```
 
 ---
 
@@ -75,12 +108,13 @@ All coordination happens through:
 There is no conversational back-and-forth.
 
 ## High-Level Workflow
-1. You write a `GOVERNATOR.md` for your project.
+1. You copy the `_governator/` directory into the project root.
+2. You run `governator.sh init` to configure project mode, default branch/remote, and doc locations.
+3. You write the primary project doc (default `README.md`) for your project.
    - this is the only authoritative description of intent
    - workers never modify it
-2. You copy the `_governator/` directory into the project root.
-3. You set up a cron job that periodically runs `governator.sh`.
-4. Governator:
+4. You set up a cron job that periodically runs `governator.sh run`.
+5. Governator:
    - reads the repository state
    - creates or updates task files
    - assigns tasks to roles
@@ -131,7 +165,12 @@ _governator/
 
 ```
 .governator/
+├── default_branch
+├── docs_root
+├── primary_doc
+├── project_mode
 ├── next_ticket_id
+├── remote_name
 ├── worker_timeout_seconds
 ├── global_worker_cap
 └── worker_caps
@@ -264,7 +303,8 @@ It requires:
 - git
 - cron (or some other means of invocation)
 - one or more non-interactive LLM CLIs (e.g. Codex, Claude)
-- a fully-baked `GOVERNATOR.md`
+- a fully-baked primary project doc (configured in `.governator/primary_doc`,
+  default `README.md`)
   - overview
   - goals & non-goals
   - assumptions

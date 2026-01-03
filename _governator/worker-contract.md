@@ -10,8 +10,11 @@ task.
 
 ## 2. Required Inputs (Read in Order)
 Before taking any action, you must read in full:
-- `GOVERNATOR.md`, the authoritative overview/description of the system. You must
+- The primary project doc configured in `.governator/primary_doc` (default
+  `README.md`), the authoritative overview/description of the system. You must
   not modify this file.
+- If `.governator/docs_root` is set, treat documentation under that path as
+  supporting context.
 
 ## 3. Scope Rules
 You must:

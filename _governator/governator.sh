@@ -19,6 +19,12 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STATE_DIR="${ROOT_DIR}/_governator"
 DB_DIR="${ROOT_DIR}/.governator"
 
+PROJECT_MODE_FILE="${DB_DIR}/project_mode"
+DEFAULT_BRANCH_FILE="${DB_DIR}/default_branch"
+REMOTE_NAME_FILE="${DB_DIR}/remote_name"
+PRIMARY_DOC_FILE="${DB_DIR}/primary_doc"
+DOCS_ROOT_FILE="${DB_DIR}/docs_root"
+
 NEXT_TICKET_FILE="${DB_DIR}/next_ticket_id"
 GLOBAL_CAP_FILE="${DB_DIR}/global_worker_cap"
 WORKER_CAPS_FILE="${DB_DIR}/worker_caps"
@@ -45,14 +51,20 @@ DEFAULT_GLOBAL_CAP=1
 DEFAULT_WORKER_CAP=1
 DEFAULT_TICKET_ID=1
 DEFAULT_WORKER_TIMEOUT_SECONDS=900
+DEFAULT_REMOTE_NAME="origin"
+DEFAULT_BRANCH_NAME="main"
+DEFAULT_PRIMARY_DOC="README.md"
 
 PROJECT_NAME="$(basename "${ROOT_DIR}")"
 
 BOOTSTRAP_TASK_NAME="000-architecture-bootstrap"
-BOOTSTRAP_TEMPLATE="${TEMPLATES_DIR}/000-architecture-bootstrap.md"
+BOOTSTRAP_NEW_TEMPLATE="${TEMPLATES_DIR}/000-architecture-bootstrap.md"
+BOOTSTRAP_EXISTING_TEMPLATE="${TEMPLATES_DIR}/000-architecture-discovery.md"
 BOOTSTRAP_DOCS_DIR="${ROOT_DIR}/_governator/docs"
-BOOTSTRAP_REQUIRED_ARTIFACTS=("asr.md" "arc42.md")
-BOOTSTRAP_OPTIONAL_ARTIFACTS=("personas.md" "wardley.md")
+BOOTSTRAP_NEW_REQUIRED_ARTIFACTS=("asr.md" "arc42.md")
+BOOTSTRAP_NEW_OPTIONAL_ARTIFACTS=("personas.md" "wardley.md")
+BOOTSTRAP_EXISTING_REQUIRED_ARTIFACTS=("existing-system-discovery.md")
+BOOTSTRAP_EXISTING_OPTIONAL_ARTIFACTS=()
 
 # Standard UTC timestamp helpers.
 timestamp_utc_seconds() {
@@ -143,41 +155,62 @@ ensure_dependencies() {
     exit 1
   fi
 }
-# Checkout main quietly.
-git_checkout_main() {
-  git -C "${ROOT_DIR}" checkout main > /dev/null 2>&1
+# Checkout the default branch quietly.
+git_checkout_default_branch() {
+  local branch
+  branch="$(read_default_branch)"
+  git -C "${ROOT_DIR}" checkout "${branch}" > /dev/null 2>&1
 }
 
-# Pull main from origin.
-git_pull_main() {
-  git -C "${ROOT_DIR}" pull origin main
+# Pull the default branch from the default remote.
+git_pull_default_branch() {
+  local branch
+  local remote
+  branch="$(read_default_branch)"
+  remote="$(read_remote_name)"
+  git -C "${ROOT_DIR}" pull "${remote}" "${branch}"
 }
 
-# Sync local main with origin.
-sync_main() {
-  git_checkout_main
-  git_pull_main
+# Push the default branch to the default remote.
+git_push_default_branch() {
+  local branch
+  local remote
+  branch="$(read_default_branch)"
+  remote="$(read_remote_name)"
+  git -C "${ROOT_DIR}" push "${remote}" "${branch}"
+}
+
+# Sync local default branch with the default remote.
+sync_default_branch() {
+  git_checkout_default_branch
+  git_pull_default_branch
 }
 
 # Fetch and prune remote refs.
-git_fetch_origin() {
-  git -C "${ROOT_DIR}" fetch origin --prune
+git_fetch_remote() {
+  local remote
+  remote="$(read_remote_name)"
+  git -C "${ROOT_DIR}" fetch "${remote}" --prune
 }
 
-# Delete a worker branch locally and on origin (best-effort).
+# Delete a worker branch locally and on the default remote (best-effort).
 delete_worker_branch() {
   local branch="$1"
-  if [[ -z "${branch}" || "${branch}" == "main" || "${branch}" == "origin/main" ]]; then
+  local remote
+  local base_branch
+  remote="$(read_remote_name)"
+  base_branch="$(read_default_branch)"
+  if [[ -z "${branch}" || "${branch}" == "${base_branch}" || "${branch}" == "${remote}/${base_branch}" ]]; then
     return 0
   fi
   git -C "${ROOT_DIR}" branch -D "${branch}" > /dev/null 2>&1 || true
-  if ! git -C "${ROOT_DIR}" push origin --delete "${branch}" > /dev/null 2>&1; then
+  if ! git -C "${ROOT_DIR}" push "${remote}" --delete "${branch}" > /dev/null 2>&1; then
     log_warn "Failed to delete remote branch ${branch} with --delete"
   fi
-  if ! git -C "${ROOT_DIR}" push origin :"refs/heads/${branch}" > /dev/null 2>&1; then
+  if ! git -C "${ROOT_DIR}" push "${remote}" :"refs/heads/${branch}" > /dev/null 2>&1; then
     log_warn "Failed to delete remote branch ${branch} with explicit refs/heads"
   fi
-  git -C "${ROOT_DIR}" fetch origin --prune > /dev/null 2>&1 || true
+  git -C "${ROOT_DIR}" fetch "${remote}" --prune > /dev/null 2>&1 || true
 }
 
 # Ensure state logs exist so reads do not fail.
@@ -201,6 +234,70 @@ read_numeric_file() {
     return 0
   fi
   printf '%s\n' "${value}"
+}
+
+# Read a single-line config value with fallback (whitespace trimmed).
+read_config_value() {
+  local file="$1"
+  local fallback="$2"
+  if [[ ! -f "${file}" ]]; then
+    printf '%s\n' "${fallback}"
+    return 0
+  fi
+  local value
+  value="$(tr -d '[:space:]' < "${file}")"
+  if [[ -z "${value}" ]]; then
+    printf '%s\n' "${fallback}"
+    return 0
+  fi
+  printf '%s\n' "${value}"
+}
+
+trim_whitespace() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "${value}"
+}
+
+read_project_mode() {
+  if [[ ! -f "${PROJECT_MODE_FILE}" ]]; then
+    return 1
+  fi
+  local value
+  value="$(tr -d '[:space:]' < "${PROJECT_MODE_FILE}")"
+  if [[ "${value}" != "new" && "${value}" != "existing" ]]; then
+    return 1
+  fi
+  printf '%s\n' "${value}"
+}
+
+require_project_mode() {
+  if ! read_project_mode > /dev/null 2>&1; then
+    log_error "Governator has not been initialized yet. Please run \`governator.sh init\` to configure your project."
+    return 1
+  fi
+  return 0
+}
+
+read_remote_name() {
+  read_config_value "${REMOTE_NAME_FILE}" "${DEFAULT_REMOTE_NAME}"
+}
+
+read_default_branch() {
+  read_config_value "${DEFAULT_BRANCH_FILE}" "${DEFAULT_BRANCH_NAME}"
+}
+
+read_primary_doc() {
+  read_config_value "${PRIMARY_DOC_FILE}" "${DEFAULT_PRIMARY_DOC}"
+}
+
+read_docs_root() {
+  if [[ ! -f "${DOCS_ROOT_FILE}" ]]; then
+    printf '%s\n' ""
+    return 0
+  fi
+  trim_whitespace "$(cat "${DOCS_ROOT_FILE}")"
 }
 
 # Read the global concurrency cap (defaults to 1).
@@ -290,6 +387,70 @@ ensure_db_dir() {
   touch "${WORKER_PROCESSES_LOG}" "${RETRY_COUNTS_LOG}"
   if [[ ! -f "${WORKER_TIMEOUT_FILE}" ]]; then
     printf '%s\n' "${DEFAULT_WORKER_TIMEOUT_SECONDS}" > "${WORKER_TIMEOUT_FILE}"
+  fi
+}
+
+init_governator() {
+  ensure_db_dir
+  if read_project_mode > /dev/null 2>&1; then
+    log_error "Governator is already initialized. Re-run init after clearing ${PROJECT_MODE_FILE}."
+    exit 1
+  fi
+
+  local project_mode=""
+  while true; do
+    read -r -p "Is this a new or existing project? (new/existing): " project_mode
+    project_mode="$(trim_whitespace "${project_mode}")"
+    project_mode="$(printf '%s' "${project_mode}" | tr '[:upper:]' '[:lower:]')"
+    if [[ "${project_mode}" == "new" || "${project_mode}" == "existing" ]]; then
+      break
+    fi
+    printf 'Please enter "new" or "existing".\n'
+  done
+
+  local remote_name
+  read -r -p "Default remote [${DEFAULT_REMOTE_NAME}]: " remote_name
+  remote_name="$(trim_whitespace "${remote_name}")"
+  if [[ -z "${remote_name}" ]]; then
+    remote_name="${DEFAULT_REMOTE_NAME}"
+  fi
+
+  local default_branch
+  read -r -p "Default branch [${DEFAULT_BRANCH_NAME}]: " default_branch
+  default_branch="$(trim_whitespace "${default_branch}")"
+  if [[ -z "${default_branch}" ]]; then
+    default_branch="${DEFAULT_BRANCH_NAME}"
+  fi
+
+  local primary_doc
+  read -r -p "Primary source-of-truth doc [${DEFAULT_PRIMARY_DOC}]: " primary_doc
+  primary_doc="$(trim_whitespace "${primary_doc}")"
+  if [[ -z "${primary_doc}" ]]; then
+    primary_doc="${DEFAULT_PRIMARY_DOC}"
+  fi
+
+  local docs_root
+  read -r -p "Additional docs path (relative, empty for none): " docs_root
+  docs_root="$(trim_whitespace "${docs_root}")"
+
+  printf '%s\n' "${project_mode}" > "${PROJECT_MODE_FILE}"
+  printf '%s\n' "${remote_name}" > "${REMOTE_NAME_FILE}"
+  printf '%s\n' "${default_branch}" > "${DEFAULT_BRANCH_FILE}"
+  printf '%s\n' "${primary_doc}" > "${PRIMARY_DOC_FILE}"
+  printf '%s\n' "${docs_root}" > "${DOCS_ROOT_FILE}"
+
+  printf 'Governator initialized:\n'
+  printf '  project mode: %s\n' "${project_mode}"
+  printf '  default remote: %s\n' "${remote_name}"
+  printf '  default branch: %s\n' "${default_branch}"
+  printf '  primary doc: %s\n' "${primary_doc}"
+  if [[ -n "${docs_root}" ]]; then
+    printf '  docs root: %s\n' "${docs_root}"
+  else
+    printf '  docs root: (none)\n'
+  fi
+  if [[ ! -f "${ROOT_DIR}/${primary_doc}" ]]; then
+    log_warn "Primary doc not found at ${primary_doc}."
   fi
 }
 
@@ -588,7 +749,7 @@ abort_task() {
   in_flight_remove "${task_name}" "${worker}"
 
   local blocked_dest="${STATE_DIR}/task-blocked/${task_name}.md"
-  sync_main
+  sync_default_branch
   if [[ "${task_file}" != "${blocked_dest}" ]]; then
     move_task_file "${task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "aborted by operator"
   else
@@ -607,7 +768,7 @@ Branch: ${branch:-n/a}"
 
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
   git -C "${ROOT_DIR}" commit -m "Abort task ${task_name}"
-  git -C "${ROOT_DIR}" push origin main
+  git_push_default_branch
 }
 
 # Read the next ticket id from disk, defaulting to 1.
@@ -1041,9 +1202,73 @@ run_codex_reviewer() {
   (cd "${dir}" && "${CODEX_BIN}" exec "${args[@]}" --message "${prompt}")
 }
 
+format_prompt_files() {
+  local result=""
+  local item
+  for item in "$@"; do
+    if [[ -n "${result}" ]]; then
+      result+=", "
+    fi
+    result+="${item}"
+  done
+  printf '%s' "${result}"
+}
+
+build_worker_prompt() {
+  local role="$1"
+  local task_relpath="$2"
+  local prompt_files=()
+  prompt_files+=("_governator/worker-contract.md")
+  local primary_doc
+  primary_doc="$(read_primary_doc)"
+  if [[ -n "${primary_doc}" ]]; then
+    prompt_files+=("${primary_doc}")
+  fi
+  prompt_files+=("_governator/roles-worker/${role}.md")
+  prompt_files+=("_governator/custom-prompts/_global.md")
+  prompt_files+=("_governator/custom-prompts/${role}.md")
+  prompt_files+=("${task_relpath}")
+
+  local prompt
+  prompt="Read and follow the instructions in the following files, in this order: $(format_prompt_files "${prompt_files[@]}")."
+  local docs_root
+  docs_root="$(read_docs_root)"
+  if [[ -n "${docs_root}" ]]; then
+    prompt+=" Additional supporting documentation lives under ${docs_root}."
+  fi
+  printf '%s' "${prompt}"
+}
+
+build_special_prompt() {
+  local role="$1"
+  local task_relpath="$2"
+  local prompt_files=()
+  prompt_files+=("_governator/worker-contract.md")
+  local primary_doc
+  primary_doc="$(read_primary_doc)"
+  if [[ -n "${primary_doc}" ]]; then
+    prompt_files+=("${primary_doc}")
+  fi
+  prompt_files+=("${SPECIAL_ROLES_DIR#"${ROOT_DIR}/"}/${role}.md")
+  prompt_files+=("_governator/custom-prompts/_global.md")
+  prompt_files+=("_governator/custom-prompts/${role}.md")
+  prompt_files+=("${task_relpath}")
+
+  local prompt
+  prompt="Read and follow the instructions in the following files, in this order: $(format_prompt_files "${prompt_files[@]}")."
+  local docs_root
+  docs_root="$(read_docs_root)"
+  if [[ -n "${docs_root}" ]]; then
+    prompt+=" Additional supporting documentation lives under ${docs_root}."
+  fi
+  printf '%s' "${prompt}"
+}
+
 # List remote worker branches.
 list_worker_branches() {
-  git -C "${ROOT_DIR}" for-each-ref --format='%(refname:short)' refs/remotes/origin/worker/*/* || true
+  local remote
+  remote="$(read_remote_name)"
+  git -C "${ROOT_DIR}" for-each-ref --format='%(refname:short)' "refs/remotes/${remote}/worker/*/*" || true
 }
 
 # Check whether a branch is recorded as a failed merge.
@@ -1147,6 +1372,45 @@ role_exists() {
   [[ -f "${WORKER_ROLES_DIR}/${role}.md" ]]
 }
 
+bootstrap_template_path() {
+  local mode
+  if ! mode="$(read_project_mode)"; then
+    printf '%s\n' "${BOOTSTRAP_NEW_TEMPLATE}"
+    return 0
+  fi
+  if [[ "${mode}" == "existing" ]]; then
+    printf '%s\n' "${BOOTSTRAP_EXISTING_TEMPLATE}"
+    return 0
+  fi
+  printf '%s\n' "${BOOTSTRAP_NEW_TEMPLATE}"
+}
+
+bootstrap_required_artifacts() {
+  local mode
+  if ! mode="$(read_project_mode)"; then
+    printf '%s\n' "${BOOTSTRAP_NEW_REQUIRED_ARTIFACTS[@]}"
+    return 0
+  fi
+  if [[ "${mode}" == "existing" ]]; then
+    printf '%s\n' "${BOOTSTRAP_EXISTING_REQUIRED_ARTIFACTS[@]}"
+    return 0
+  fi
+  printf '%s\n' "${BOOTSTRAP_NEW_REQUIRED_ARTIFACTS[@]}"
+}
+
+bootstrap_optional_artifacts() {
+  local mode
+  if ! mode="$(read_project_mode)"; then
+    printf '%s\n' "${BOOTSTRAP_NEW_OPTIONAL_ARTIFACTS[@]}"
+    return 0
+  fi
+  if [[ "${mode}" == "existing" ]]; then
+    printf '%s\n' "${BOOTSTRAP_EXISTING_OPTIONAL_ARTIFACTS[@]}"
+    return 0
+  fi
+  printf '%s\n' "${BOOTSTRAP_NEW_OPTIONAL_ARTIFACTS[@]}"
+}
+
 bootstrap_task_path() {
   local path
   while IFS= read -r path; do
@@ -1170,17 +1434,19 @@ ensure_bootstrap_task_exists() {
   if bootstrap_task_path > /dev/null 2>&1; then
     return 0
   fi
-  if [[ ! -f "${BOOTSTRAP_TEMPLATE}" ]]; then
-    log_error "Missing bootstrap template at ${BOOTSTRAP_TEMPLATE}."
+  local template
+  template="$(bootstrap_template_path)"
+  if [[ ! -f "${template}" ]]; then
+    log_error "Missing bootstrap template at ${template}."
     return 1
   fi
 
   local dest="${STATE_DIR}/task-backlog/${BOOTSTRAP_TASK_NAME}.md"
-  cp "${BOOTSTRAP_TEMPLATE}" "${dest}"
+  cp "${template}" "${dest}"
   audit_log "${BOOTSTRAP_TASK_NAME}" "created bootstrap task"
   git -C "${ROOT_DIR}" add "${dest}" "${AUDIT_LOG}"
   git -C "${ROOT_DIR}" commit -m "Create architecture bootstrap task"
-  git -C "${ROOT_DIR}" push origin main
+  git_push_default_branch
 }
 
 artifact_present() {
@@ -1199,8 +1465,10 @@ artifact_skipped_in_task() {
 }
 
 bootstrap_required_artifacts_ok() {
+  local artifacts=()
+  mapfile -t artifacts < <(bootstrap_required_artifacts)
   local artifact
-  for artifact in "${BOOTSTRAP_REQUIRED_ARTIFACTS[@]}"; do
+  for artifact in "${artifacts[@]}"; do
     if ! artifact_present "${artifact}"; then
       return 1
     fi
@@ -1213,8 +1481,10 @@ bootstrap_optional_artifacts_ok() {
   if ! task_file="$(bootstrap_task_path)"; then
     return 1
   fi
+  local artifacts=()
+  mapfile -t artifacts < <(bootstrap_optional_artifacts)
   local artifact
-  for artifact in "${BOOTSTRAP_OPTIONAL_ARTIFACTS[@]}"; do
+  for artifact in "${artifacts[@]}"; do
     if artifact_present "${artifact}"; then
       continue
     fi
@@ -1226,6 +1496,12 @@ bootstrap_optional_artifacts_ok() {
 }
 
 bootstrap_adrs_ok() {
+  local mode
+  if mode="$(read_project_mode)"; then
+    if [[ "${mode}" == "existing" ]]; then
+      return 0
+    fi
+  fi
   if [[ -d "${BOOTSTRAP_DOCS_DIR}" ]]; then
     if find "${BOOTSTRAP_DOCS_DIR}" -maxdepth 1 -type f -iname 'adr*.md' -print -quit 2> /dev/null | grep -q .; then
       return 0
@@ -1309,7 +1585,7 @@ complete_bootstrap_task_if_ready() {
   move_task_file "${task_file}" "${STATE_DIR}/task-done" "${BOOTSTRAP_TASK_NAME}" "moved to task-done"
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
   git -C "${ROOT_DIR}" commit -m "Complete architecture bootstrap"
-  git -C "${ROOT_DIR}" push origin main
+  git_push_default_branch
   return 0
 }
 
@@ -1331,12 +1607,16 @@ spawn_special_worker_for_task() {
   log_file="${log_dir}/${task_name}.log"
   append_worker_log_separator "${log_file}"
 
-  git clone "$(git -C "${ROOT_DIR}" remote get-url origin)" "${tmp_dir}" > /dev/null 2>&1
-  git -C "${tmp_dir}" checkout -b "worker/${worker}/${task_name}" origin/main > /dev/null 2>&1
+  local remote
+  local branch
+  remote="$(read_remote_name)"
+  branch="$(read_default_branch)"
+  git clone "$(git -C "${ROOT_DIR}" remote get-url "${remote}")" "${tmp_dir}" > /dev/null 2>&1
+  git -C "${tmp_dir}" checkout -b "worker/${worker}/${task_name}" "${remote}/${branch}" > /dev/null 2>&1
 
   local task_relpath="${task_file#"${ROOT_DIR}/"}"
   local prompt
-  prompt="Read and follow the instructions in the following files, in this order: _governator/worker-contract.md, ${SPECIAL_ROLES_DIR#"${ROOT_DIR}/"}/${worker}.md, _governator/custom-prompts/_global.md, _governator/custom-prompts/${worker}.md, ${task_relpath}."
+  prompt="$(build_special_prompt "${worker}" "${task_relpath}")"
 
   local started_at
   started_at="$(date +%s)"
@@ -1352,7 +1632,7 @@ assign_bootstrap_task() {
   local task_file="$1"
   local worker="architect"
 
-  sync_main
+  sync_default_branch
 
   local task_name
   task_name="$(basename "${task_file}" .md)"
@@ -1363,7 +1643,7 @@ assign_bootstrap_task() {
 
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
   git -C "${ROOT_DIR}" commit -m "Assign task ${task_name}"
-  git -C "${ROOT_DIR}" push origin main
+  git_push_default_branch
 
   in_flight_add "${task_name}" "${worker}"
   spawn_special_worker_for_task "${assigned_file}" "${worker}" ""
@@ -1426,7 +1706,7 @@ block_task_from_backlog() {
   local task_file="$1"
   local reason="$2"
 
-  sync_main
+  sync_default_branch
 
   local task_name
   task_name="$(basename "${task_file}" .md)"
@@ -1437,7 +1717,7 @@ block_task_from_backlog() {
 
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
   git -C "${ROOT_DIR}" commit -m "Block task ${task_name}"
-  git -C "${ROOT_DIR}" push origin main
+  git_push_default_branch
 }
 
 # Record assignment details in the task file.
@@ -1488,7 +1768,9 @@ annotate_abort() {
 annotate_merge_failure() {
   local task_file="$1"
   local branch="$2"
-  append_section "${task_file}" "## Merge Failure" "Unable to fast-forward merge ${branch} into main on $(timestamp_utc_seconds)."
+  local base_branch
+  base_branch="$(read_default_branch)"
+  append_section "${task_file}" "## Merge Failure" "Unable to fast-forward merge ${branch} into ${base_branch} on $(timestamp_utc_seconds)."
 }
 
 # Parse review.json for decision and comments.
@@ -1534,8 +1816,10 @@ code_review() {
   local tmp_dir
   tmp_dir="$(mktemp -d "/tmp/governator-${PROJECT_NAME}-reviewer-${local_branch//\//-}-XXXXXX")"
 
-  git clone "$(git -C "${ROOT_DIR}" remote get-url origin)" "${tmp_dir}" > /dev/null 2>&1
-  git -C "${tmp_dir}" fetch origin > /dev/null 2>&1
+  local remote
+  remote="$(read_remote_name)"
+  git clone "$(git -C "${ROOT_DIR}" remote get-url "${remote}")" "${tmp_dir}" > /dev/null 2>&1
+  git -C "${tmp_dir}" fetch "${remote}" > /dev/null 2>&1
   git -C "${tmp_dir}" checkout -B "${local_branch}" "${remote_branch}" > /dev/null 2>&1
 
   # Seed with a template to guide reviewers toward the expected schema.
@@ -1544,7 +1828,7 @@ code_review() {
   fi
 
   local prompt
-  prompt="Read and follow the instructions in the following files, in this order: _governator/worker-contract.md, _governator/roles-special/reviewer.md, _governator/custom-prompts/_global.md, _governator/custom-prompts/reviewer.md, ${task_relpath}."
+  prompt="$(build_special_prompt "reviewer" "${task_relpath}")"
 
   if ! run_codex_reviewer "${tmp_dir}" "${prompt}"; then
     log_warn "Reviewer command failed for ${local_branch}."
@@ -1567,7 +1851,7 @@ assign_task() {
   local task_file="$1"
   local worker="$2"
 
-  sync_main
+  sync_default_branch
 
   local task_name
   task_name="$(basename "${task_file}" .md)"
@@ -1578,7 +1862,7 @@ assign_task() {
 
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
   git -C "${ROOT_DIR}" commit -m "Assign task ${task_name}"
-  git -C "${ROOT_DIR}" push origin main
+  git_push_default_branch
 
   spawn_worker_for_task "${assigned_file}" "${worker}" ""
 }
@@ -1612,6 +1896,7 @@ can_assign_task() {
 # Assign tasks in backlog based on role prefix/suffix in filename.
 assign_pending_tasks() {
   touch_logs
+  require_project_mode
   ensure_bootstrap_task_exists
   complete_bootstrap_task_if_ready || true
 
@@ -1693,12 +1978,16 @@ spawn_worker_for_task() {
   log_file="${log_dir}/${task_name}.log"
   append_worker_log_separator "${log_file}"
 
-  git clone "$(git -C "${ROOT_DIR}" remote get-url origin)" "${tmp_dir}" > /dev/null 2>&1
-  git -C "${tmp_dir}" checkout -b "worker/${worker}/${task_name}" origin/main > /dev/null 2>&1
+  local remote
+  local branch
+  remote="$(read_remote_name)"
+  branch="$(read_default_branch)"
+  git clone "$(git -C "${ROOT_DIR}" remote get-url "${remote}")" "${tmp_dir}" > /dev/null 2>&1
+  git -C "${tmp_dir}" checkout -b "worker/${worker}/${task_name}" "${remote}/${branch}" > /dev/null 2>&1
 
   local task_relpath="${task_file#"${ROOT_DIR}/"}"
   local prompt
-  prompt="Read and follow the instructions in the following files, in this order: _governator/worker-contract.md, _governator/roles-worker/${worker}.md, _governator/custom-prompts/_global.md, _governator/custom-prompts/${worker}.md, ${task_relpath}."
+  prompt="$(build_worker_prompt "${worker}" "${task_relpath}")"
 
   local branch_name="worker/${worker}/${task_name}"
   local pid
@@ -1729,7 +2018,9 @@ check_zombie_workers() {
   while IFS='|' read -r task_name worker; do
     local branch="worker/${worker}/${task_name}"
 
-    if git -C "${ROOT_DIR}" show-ref --verify --quiet "refs/remotes/origin/${branch}"; then
+    local remote
+    remote="$(read_remote_name)"
+    if git -C "${ROOT_DIR}" show-ref --verify --quiet "refs/remotes/${remote}/${branch}"; then
       continue
     fi
 
@@ -1775,7 +2066,7 @@ check_zombie_workers() {
         move_task_file "${task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
         git -C "${ROOT_DIR}" add "${STATE_DIR}"
         git -C "${ROOT_DIR}" commit -m "Block task ${task_name} on retry failure"
-        git -C "${ROOT_DIR}" push origin main
+        git_push_default_branch
       fi
       in_flight_remove "${task_name}" "${worker}"
       worker_process_clear "${task_name}" "${worker}"
@@ -1792,11 +2083,13 @@ check_zombie_workers() {
 # Process a single worker branch: review, move task, merge, cleanup.
 process_worker_branch() {
   local remote_branch="$1"
-  local local_branch="${remote_branch#origin/}"
+  local remote
+  remote="$(read_remote_name)"
+  local local_branch="${remote_branch#"${remote}"/}"
   local worker_name="${local_branch#worker/}"
   worker_name="${worker_name%%/*}"
 
-  git_fetch_origin
+  git_fetch_remote
   git -C "${ROOT_DIR}" checkout -B "${local_branch}" "${remote_branch}" > /dev/null 2>&1
 
   local task_name
@@ -1850,21 +2143,23 @@ process_worker_branch() {
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
   git -C "${ROOT_DIR}" commit -m "Process task ${task_name}"
 
-  git_checkout_main
+  git_checkout_default_branch
 
   if git -C "${ROOT_DIR}" merge --ff-only "${local_branch}"; then
-    git -C "${ROOT_DIR}" push origin main
+    git_push_default_branch
   else
-    log_error "Failed to fast-forward merge ${local_branch} into main."
+    local base_branch
+    base_branch="$(read_default_branch)"
+    log_error "Failed to fast-forward merge ${local_branch} into ${base_branch}."
 
     local main_task_file
     if main_task_file="$(task_file_for_name "${task_name}")"; then
-      # Keep main's task state authoritative; block and surface the failure.
+      # Keep the default branch task state authoritative; block and surface the failure.
       annotate_merge_failure "${main_task_file}" "${local_branch}"
       move_task_file "${main_task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
       git -C "${ROOT_DIR}" add "${STATE_DIR}"
       git -C "${ROOT_DIR}" commit -m "Block task ${task_name} on merge failure"
-      git -C "${ROOT_DIR}" push origin main
+      git_push_default_branch
     fi
 
     printf '%s %s\n' "$(timestamp_utc_seconds)" "${local_branch}" >> "${FAILED_MERGES_LOG}"
@@ -1879,7 +2174,7 @@ process_worker_branch() {
 # Iterate all worker branches, skipping those logged as failed merges.
 process_worker_branches() {
   touch_logs
-  git_fetch_origin
+  git_fetch_remote
 
   check_zombie_workers
   cleanup_stale_worker_dirs
@@ -1901,11 +2196,12 @@ main() {
   ensure_clean_git
   ensure_dependencies
   ensure_db_dir
+  require_project_mode
   if handle_locked_state "run"; then
     return 0
   fi
   ensure_lock
-  sync_main
+  sync_default_branch
   process_worker_branches
   assign_pending_tasks
 }
@@ -1937,7 +2233,7 @@ main() {
 # Subcommand reference:
 # - run:
 #   Runs the normal full loop: lock, clean git, dependency check, ensure DB,
-#   sync main, process worker branches, then assign backlog tasks.
+#   sync the default branch, process worker branches, then assign backlog tasks.
 #
 # - process-branches:
 #   Processes only worker branches (including zombie detection and tmp cleanup).
@@ -2010,48 +2306,64 @@ run_locked_action() {
 }
 
 process_branches_action() {
-  sync_main
+  sync_default_branch
   process_worker_branches
 }
 
 assign_backlog_action() {
-  sync_main
+  sync_default_branch
   assign_pending_tasks
 }
 
 check_zombies_action() {
-  sync_main
+  sync_default_branch
   check_zombie_workers
 }
 
 print_help() {
   cat << 'EOF'
-Usage: governator.sh [command]
+Usage: governator.sh <command>
 
 Public commands:
-  run      Run the normal full loop (default).
+  run      Run the normal full loop.
+  init     Configure the project mode and defaults.
   status   Show queue counts, in-flight workers, and blocked tasks.
   lock     Prevent new activity from starting and show a work snapshot.
   unlock   Resume activity after a lock.
 
 Options:
   -h, --help   Show this help message.
+
+Note: You must run `governator.sh init` before using any other command.
 EOF
 }
 
 dispatch_subcommand() {
-  local cmd="${1:-run}"
+  local cmd="${1:-}"
+  if [[ -z "${cmd}" ]]; then
+    print_help
+    return 1
+  fi
   case "${cmd}" in
     -h | --help)
       print_help
       return 0
       ;;
   esac
+
+  if [[ "${cmd}" != "init" ]]; then
+    if ! require_project_mode; then
+      return 1
+    fi
+  fi
   shift || true
 
   case "${cmd}" in
     run)
       main
+      ;;
+    init)
+      init_governator
       ;;
     status)
       ensure_db_dir
