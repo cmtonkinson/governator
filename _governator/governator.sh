@@ -183,7 +183,7 @@ git_pull_default_branch() {
   local remote
   branch="$(read_default_branch)"
   remote="$(read_remote_name)"
-  git -C "${ROOT_DIR}" pull "${remote}" "${branch}"
+  git -C "${ROOT_DIR}" pull -q "${remote}" "${branch}" > /dev/null
 }
 
 # Push the default branch to the default remote.
@@ -192,7 +192,7 @@ git_push_default_branch() {
   local remote
   branch="$(read_default_branch)"
   remote="$(read_remote_name)"
-  git -C "${ROOT_DIR}" push "${remote}" "${branch}"
+  git -C "${ROOT_DIR}" push -q "${remote}" "${branch}" > /dev/null
 }
 
 # Sync local default branch with the default remote.
@@ -205,7 +205,7 @@ sync_default_branch() {
 git_fetch_remote() {
   local remote
   remote="$(read_remote_name)"
-  git -C "${ROOT_DIR}" fetch "${remote}" --prune
+  git -C "${ROOT_DIR}" fetch -q "${remote}" --prune > /dev/null
 }
 
 # Delete a worker branch locally and on the default remote (best-effort).
@@ -787,7 +787,7 @@ abort_task() {
   local aborted_at
   aborted_at="$(timestamp_utc_seconds)"
   local abort_meta
-  abort_meta="Aborted by operator on ${aborted_at}
+  abort_meta="Aborted by operator.
 Worker: ${worker:-n/a}
 PID: ${pid:-n/a}
 Branch: ${branch:-n/a}"
@@ -795,7 +795,7 @@ Branch: ${branch:-n/a}"
   annotate_blocked "${blocked_dest}" "Aborted by operator command."
 
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
-  git -C "${ROOT_DIR}" commit -m "Abort task ${task_name}"
+  git -C "${ROOT_DIR}" commit -q -m "Abort task ${task_name}"
   git_push_default_branch
 }
 
@@ -870,10 +870,15 @@ create_ticket_file() {
 append_section() {
   local file="$1"
   local title="$2"
-  local body="$3"
+  local actor="$3"
+  local body="$4"
+  local prefix
+  prefix="$(timestamp_utc_seconds) [${actor}]: "
   {
     printf '\n%s\n\n' "${title}"
-    printf '%s\n' "${body}"
+    while IFS= read -r line; do
+      printf '%s%s\n' "${prefix}" "${line}"
+    done <<< "${body}"
   } >> "${file}"
 }
 
@@ -1196,7 +1201,11 @@ run_codex_worker_detached() {
   read -r -a args <<< "${CODEX_WORKER_ARGS}"
   (
     cd "${dir}"
-    nohup "${CODEX_BIN}" exec "${args[@]}" --message "${prompt}" >> "${log_file}" 2>&1 &
+    if [[ -n "${prompt}" ]]; then
+      nohup "${CODEX_BIN}" exec "${args[@]}" "${prompt}" >> "${log_file}" 2>&1 &
+    else
+      nohup "${CODEX_BIN}" exec "${args[@]}" >> "${log_file}" 2>&1 &
+    fi
     echo $!
   )
 }
@@ -1213,7 +1222,11 @@ run_codex_worker_blocking() {
 
   local args=()
   read -r -a args <<< "${CODEX_WORKER_ARGS}"
-  (cd "${dir}" && "${CODEX_BIN}" exec "${args[@]}" --message "${prompt}" >> "${log_file}" 2>&1)
+  if [[ -n "${prompt}" ]]; then
+    (cd "${dir}" && "${CODEX_BIN}" exec "${args[@]}" "${prompt}" >> "${log_file}" 2>&1)
+  else
+    (cd "${dir}" && "${CODEX_BIN}" exec "${args[@]}" >> "${log_file}" 2>&1)
+  fi
 }
 
 # Run the reviewer synchronously so a review.json is produced.
@@ -1227,7 +1240,11 @@ run_codex_reviewer() {
 
   local args=()
   read -r -a args <<< "${CODEX_REVIEW_ARGS}"
-  (cd "${dir}" && "${CODEX_BIN}" exec "${args[@]}" --message "${prompt}")
+  if [[ -n "${prompt}" ]]; then
+    (cd "${dir}" && "${CODEX_BIN}" exec "${args[@]}" "${prompt}")
+  else
+    (cd "${dir}" && "${CODEX_BIN}" exec "${args[@]}")
+  fi
 }
 
 format_prompt_files() {
@@ -1473,7 +1490,7 @@ ensure_bootstrap_task_exists() {
   cp "${template}" "${dest}"
   audit_log "${BOOTSTRAP_TASK_NAME}" "created bootstrap task"
   git -C "${ROOT_DIR}" add "${dest}" "${AUDIT_LOG}"
-  git -C "${ROOT_DIR}" commit -m "Create architecture bootstrap task"
+  git -C "${ROOT_DIR}" commit -q -m "Create architecture bootstrap task"
   git_push_default_branch
 }
 
@@ -1612,7 +1629,7 @@ complete_bootstrap_task_if_ready() {
   fi
   move_task_file "${task_file}" "${STATE_DIR}/task-done" "${BOOTSTRAP_TASK_NAME}" "moved to task-done"
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
-  git -C "${ROOT_DIR}" commit -m "Complete architecture bootstrap"
+  git -C "${ROOT_DIR}" commit -q -m "Complete architecture bootstrap"
   git_push_default_branch
   return 0
 }
@@ -1670,7 +1687,7 @@ assign_bootstrap_task() {
   move_task_file "${task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "assigned to ${worker}"
 
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
-  git -C "${ROOT_DIR}" commit -m "Assign task ${task_name}"
+  git -C "${ROOT_DIR}" commit -q -m "Assign task ${task_name}"
   git_push_default_branch
 
   in_flight_add "${task_name}" "${worker}"
@@ -1744,7 +1761,7 @@ block_task_from_backlog() {
   annotate_blocked "${blocked_file}" "${reason}"
 
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
-  git -C "${ROOT_DIR}" commit -m "Block task ${task_name}"
+  git -C "${ROOT_DIR}" commit -q -m "Block task ${task_name}"
   git_push_default_branch
 }
 
@@ -1752,7 +1769,7 @@ block_task_from_backlog() {
 annotate_assignment() {
   local task_file="$1"
   local worker="$2"
-  append_section "${task_file}" "## Assignment" "Assigned to ${worker} by Governator on $(timestamp_utc_seconds)."
+  append_section "${task_file}" "## Assignment" "governator" "Assigned to ${worker}."
 }
 
 # Record review decision and comments in the task file.
@@ -1762,34 +1779,33 @@ annotate_review() {
   local comments=("$@")
   comments=("${comments[@]:2}")
 
-  append_section "${task_file}" "## Review Result" "Decision: ${decision}"
+  local body="Decision: ${decision}"
   if [[ "${#comments[@]}" -gt 0 ]]; then
-    {
-      printf '\nComments:\n'
-      for comment in "${comments[@]}"; do
-        printf -- '- %s\n' "${comment}"
-      done
-    } >> "${task_file}"
+    body+=$'\nComments:'
+    for comment in "${comments[@]}"; do
+      body+=$'\n- '"${comment}"
+    done
   fi
+  append_section "${task_file}" "## Review Result" "reviewer" "${body}"
 }
 
 # Add feedback to a task file before reassigning.
 annotate_feedback() {
   local task_file="$1"
-  append_section "${task_file}" "## Feedback" "Moved back to task-assigned for follow-up on $(timestamp_utc_seconds)."
+  append_section "${task_file}" "## Feedback" "governator" "Moved back to task-assigned for follow-up."
 }
 
 # Capture a blocking reason in the task file.
 annotate_blocked() {
   local task_file="$1"
   local reason="$2"
-  append_section "${task_file}" "## Governator Block" "${reason}"
+  append_section "${task_file}" "## Governator Block" "governator" "${reason}"
 }
 
 annotate_abort() {
   local task_file="$1"
   local abort_metadata="$2"
-  append_section "${task_file}" "## Abort" "${abort_metadata}"
+  append_section "${task_file}" "## Abort" "governator" "${abort_metadata}"
 }
 
 # Record a merge failure for reviewer visibility.
@@ -1798,7 +1814,7 @@ annotate_merge_failure() {
   local branch="$2"
   local base_branch
   base_branch="$(read_default_branch)"
-  append_section "${task_file}" "## Merge Failure" "Unable to fast-forward merge ${branch} into ${base_branch} on $(timestamp_utc_seconds)."
+  append_section "${task_file}" "## Merge Failure" "governator" "Unable to fast-forward merge ${branch} into ${base_branch}."
 }
 
 # Parse review.json for decision and comments.
@@ -1889,7 +1905,7 @@ assign_task() {
   move_task_file "${task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "assigned to ${worker}"
 
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
-  git -C "${ROOT_DIR}" commit -m "Assign task ${task_name}"
+  git -C "${ROOT_DIR}" commit -q -m "Assign task ${task_name}"
   git_push_default_branch
 
   spawn_worker_for_task "${assigned_file}" "${worker}" ""
@@ -2093,7 +2109,7 @@ check_zombie_workers() {
         annotate_blocked "${task_file}" "Worker exited before pushing branch twice; blocking task."
         move_task_file "${task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
         git -C "${ROOT_DIR}" add "${STATE_DIR}"
-        git -C "${ROOT_DIR}" commit -m "Block task ${task_name} on retry failure"
+        git -C "${ROOT_DIR}" commit -q -m "Block task ${task_name} on retry failure"
         git_push_default_branch
       fi
       in_flight_remove "${task_name}" "${worker}"
@@ -2169,11 +2185,11 @@ process_worker_branch() {
   esac
 
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
-  git -C "${ROOT_DIR}" commit -m "Process task ${task_name}"
+  git -C "${ROOT_DIR}" commit -q -m "Process task ${task_name}"
 
   git_checkout_default_branch
 
-  if git -C "${ROOT_DIR}" merge --ff-only "${local_branch}"; then
+  if git -C "${ROOT_DIR}" merge --ff-only -q "${local_branch}" > /dev/null; then
     git_push_default_branch
   else
     local base_branch
@@ -2186,7 +2202,7 @@ process_worker_branch() {
       annotate_merge_failure "${main_task_file}" "${local_branch}"
       move_task_file "${main_task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
       git -C "${ROOT_DIR}" add "${STATE_DIR}"
-      git -C "${ROOT_DIR}" commit -m "Block task ${task_name} on merge failure"
+      git -C "${ROOT_DIR}" commit -q -m "Block task ${task_name} on merge failure"
       git_push_default_branch
     fi
 
