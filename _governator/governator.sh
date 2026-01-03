@@ -42,10 +42,11 @@ FAILED_MERGES_LOG="${STATE_DIR}/failed-merges.log"
 IN_FLIGHT_LOG="${STATE_DIR}/in-flight.log"
 SYSTEM_LOCK_FILE="${DB_DIR}/governator.locked"
 SYSTEM_LOCK_PATH="${SYSTEM_LOCK_FILE#"${ROOT_DIR}/"}"
+GITIGNORE_PATH="${ROOT_DIR}/.gitignore"
 
 CODEX_BIN="${CODEX_BIN:-codex}"
-CODEX_WORKER_ARGS="${CODEX_WORKER_ARGS:---non-interactive}"
-CODEX_REVIEW_ARGS="${CODEX_REVIEW_ARGS:---non-interactive}"
+CODEX_WORKER_ARGS="${CODEX_WORKER_ARGS:-}"
+CODEX_REVIEW_ARGS="${CODEX_REVIEW_ARGS:-}"
 
 DEFAULT_GLOBAL_CAP=1
 DEFAULT_WORKER_CAP=1
@@ -57,7 +58,8 @@ DEFAULT_PRIMARY_DOC="README.md"
 
 PROJECT_NAME="$(basename "${ROOT_DIR}")"
 
-BOOTSTRAP_TASK_NAME="000-architecture-bootstrap"
+BOOTSTRAP_ROLE="architect"
+BOOTSTRAP_TASK_NAME="000-architecture-bootstrap-${BOOTSTRAP_ROLE}"
 BOOTSTRAP_NEW_TEMPLATE="${TEMPLATES_DIR}/000-architecture-bootstrap.md"
 BOOTSTRAP_EXISTING_TEMPLATE="${TEMPLATES_DIR}/000-architecture-discovery.md"
 BOOTSTRAP_DOCS_DIR="${ROOT_DIR}/_governator/docs"
@@ -65,6 +67,12 @@ BOOTSTRAP_NEW_REQUIRED_ARTIFACTS=("asr.md" "arc42.md")
 BOOTSTRAP_NEW_OPTIONAL_ARTIFACTS=("personas.md" "wardley.md")
 BOOTSTRAP_EXISTING_REQUIRED_ARTIFACTS=("existing-system-discovery.md")
 BOOTSTRAP_EXISTING_OPTIONAL_ARTIFACTS=()
+
+GITIGNORE_ENTRIES=(
+  "_governator/governator.lock"
+  ".governator/governator.locked"
+  ".governator/logs/"
+)
 
 # Standard UTC timestamp helpers.
 timestamp_utc_seconds() {
@@ -131,6 +139,13 @@ ensure_clean_git() {
   status="$(git -C "${ROOT_DIR}" status --porcelain 2> /dev/null || true)"
   if [[ -n "${status}" && -n "${SYSTEM_LOCK_PATH}" ]]; then
     status="$(printf '%s\n' "${status}" | grep -v -F -- "${SYSTEM_LOCK_PATH}" || true)"
+  fi
+  if [[ -n "${status}" ]]; then
+    status="$(
+      printf '%s\n' "${status}" | grep -v -E \
+        '^[[:space:][:alnum:]\?]{2}[[:space:]](_governator/governator\.lock|\.governator/governator\.locked|\.governator/audit\.log|\.governator/worker-processes\.log|\.governator/retry-counts\.log|\.governator/logs/)' \
+        || true
+    )"
   fi
   if [[ -n "${status}" ]]; then
     log_warn "Local git changes detected, exiting."
@@ -390,8 +405,21 @@ ensure_db_dir() {
   fi
 }
 
+ensure_gitignore_entries() {
+  if [[ ! -f "${GITIGNORE_PATH}" ]]; then
+    printf '# Governator\n' > "${GITIGNORE_PATH}"
+  fi
+  local entry
+  for entry in "${GITIGNORE_ENTRIES[@]}"; do
+    if ! grep -Fqx -- "${entry}" "${GITIGNORE_PATH}" 2> /dev/null; then
+      printf '%s\n' "${entry}" >> "${GITIGNORE_PATH}"
+    fi
+  done
+}
+
 init_governator() {
   ensure_db_dir
+  ensure_gitignore_entries
   if read_project_mode > /dev/null 2>&1; then
     log_error "Governator is already initialized. Re-run init after clearing ${PROJECT_MODE_FILE}."
     exit 1
@@ -1630,7 +1658,7 @@ spawn_special_worker_for_task() {
 
 assign_bootstrap_task() {
   local task_file="$1"
-  local worker="architect"
+  local worker="${BOOTSTRAP_ROLE}"
 
   sync_default_branch
 
