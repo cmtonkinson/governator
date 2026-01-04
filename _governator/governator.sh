@@ -22,7 +22,6 @@ DB_DIR="${ROOT_DIR}/.governator"
 PROJECT_MODE_FILE="${DB_DIR}/project_mode"
 DEFAULT_BRANCH_FILE="${DB_DIR}/default_branch"
 REMOTE_NAME_FILE="${DB_DIR}/remote_name"
-PRIMARY_DOC_FILE="${DB_DIR}/primary_doc"
 DOCS_ROOT_FILE="${DB_DIR}/docs_root"
 
 NEXT_TICKET_FILE="${DB_DIR}/next_ticket_id"
@@ -55,7 +54,6 @@ DEFAULT_TICKET_ID=1
 DEFAULT_WORKER_TIMEOUT_SECONDS=900
 DEFAULT_REMOTE_NAME="origin"
 DEFAULT_BRANCH_NAME="main"
-DEFAULT_PRIMARY_DOC="README.md"
 
 PROJECT_NAME="$(basename "${ROOT_DIR}")"
 
@@ -171,6 +169,13 @@ ensure_dependencies() {
   fi
   if [[ "${#missing[@]}" -gt 0 ]]; then
     log_error "Missing dependencies: ${missing[*]}"
+    exit 1
+  fi
+}
+
+require_governator_doc() {
+  if [[ ! -f "${ROOT_DIR}/GOVERNATOR.md" ]]; then
+    log_error "GOVERNATOR.md not found at project root; aborting."
     exit 1
   fi
 }
@@ -305,10 +310,6 @@ read_remote_name() {
 
 read_default_branch() {
   read_config_value "${DEFAULT_BRANCH_FILE}" "${DEFAULT_BRANCH_NAME}"
-}
-
-read_primary_doc() {
-  read_config_value "${PRIMARY_DOC_FILE}" "${DEFAULT_PRIMARY_DOC}"
 }
 
 read_docs_root() {
@@ -454,13 +455,6 @@ init_governator() {
     default_branch="${DEFAULT_BRANCH_NAME}"
   fi
 
-  local primary_doc
-  read -r -p "Primary source-of-truth doc [${DEFAULT_PRIMARY_DOC}]: " primary_doc
-  primary_doc="$(trim_whitespace "${primary_doc}")"
-  if [[ -z "${primary_doc}" ]]; then
-    primary_doc="${DEFAULT_PRIMARY_DOC}"
-  fi
-
   local docs_root
   read -r -p "Additional docs path (relative, empty for none): " docs_root
   docs_root="$(trim_whitespace "${docs_root}")"
@@ -468,21 +462,16 @@ init_governator() {
   printf '%s\n' "${project_mode}" > "${PROJECT_MODE_FILE}"
   printf '%s\n' "${remote_name}" > "${REMOTE_NAME_FILE}"
   printf '%s\n' "${default_branch}" > "${DEFAULT_BRANCH_FILE}"
-  printf '%s\n' "${primary_doc}" > "${PRIMARY_DOC_FILE}"
   printf '%s\n' "${docs_root}" > "${DOCS_ROOT_FILE}"
 
   printf 'Governator initialized:\n'
   printf '  project mode: %s\n' "${project_mode}"
   printf '  default remote: %s\n' "${remote_name}"
   printf '  default branch: %s\n' "${default_branch}"
-  printf '  primary doc: %s\n' "${primary_doc}"
   if [[ -n "${docs_root}" ]]; then
     printf '  docs root: %s\n' "${docs_root}"
   else
     printf '  docs root: (none)\n'
-  fi
-  if [[ ! -f "${ROOT_DIR}/${primary_doc}" ]]; then
-    log_warn "Primary doc not found at ${primary_doc}."
   fi
 }
 
@@ -1284,11 +1273,6 @@ build_worker_prompt() {
   local task_relpath="$2"
   local prompt_files=()
   prompt_files+=("_governator/worker-contract.md")
-  local primary_doc
-  primary_doc="$(read_primary_doc)"
-  if [[ -n "${primary_doc}" ]]; then
-    prompt_files+=("${primary_doc}")
-  fi
   prompt_files+=("_governator/roles-worker/${role}.md")
   prompt_files+=("_governator/custom-prompts/_global.md")
   prompt_files+=("_governator/custom-prompts/${role}.md")
@@ -1309,11 +1293,6 @@ build_special_prompt() {
   local task_relpath="$2"
   local prompt_files=()
   prompt_files+=("_governator/worker-contract.md")
-  local primary_doc
-  primary_doc="$(read_primary_doc)"
-  if [[ -n "${primary_doc}" ]]; then
-    prompt_files+=("${primary_doc}")
-  fi
   prompt_files+=("${SPECIAL_ROLES_DIR#"${ROOT_DIR}/"}/${role}.md")
   prompt_files+=("_governator/custom-prompts/_global.md")
   prompt_files+=("_governator/custom-prompts/${role}.md")
@@ -2265,6 +2244,7 @@ main() {
   ensure_clean_git
   ensure_dependencies
   ensure_db_dir
+  require_governator_doc
   require_project_mode
   if handle_locked_state "run"; then
     return 0
@@ -2356,12 +2336,14 @@ ensure_ready_with_lock() {
   ensure_lock
   ensure_dependencies
   ensure_db_dir
+  require_governator_doc
 }
 
 ensure_ready_no_lock() {
   ensure_clean_git
   ensure_dependencies
   ensure_db_dir
+  require_governator_doc
 }
 
 run_locked_action() {

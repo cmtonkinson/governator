@@ -14,6 +14,7 @@ live on disk and in git.
 
 ## Quickstart
 1. Install Governator at your project root.
+2. Create `GOVERNATOR.md` in your project root.
 2. Run `governator.sh init`
 3. Schedule `governator.sh run` to run periodically.
 4. Consider creating a shell alias/function.
@@ -27,6 +28,14 @@ curl -fsSL https://gitlab.com/cmtonkinson/governator/-/archive/main/governator-m
 ```
 
 ### Configuration
+`GOVERNATOR.md` is a markdown file that governs the system. It is required.
+This is effectively your design-time "prompt" to control what the Governator
+does. Here you should explain exactly what you want. Your vision, goals, non-
+goals, ideas, hard requirements, nice to haves, assumptions, definitions of
+"done," use cases, guiding principles, etc.
+
+_TODO: add a sample `GOVERNATOR.md` for both new and existing projects._
+
 You have to run `governator.sh init` before the system will do anything useful.
 
 The most important question is whether this is a new or existing project: in
@@ -111,7 +120,7 @@ There is no conversational back-and-forth.
 ## High-Level Workflow
 1. You copy the `_governator/` directory into the project root.
 2. You run `governator.sh init` to configure project mode, default branch/remote, and doc locations.
-3. You write the primary project doc (default `README.md`) for your project.
+3. You write `GOVERNATOR.md` for your project.
    - this is the only authoritative description of intent
    - workers never modify it
 4. You set up a cron job that periodically runs `governator.sh run`.
@@ -168,7 +177,6 @@ _governator/
 .governator/
 ├── default_branch
 ├── docs_root
-├── primary_doc
 ├── project_mode
 ├── next_ticket_id
 ├── remote_name
@@ -249,7 +257,7 @@ Each worker execution:
 - Runs non-interactively (e.g. `codex exec`)
 - Reads inputs in order:
   1. `_governator/worker-contract.md`
-  2. `_governator/roles-worker/<role>.md`
+  2. `_governator/roles-<type>/<role>.md`
   3. `_governator/custom-prompts/_global.md`
   4. `_governator/custom-prompts/<role>.md`
   5. `_governator/task-assigned/<task>.md`
@@ -304,8 +312,7 @@ It requires:
 - git
 - cron (or some other means of invocation)
 - one or more non-interactive LLM CLIs (e.g. Codex, Claude)
-- a fully-baked primary project doc (configured in `.governator/primary_doc`,
-  default `README.md`)
+- a fully-baked `GOVERNATOR.md`
   - overview
   - goals & non-goals
   - assumptions
