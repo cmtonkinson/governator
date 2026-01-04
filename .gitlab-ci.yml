@@ -15,11 +15,6 @@ lint-and-test:
     - pip install --no-cache-dir shell-gpt
   script:
     - |
-      echo "ref_name=$CI_COMMIT_REF_NAME"
-      echo "ref_protected=$CI_COMMIT_REF_PROTECTED"
-      echo "pipeline_source=$CI_PIPELINE_SOURCE"
-      echo "has_key=$([[ -n "${SGPT_API_KEY:-}" ]] && echo yes || echo no)"
-      echo "key_len=${#SGPT_API_KEY}"
       if [[ -z "${SGPT_API_KEY:-}" ]]; then
         echo "SGPT_API_KEY is required for sgpt-backed tests"
         exit 1
