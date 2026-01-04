@@ -42,8 +42,6 @@ SYSTEM_LOCK_FILE="${DB_DIR}/governator.locked"
 SYSTEM_LOCK_PATH="${SYSTEM_LOCK_FILE#"${ROOT_DIR}/"}"
 GITIGNORE_PATH="${ROOT_DIR}/.gitignore"
 
-CODEX_BIN="${CODEX_BIN:-codex}"
-CODEX_ARGS="${CODEX_ARGS:---search --sandbox=workspace-write}"
 GOV_QUIET=0
 
 DEFAULT_GLOBAL_CAP=1
@@ -100,18 +98,6 @@ log_warn() {
 
 log_error() {
   log_with_level "ERROR" "$@" >&2
-}
-
-# Parse a shell-style argument string into an array variable name.
-parse_shell_args() {
-  local input="$1"
-  local out_var="$2"
-  local parsed=()
-  if [[ -n "${input}" ]]; then
-    # shellcheck disable=SC2086
-    eval "parsed=(${input})"
-  fi
-  eval "${out_var}=(\"\${parsed[@]}\")"
 }
 
 # Append visible separators to per-task worker logs before each new worker starts.
@@ -174,8 +160,8 @@ ensure_dependencies() {
       missing+=("${dep}")
     fi
   done
-  if ! command -v "${CODEX_BIN}" > /dev/null 2>&1; then
-    missing+=("${CODEX_BIN}")
+  if ! command -v codex > /dev/null 2>&1; then
+    missing+=("codex")
   fi
   if [[ "${#missing[@]}" -gt 0 ]]; then
     log_error "Missing dependencies: ${missing[*]}"
@@ -1204,15 +1190,9 @@ run_codex_worker_detached() {
   fi
 
   # Use nohup to prevent worker exit from being tied to this process.
-  local args=()
-  parse_shell_args "${CODEX_ARGS}" args
   (
     cd "${dir}"
-    if [[ -n "${prompt}" ]]; then
-      nohup "${CODEX_BIN}" "${args[@]}" exec "${prompt}" >> "${log_file}" 2>&1 &
-    else
-      nohup "${CODEX_BIN}" "${args[@]}" exec >> "${log_file}" 2>&1 &
-    fi
+    nohup codex --search --sandbox=workspace-write exec "${prompt}" >> "${log_file}" 2>&1 &
     echo $!
   )
 }
@@ -1227,13 +1207,7 @@ run_codex_worker_blocking() {
     return $?
   fi
 
-  local args=()
-  parse_shell_args "${CODEX_ARGS}" args
-  if [[ -n "${prompt}" ]]; then
-    (cd "${dir}" && "${CODEX_BIN}" "${args[@]}" exec "${prompt}" >> "${log_file}" 2>&1)
-  else
-    (cd "${dir}" && "${CODEX_BIN}" "${args[@]}" exec >> "${log_file}" 2>&1)
-  fi
+  (cd "${dir}" && codex --search --sandbox=workspace-write exec "${prompt}" >> "${log_file}" 2>&1)
 }
 
 # Run the reviewer synchronously so a review.json is produced.
@@ -1245,13 +1219,7 @@ run_codex_reviewer() {
     return 0
   fi
 
-  local args=()
-  parse_shell_args "${CODEX_ARGS}" args
-  if [[ -n "${prompt}" ]]; then
-    (cd "${dir}" && "${CODEX_BIN}" "${args[@]}" exec "${prompt}")
-  else
-    (cd "${dir}" && "${CODEX_BIN}" "${args[@]}" exec)
-  fi
+  (cd "${dir}" && codex --search --sandbox=workspace-write exec "${prompt}")
 }
 
 format_prompt_files() {
