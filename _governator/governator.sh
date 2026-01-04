@@ -192,6 +192,10 @@ ensure_update_dependencies() {
     log_error "Missing dependency: curl"
     exit 1
   fi
+  if ! command -v shasum > /dev/null 2>&1; then
+    log_error "Missing dependency: shasum"
+    exit 1
+  fi
 }
 
 require_governator_doc() {
@@ -503,6 +507,16 @@ update_governator() {
     rm -f "${tmp_file}"
     log_error "Downloaded update is empty; aborting."
     exit 1
+  fi
+
+  local local_hash
+  local remote_hash
+  local_hash="$(shasum -a 256 "${script_path}" | awk '{print $1}')"
+  remote_hash="$(shasum -a 256 "${tmp_file}" | awk '{print $1}')"
+  if [[ -n "${local_hash}" && "${local_hash}" == "${remote_hash}" ]]; then
+    rm -f "${tmp_file}"
+    log_info "Already up to date."
+    return 0
   fi
 
   mv "${tmp_file}" "${script_path}"
