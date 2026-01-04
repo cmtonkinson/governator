@@ -43,6 +43,7 @@ SYSTEM_LOCK_PATH="${SYSTEM_LOCK_FILE#"${ROOT_DIR}/"}"
 GITIGNORE_PATH="${ROOT_DIR}/.gitignore"
 
 GOV_QUIET=0
+GOV_VERBOSE=0
 
 DEFAULT_GLOBAL_CAP=1
 DEFAULT_WORKER_CAP=1
@@ -92,12 +93,28 @@ log_info() {
   log_with_level "INFO" "$@"
 }
 
+log_verbose() {
+  if [[ "${GOV_QUIET}" -eq 1 || "${GOV_VERBOSE}" -eq 0 ]]; then
+    return 0
+  fi
+  log_with_level "INFO" "$@"
+}
+
 log_warn() {
   log_with_level "WARN" "$@" >&2
 }
 
 log_error() {
   log_with_level "ERROR" "$@" >&2
+}
+
+format_command() {
+  local arg
+  local output=""
+  for arg in "$@"; do
+    output+=$(printf '%q ' "${arg}")
+  done
+  printf '%s' "${output%" "}"
 }
 
 # Append visible separators to per-task worker logs before each new worker starts.
@@ -307,7 +324,6 @@ read_remote_name() {
 read_default_branch() {
   read_config_value "${DEFAULT_BRANCH_FILE}" "${DEFAULT_BRANCH_NAME}"
 }
-
 
 # Read the global concurrency cap (defaults to 1).
 read_global_cap() {
@@ -1181,6 +1197,7 @@ run_codex_worker_detached() {
   local prompt="$2"
   local log_file="$3"
   if [[ -n "${CODEX_WORKER_CMD:-}" ]]; then
+    log_verbose "Worker command: GOV_PROMPT=$(printf '%q' "${prompt}") $(format_command nohup bash -c "${CODEX_WORKER_CMD}")"
     (
       cd "${dir}"
       GOV_PROMPT="${prompt}" nohup bash -c "${CODEX_WORKER_CMD}" >> "${log_file}" 2>&1 &
@@ -1192,6 +1209,7 @@ run_codex_worker_detached() {
   # Use nohup to prevent worker exit from being tied to this process.
   (
     cd "${dir}"
+    log_verbose "Worker command: $(format_command nohup codex --search --sandbox=workspace-write exec "${prompt}")"
     nohup codex --search --sandbox=workspace-write exec "${prompt}" >> "${log_file}" 2>&1 &
     echo $!
   )
@@ -1203,10 +1221,12 @@ run_codex_worker_blocking() {
   local prompt="$2"
   local log_file="$3"
   if [[ -n "${CODEX_WORKER_CMD:-}" ]]; then
+    log_verbose "Worker command: GOV_PROMPT=$(printf '%q' "${prompt}") $(format_command bash -c "${CODEX_WORKER_CMD}")"
     (cd "${dir}" && GOV_PROMPT="${prompt}" bash -c "${CODEX_WORKER_CMD}" >> "${log_file}" 2>&1)
     return $?
   fi
 
+  log_verbose "Worker command: $(format_command codex --search --sandbox=workspace-write exec "${prompt}")"
   (cd "${dir}" && codex --search --sandbox=workspace-write exec "${prompt}" >> "${log_file}" 2>&1)
 }
 
@@ -1215,10 +1235,12 @@ run_codex_reviewer() {
   local dir="$1"
   local prompt="$2"
   if [[ -n "${CODEX_REVIEW_CMD:-}" ]]; then
+    log_verbose "Reviewer command: GOV_PROMPT=$(printf '%q' "${prompt}") $(format_command bash -c "${CODEX_REVIEW_CMD}")"
     (cd "${dir}" && GOV_PROMPT="${prompt}" bash -c "${CODEX_REVIEW_CMD}")
     return 0
   fi
 
+  log_verbose "Reviewer command: $(format_command codex --search --sandbox=workspace-write exec "${prompt}")"
   (cd "${dir}" && codex --search --sandbox=workspace-write exec "${prompt}")
 }
 
@@ -2320,6 +2342,9 @@ parse_run_args() {
       -q | --quiet)
         GOV_QUIET=1
         ;;
+      -v | --verbose)
+        GOV_VERBOSE=1
+        ;;
       --)
         shift
         break
@@ -2362,6 +2387,7 @@ Public commands:
 Options:
   -h, --help   Show this help message.
   run -q, --quiet   Suppress stdout during run (errors still surface).
+  run -v, --verbose  Print worker/reviewer command lines.
 
 Note: You must run `governator.sh init` before using any other command.
 EOF
