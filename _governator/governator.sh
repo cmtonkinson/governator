@@ -103,6 +103,18 @@ log_error() {
   log_with_level "ERROR" "$@" >&2
 }
 
+# Parse a shell-style argument string into an array variable name.
+parse_shell_args() {
+  local input="$1"
+  local out_var="$2"
+  local parsed=()
+  if [[ -n "${input}" ]]; then
+    # shellcheck disable=SC2086
+    eval "parsed=(${input})"
+  fi
+  eval "${out_var}=(\"\${parsed[@]}\")"
+}
+
 # Append visible separators to per-task worker logs before each new worker starts.
 append_worker_log_separator() {
   local log_file="$1"
@@ -1194,7 +1206,7 @@ run_codex_worker_detached() {
 
   # Use nohup to prevent worker exit from being tied to this process.
   local args=()
-  read -r -a args <<< "${CODEX_WORKER_ARGS}"
+  parse_shell_args "${CODEX_WORKER_ARGS}" args
   (
     cd "${dir}"
     if [[ -n "${prompt}" ]]; then
@@ -1217,7 +1229,7 @@ run_codex_worker_blocking() {
   fi
 
   local args=()
-  read -r -a args <<< "${CODEX_WORKER_ARGS}"
+  parse_shell_args "${CODEX_WORKER_ARGS}" args
   if [[ -n "${prompt}" ]]; then
     (cd "${dir}" && "${CODEX_BIN}" exec "${args[@]}" "${prompt}" >> "${log_file}" 2>&1)
   else
@@ -1235,7 +1247,7 @@ run_codex_reviewer() {
   fi
 
   local args=()
-  read -r -a args <<< "${CODEX_REVIEW_ARGS}"
+  parse_shell_args "${CODEX_REVIEW_ARGS}" args
   if [[ -n "${prompt}" ]]; then
     (cd "${dir}" && "${CODEX_BIN}" exec "${args[@]}" "${prompt}")
   else
