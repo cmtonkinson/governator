@@ -99,7 +99,7 @@ log_verbose() {
   if [[ "${GOV_QUIET}" -eq 1 || "${GOV_VERBOSE}" -eq 0 ]]; then
     return 0
   fi
-  log_with_level "INFO" "$@"
+  log_with_level "INFO" "$@" >&2
 }
 
 log_warn() {

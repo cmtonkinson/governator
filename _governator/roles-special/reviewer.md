@@ -85,12 +85,11 @@ When rejecting or requesting changes, you must:
 
 If only minor nits exist and correctness is satisfied, approve.
 
-When approving, you must:
-- Annotate the task with a brief summary of how you understand that the change
-  adequetly satisfies the requirements.
+When approving, you must provide at least one comment summarizing your
+understanding of the way the change adequetly satisfies the requirements.
 
-When approving, you MAY:
-- Annotate the task with any recommended optional changes or suggestions.
+When approving, if you have optional changes or suggestions, you may provide
+that feedback, one per comment.
 
 ## 7. Prohibitions
 You must not:
@@ -114,3 +113,9 @@ Your responsibility is to:
 - Require clarity and explicitness
 
 When in doubt, **block approval** rather than guessing.
+
+## 9. Strict Output Requirements
+You MUST update/complete the `review.json` file at the project root using strict
+JSON only. This file has been seeded with an example template. No other formats
+are accepted. No additional markup, commentary, formatting, or explanations are
+allowed.
