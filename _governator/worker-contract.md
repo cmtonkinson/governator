@@ -38,10 +38,16 @@ Before exiting, you must, in order:
 - Push this branch exactly once, as your final action.
 
 You MAY `fetch` from `origin` and `rebase` onto `main` before you push.
-Do not commit any file changes within the _governator/ directory.
+
+Do NOT make or commit any changes to or within the following locations:
+- _governator/custom-prompts/
+- _governator/governator.sh
+- _governator/roles-*/
+- _governator/templates/
+- _governator/worker-contract.md
 
 You must not:
-- Modify any other branch or tag (including `main`).
+- Modify any other branch or tag.
 - Push partial or exploratory work.
 
 The seven rules of writing git commit messages:
