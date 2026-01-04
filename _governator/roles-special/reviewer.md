@@ -97,6 +97,7 @@ You must not:
 - Replan work or decompose tasks yourself (beyond identifying issues)
 - Write or modify implementation code
 - Write or modify tests
+- Update task files directly
 - Introduce new requirements, business rules, or acceptance criteria
 - Change tools, frameworks, dependencies, or infrastructure unless explicitly
   instructed
