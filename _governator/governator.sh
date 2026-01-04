@@ -22,7 +22,6 @@ DB_DIR="${ROOT_DIR}/.governator"
 PROJECT_MODE_FILE="${DB_DIR}/project_mode"
 DEFAULT_BRANCH_FILE="${DB_DIR}/default_branch"
 REMOTE_NAME_FILE="${DB_DIR}/remote_name"
-DOCS_ROOT_FILE="${DB_DIR}/docs_root"
 
 NEXT_TICKET_FILE="${DB_DIR}/next_ticket_id"
 GLOBAL_CAP_FILE="${DB_DIR}/global_worker_cap"
@@ -44,8 +43,8 @@ SYSTEM_LOCK_PATH="${SYSTEM_LOCK_FILE#"${ROOT_DIR}/"}"
 GITIGNORE_PATH="${ROOT_DIR}/.gitignore"
 
 CODEX_BIN="${CODEX_BIN:-codex}"
-CODEX_WORKER_ARGS="${CODEX_WORKER_ARGS:-}"
-CODEX_REVIEW_ARGS="${CODEX_REVIEW_ARGS:-}"
+CODEX_WORKER_ARGS="${CODEX_WORKER_ARGS:---sandbox=workspace-write --search}"
+CODEX_REVIEW_ARGS="${CODEX_REVIEW_ARGS:---sandbox=workspace-write --search}"
 GOV_QUIET=0
 
 DEFAULT_GLOBAL_CAP=1
@@ -312,13 +311,6 @@ read_default_branch() {
   read_config_value "${DEFAULT_BRANCH_FILE}" "${DEFAULT_BRANCH_NAME}"
 }
 
-read_docs_root() {
-  if [[ ! -f "${DOCS_ROOT_FILE}" ]]; then
-    printf '%s\n' ""
-    return 0
-  fi
-  trim_whitespace "$(cat "${DOCS_ROOT_FILE}")"
-}
 
 # Read the global concurrency cap (defaults to 1).
 read_global_cap() {
@@ -455,23 +447,18 @@ init_governator() {
     default_branch="${DEFAULT_BRANCH_NAME}"
   fi
 
-  local docs_root
-  read -r -p "Additional docs path (relative, empty for none): " docs_root
-  docs_root="$(trim_whitespace "${docs_root}")"
-
   printf '%s\n' "${project_mode}" > "${PROJECT_MODE_FILE}"
   printf '%s\n' "${remote_name}" > "${REMOTE_NAME_FILE}"
   printf '%s\n' "${default_branch}" > "${DEFAULT_BRANCH_FILE}"
-  printf '%s\n' "${docs_root}" > "${DOCS_ROOT_FILE}"
 
   printf 'Governator initialized:\n'
   printf '  project mode: %s\n' "${project_mode}"
   printf '  default remote: %s\n' "${remote_name}"
   printf '  default branch: %s\n' "${default_branch}"
-  if [[ -n "${docs_root}" ]]; then
-    printf '  docs root: %s\n' "${docs_root}"
-  else
-    printf '  docs root: (none)\n'
+
+  git -C "${ROOT_DIR}" add -A
+  if [[ -n "$(git -C "${ROOT_DIR}" status --porcelain 2> /dev/null)" ]]; then
+    git -C "${ROOT_DIR}" commit -q -m "[governator] Initialize configuration"
   fi
 }
 
@@ -1280,11 +1267,6 @@ build_worker_prompt() {
 
   local prompt
   prompt="Read and follow the instructions in the following files, in this order: $(format_prompt_files "${prompt_files[@]}")."
-  local docs_root
-  docs_root="$(read_docs_root)"
-  if [[ -n "${docs_root}" ]]; then
-    prompt+=" Additional supporting documentation lives under ${docs_root}."
-  fi
   printf '%s' "${prompt}"
 }
 
@@ -1300,11 +1282,6 @@ build_special_prompt() {
 
   local prompt
   prompt="Read and follow the instructions in the following files, in this order: $(format_prompt_files "${prompt_files[@]}")."
-  local docs_root
-  docs_root="$(read_docs_root)"
-  if [[ -n "${docs_root}" ]]; then
-    prompt+=" Additional supporting documentation lives under ${docs_root}."
-  fi
   printf '%s' "${prompt}"
 }
 

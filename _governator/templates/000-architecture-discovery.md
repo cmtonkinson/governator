@@ -11,7 +11,6 @@ Create `_governator/docs/existing-system-discovery.md` using the template in
 
 ## Discovery Rules
 - Read `GOVERNATOR.md`.
-- If `.governator/docs_root` is set, review documentation under that path.
 - Identify and list all relevant architecture artifacts already present in the repo.
 - Do not invent new requirements or architecture decisions.
 - Do not create new feature or implementation tasks.

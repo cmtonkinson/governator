@@ -176,7 +176,6 @@ _governator/
 ```
 .governator/
 ├── default_branch
-├── docs_root
 ├── project_mode
 ├── next_ticket_id
 ├── remote_name

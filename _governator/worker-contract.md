@@ -11,8 +11,6 @@ task.
 ## 2. Required Inputs (Read in Order)
 Before taking any action, you must read in full:
 - GOVERNATOR.md. You must never modify this file.
-- If `.governator/docs_root` is set, treat documentation under that path as
-  supporting context.
 
 ## 3. Scope Rules
 You must:
