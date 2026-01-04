@@ -521,6 +521,10 @@ update_governator() {
 
   mv "${tmp_file}" "${script_path}"
   chmod +x "${script_path}"
+  git -C "${ROOT_DIR}" add "${script_path}"
+  if [[ -n "$(git -C "${ROOT_DIR}" status --porcelain -- "${script_path}")" ]]; then
+    git -C "${ROOT_DIR}" commit -q -m "[governator] Update governator.sh"
+  fi
   log_info "Updated ${script_path} from ${UPDATE_URL}"
 }
 
