@@ -460,6 +460,13 @@ ensure_db_dir() {
   if [[ ! -f "${WORKER_TIMEOUT_FILE}" ]]; then
     printf '%s\n' "${DEFAULT_WORKER_TIMEOUT_SECONDS}" > "${WORKER_TIMEOUT_FILE}"
   fi
+  if [[ ! -f "${REASONING_EFFORT_FILE}" ]]; then
+    {
+      printf '%s\n' "# Role-based reasoning effort for Codex workers."
+      printf '%s\n' "# Use \"default\" to set the fallback for all roles."
+      printf '%s\n' "default: medium"
+    } > "${REASONING_EFFORT_FILE}"
+  fi
 }
 
 ensure_gitignore_entries() {
