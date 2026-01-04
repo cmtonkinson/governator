@@ -4,7 +4,8 @@
 [![latest tag](https://img.shields.io/gitlab/v/tag/77419954?label=latest&tag=latest)](https://gitlab.com/cmtonkinson/governator/-/tags/latest)
 
 Governator is a deterministic, file-driven orchestration system for delegating software development work to
-non-interactive LLM "workers" (e.g. Codex CLI), reviewing their output, and merging results safely into `main`.
+non-interactive LLM "workers" (e.g. Codex CLI), reviewing their output, and merging results safely into the configured
+`default_branch` (default=`main`).
 
 There is no shared memory, no long-lived agent state, and no hidden context. All state, intent, decisions, and artifacts
 live on disk and in git.

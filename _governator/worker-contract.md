@@ -37,7 +37,8 @@ Before exiting, you must, in order:
 - Commit any pending changes.
 - Push this branch exactly once, as your final action.
 
-You MAY `fetch` from `origin` and `rebase` onto `main` before you push.
+You MAY `fetch` from `origin` and `rebase` onto the default branch configured
+in `.governator/default_branch` before you push.
 
 Do NOT make or commit any changes to or within the following locations:
 - _governator/custom-prompts/
@@ -68,7 +69,7 @@ conditions include (but are not limited to):
 - Unclear file ownership or modification boundaries
 
 ### How to Block
-1. Move the assigned task file to `_control/task-blocked/`.
+1. Move the assigned task file to `_governator/task-blocked/`.
 2. Append a section titled `## Blocking Reason` to the task file.
 3. Clearly describe:
   - What is unclear or missing
@@ -82,7 +83,7 @@ When you believe the task is complete:
 - Describe what was changed.
 - Note any assumptions made.
 - Mention potential follow-up concerns without creating tasks for them.
-2. Move the task file to `_control/task-worked/`.
+2. Move the task file to `_governator/task-worked/`.
 3. Ensure:
 - All changes are committed
 - The branch is pushed
@@ -95,7 +96,7 @@ If you identify clearly separable follow-up work:
 - Do not modify additional files.
 
 Instead:
-1. Create a new markdown file in `_control/task-proposed/`.
+1. Create a new markdown file in `_governator/task-proposed/`.
 2. Name the file as you see fit, but ensure it is
     - Unique
     - kebab-case
