@@ -2382,7 +2382,30 @@ process_worker_branch() {
   else
     local base_branch
     base_branch="$(read_default_branch)"
-    log_error "Failed to fast-forward merge ${local_branch} into ${base_branch}."
+    log_warn "Fast-forward merge failed for ${local_branch}; attempting rebase onto ${base_branch}."
+    if git -C "${ROOT_DIR}" rebase -q "${base_branch}" "${local_branch}" > /dev/null 2>&1; then
+      if git -C "${ROOT_DIR}" merge --ff-only -q "${local_branch}" > /dev/null; then
+        git_push_default_branch
+        delete_worker_branch "${local_branch}"
+        cleanup_worker_tmp_dirs "${worker_name}" "${task_name}"
+        return 0
+      fi
+    else
+      git -C "${ROOT_DIR}" rebase --abort > /dev/null 2>&1 || true
+    fi
+
+    log_warn "Fast-forward still not possible; attempting merge commit for ${local_branch} into ${base_branch}."
+    if git -C "${ROOT_DIR}" merge -q --no-ff "${local_branch}" -m "[governator] Merge task ${task_name}" > /dev/null; then
+      git_push_default_branch
+      delete_worker_branch "${local_branch}"
+      cleanup_worker_tmp_dirs "${worker_name}" "${task_name}"
+      return 0
+    else
+      git -C "${ROOT_DIR}" merge --abort > /dev/null 2>&1 || true
+    fi
+
+    log_error "Failed to merge ${local_branch} into ${base_branch} after rebase/merge attempts."
+    log_warn "Pending commits for ${local_branch}: $(git -C "${ROOT_DIR}" log --oneline "${base_branch}..${local_branch}" | tr '\n' ' ' | sed 's/ $//')"
 
     local main_task_file
     if main_task_file="$(task_file_for_name "${task_name}")"; then
@@ -2395,6 +2418,10 @@ process_worker_branch() {
     fi
 
     printf '%s %s\n' "$(timestamp_utc_seconds)" "${local_branch}" >> "${FAILED_MERGES_LOG}"
+    in_flight_remove "${task_name}" "${worker_name}"
+    cleanup_worker_tmp_dirs "${worker_name}" "${task_name}"
+    # Preserve worker branch for debugging on merge failure.
+    return 0
   fi
 
   in_flight_remove "${task_name}" "${worker_name}"
