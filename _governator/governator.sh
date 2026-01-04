@@ -1447,6 +1447,11 @@ role_exists() {
   [[ -f "${WORKER_ROLES_DIR}/${role}.md" ]]
 }
 
+special_role_exists() {
+  local role="$1"
+  [[ -f "${SPECIAL_ROLES_DIR}/${role}.md" ]]
+}
+
 bootstrap_template_path() {
   local mode
   if ! mode="$(read_project_mode)"; then
@@ -1800,6 +1805,24 @@ block_task_from_backlog() {
   git_push_default_branch
 }
 
+block_task_from_assigned() {
+  local task_file="$1"
+  local reason="$2"
+
+  sync_default_branch
+
+  local task_name
+  task_name="$(basename "${task_file}" .md)"
+
+  local blocked_file="${STATE_DIR}/task-blocked/${task_name}.md"
+  move_task_file "${task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
+  annotate_blocked "${blocked_file}" "${reason}"
+
+  git -C "${ROOT_DIR}" add "${STATE_DIR}"
+  git -C "${ROOT_DIR}" commit -q -m "[governator] Block task ${task_name}"
+  git_push_default_branch
+}
+
 # Record assignment details in the task file.
 annotate_assignment() {
   local task_file="$1"
@@ -2036,6 +2059,58 @@ assign_pending_tasks() {
     assign_task "${task_file}" "${worker}"
     in_flight_add "${task_name}" "${worker}"
   done < <(list_task_files_in_dir "${STATE_DIR}/task-backlog")
+}
+
+# Re-run tasks sitting in task-assigned when not already in flight.
+resume_assigned_tasks() {
+  touch_logs
+  require_project_mode
+
+  local task_file
+  while IFS= read -r task_file; do
+    if [[ "${task_file}" == *"/.keep" ]]; then
+      continue
+    fi
+
+    local metadata_text
+    if ! metadata_text="$(parse_task_metadata "${task_file}")"; then
+      local task_name
+      task_name="$(basename "${task_file}" .md)"
+      log_warn "Missing required role for ${task_name}, blocking."
+      block_task_from_assigned "${task_file}" "Missing required role in filename suffix."
+      continue
+    fi
+    local metadata=()
+    mapfile -t metadata <<< "${metadata_text}"
+    local task_name="${metadata[0]}"
+    local worker="${metadata[2]}"
+
+    if in_flight_has_task "${task_name}"; then
+      continue
+    fi
+
+    if ! role_exists "${worker}" && ! special_role_exists "${worker}"; then
+      log_warn "Unknown role ${worker} for ${task_name}, blocking."
+      block_task_from_assigned "${task_file}" "Unknown role ${worker} referenced in filename suffix."
+      continue
+    fi
+
+    local cap_note
+    if ! cap_note="$(can_assign_task "${worker}" "${task_name}")"; then
+      log_warn "${cap_note}"
+      continue
+    fi
+
+    if special_role_exists "${worker}"; then
+      in_flight_add "${task_name}" "${worker}"
+      spawn_special_worker_for_task "${task_file}" "${worker}" "retrying ${worker} task"
+      in_flight_remove "${task_name}" "${worker}"
+      continue
+    fi
+
+    in_flight_add "${task_name}" "${worker}"
+    spawn_worker_for_task "${task_file}" "${worker}" "retrying ${worker} task"
+  done < <(list_task_files_in_dir "${STATE_DIR}/task-assigned")
 }
 
 # Spawn a worker for a task file with shared setup.
@@ -2283,6 +2358,7 @@ main() {
   ensure_lock
   sync_default_branch
   process_worker_branches
+  resume_assigned_tasks
   assign_pending_tasks
 }
 
