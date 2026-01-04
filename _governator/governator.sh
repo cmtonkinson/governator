@@ -92,7 +92,7 @@ log_info() {
   if [[ "${GOV_QUIET}" -eq 1 ]]; then
     return 0
   fi
-  log_with_level "INFO" "$@"
+  log_with_level "INFO" "$@" >&2
 }
 
 log_verbose() {
@@ -108,6 +108,18 @@ log_warn() {
 
 log_error() {
   log_with_level "ERROR" "$@" >&2
+}
+
+log_verbose_file() {
+  local label="$1"
+  local file="$2"
+  if [[ "${GOV_QUIET}" -eq 1 || "${GOV_VERBOSE}" -eq 0 ]]; then
+    return 0
+  fi
+  {
+    log_with_level "INFO" "${label}: ${file}"
+    cat "${file}"
+  } >&2
 }
 
 # Append visible separators to per-task worker logs before each new worker starts.
@@ -1994,16 +2006,13 @@ code_review() {
   local prompt
   prompt="$(build_special_prompt "reviewer" "${task_relpath}")"
 
+  log_task_event "${task_relpath##*/}" "starting review for ${local_branch}"
+
   if ! run_codex_reviewer "${tmp_dir}" "${prompt}" "${log_file}"; then
     log_warn "Reviewer command failed for ${local_branch}."
   fi
 
-  if [[ "${GOV_VERBOSE}" -eq 1 ]]; then
-    {
-      log_with_level "INFO" "Reviewer output file: ${tmp_dir}/review.json"
-      cat "${tmp_dir}/review.json"
-    } >&2
-  fi
+  log_verbose_file "Reviewer output file" "${tmp_dir}/review.json"
 
   local review_output=()
   mapfile -t review_output < <(parse_review_json "${tmp_dir}/review.json")
