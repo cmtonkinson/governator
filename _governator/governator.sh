@@ -797,7 +797,7 @@ Branch: ${branch:-n/a}"
   annotate_blocked "${blocked_dest}" "Aborted by operator command."
 
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
-  git -C "${ROOT_DIR}" commit -q -m "Abort task ${task_name}"
+  git -C "${ROOT_DIR}" commit -q -m "[governator] Abort task ${task_name}"
   git_push_default_branch
 }
 
@@ -1510,7 +1510,7 @@ ensure_bootstrap_task_exists() {
   cp "${template}" "${dest}"
   log_task_event "${BOOTSTRAP_TASK_NAME}" "created bootstrap task"
   git -C "${ROOT_DIR}" add "${dest}" "${AUDIT_LOG}"
-  git -C "${ROOT_DIR}" commit -q -m "Create architecture bootstrap task"
+  git -C "${ROOT_DIR}" commit -q -m "[governator] Create architecture bootstrap task"
   git_push_default_branch
 }
 
@@ -1649,7 +1649,7 @@ complete_bootstrap_task_if_ready() {
   fi
   move_task_file "${task_file}" "${STATE_DIR}/task-done" "${BOOTSTRAP_TASK_NAME}" "moved to task-done"
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
-  git -C "${ROOT_DIR}" commit -q -m "Complete architecture bootstrap"
+  git -C "${ROOT_DIR}" commit -q -m "[governator] Complete architecture bootstrap"
   git_push_default_branch
   return 0
 }
@@ -1712,7 +1712,7 @@ assign_bootstrap_task() {
   move_task_file "${task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "assigned to ${worker}"
 
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
-  git -C "${ROOT_DIR}" commit -q -m "Assign task ${task_name}"
+  git -C "${ROOT_DIR}" commit -q -m "[governator] Assign task ${task_name}"
   git_push_default_branch
 
   in_flight_add "${task_name}" "${worker}"
@@ -1786,7 +1786,7 @@ block_task_from_backlog() {
   annotate_blocked "${blocked_file}" "${reason}"
 
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
-  git -C "${ROOT_DIR}" commit -q -m "Block task ${task_name}"
+  git -C "${ROOT_DIR}" commit -q -m "[governator] Block task ${task_name}"
   git_push_default_branch
 }
 
@@ -1930,7 +1930,7 @@ assign_task() {
   move_task_file "${task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "assigned to ${worker}"
 
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
-  git -C "${ROOT_DIR}" commit -q -m "Assign task ${task_name}"
+  git -C "${ROOT_DIR}" commit -q -m "[governator] Assign task ${task_name}"
   git_push_default_branch
 
   spawn_worker_for_task "${assigned_file}" "${worker}" ""
@@ -2134,7 +2134,7 @@ check_zombie_workers() {
         annotate_blocked "${task_file}" "Worker exited before pushing branch twice; blocking task."
         move_task_file "${task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
         git -C "${ROOT_DIR}" add "${STATE_DIR}"
-        git -C "${ROOT_DIR}" commit -q -m "Block task ${task_name} on retry failure"
+        git -C "${ROOT_DIR}" commit -q -m "[governator] Block task ${task_name} on retry failure"
         git_push_default_branch
       fi
       in_flight_remove "${task_name}" "${worker}"
@@ -2210,7 +2210,7 @@ process_worker_branch() {
   esac
 
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
-  git -C "${ROOT_DIR}" commit -q -m "Process task ${task_name}"
+  git -C "${ROOT_DIR}" commit -q -m "[governator] Process task ${task_name}"
 
   git_checkout_default_branch
 
@@ -2227,7 +2227,7 @@ process_worker_branch() {
       annotate_merge_failure "${main_task_file}" "${local_branch}"
       move_task_file "${main_task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
       git -C "${ROOT_DIR}" add "${STATE_DIR}"
-      git -C "${ROOT_DIR}" commit -q -m "Block task ${task_name} on merge failure"
+      git -C "${ROOT_DIR}" commit -q -m "[governator] Block task ${task_name} on merge failure"
       git_push_default_branch
     fi
 
