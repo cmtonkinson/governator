@@ -41,6 +41,7 @@ IN_FLIGHT_LOG="${STATE_DIR}/in-flight.log"
 SYSTEM_LOCK_FILE="${DB_DIR}/governator.locked"
 SYSTEM_LOCK_PATH="${SYSTEM_LOCK_FILE#"${ROOT_DIR}/"}"
 GITIGNORE_PATH="${ROOT_DIR}/.gitignore"
+UPDATE_URL="https://gitlab.com/cmtonkinson/governator/-/raw/main/_governator/governator.sh"
 
 GOV_QUIET=0
 GOV_VERBOSE=0
@@ -182,6 +183,13 @@ ensure_dependencies() {
   fi
   if [[ "${#missing[@]}" -gt 0 ]]; then
     log_error "Missing dependencies: ${missing[*]}"
+    exit 1
+  fi
+}
+
+ensure_update_dependencies() {
+  if ! command -v curl > /dev/null 2>&1; then
+    log_error "Missing dependency: curl"
     exit 1
   fi
 }
@@ -473,6 +481,33 @@ init_governator() {
   if [[ -n "$(git -C "${ROOT_DIR}" status --porcelain 2> /dev/null)" ]]; then
     git -C "${ROOT_DIR}" commit -q -m "[governator] Initialize configuration"
   fi
+}
+
+update_governator() {
+  ensure_update_dependencies
+
+  local script_path="${STATE_DIR}/governator.sh"
+  if [[ -n "$(git -C "${ROOT_DIR}" status --porcelain -- "${script_path}")" ]]; then
+    log_error "Local changes detected in ${script_path}; commit or stash before update."
+    exit 1
+  fi
+
+  local tmp_file
+  tmp_file="$(mktemp)"
+  if ! curl -fsSL "${UPDATE_URL}" -o "${tmp_file}"; then
+    rm -f "${tmp_file}"
+    log_error "Failed to download ${UPDATE_URL}"
+    exit 1
+  fi
+  if [[ ! -s "${tmp_file}" ]]; then
+    rm -f "${tmp_file}"
+    log_error "Downloaded update is empty; aborting."
+    exit 1
+  fi
+
+  mv "${tmp_file}" "${script_path}"
+  chmod +x "${script_path}"
+  log_info "Updated ${script_path} from ${UPDATE_URL}"
 }
 
 system_locked() {
@@ -2380,6 +2415,7 @@ Usage: governator.sh <command>
 Public commands:
   run      Run the normal full loop.
   init     Configure the project mode and defaults.
+  update   Replace governator.sh with the latest upstream version.
   status   Show queue counts, in-flight workers, and blocked tasks.
   lock     Prevent new activity from starting and show a work snapshot.
   unlock   Resume activity after a lock.
@@ -2406,7 +2442,7 @@ dispatch_subcommand() {
       ;;
   esac
 
-  if [[ "${cmd}" != "init" ]]; then
+  if [[ "${cmd}" != "init" && "${cmd}" != "update" ]]; then
     if ! require_project_mode; then
       return 1
     fi
@@ -2420,6 +2456,9 @@ dispatch_subcommand() {
       ;;
     init)
       init_governator
+      ;;
+    update)
+      update_governator
       ;;
     status)
       ensure_db_dir
