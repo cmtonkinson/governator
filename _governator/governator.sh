@@ -1296,7 +1296,7 @@ run_codex_worker_detached() {
   reasoning="$(read_reasoning_effort "${role}")"
   (
     cd "${dir}"
-    log_verbose "Worker command: codex --full-auto --search -c sandbox_workspace_write.network_access=true exec --sandbox=workspace-write --reasoning-effort=${reasoning} ${prompt}"
+    log_verbose "Worker command: codex --full-auto --search --reasoning-effort=${reasoning} -c sandbox_workspace_write.network_access=true exec --sandbox=workspace-write ${prompt}"
     nohup codex --full-auto --search -c sandbox_workspace_write.network_access=true exec --sandbox=workspace-write --reasoning-effort="${reasoning}" "${prompt}" >> "${log_file}" 2>&1 &
     echo $!
   )
@@ -1316,8 +1316,8 @@ run_codex_worker_blocking() {
 
   local reasoning
   reasoning="$(read_reasoning_effort "${role}")"
-  log_verbose "Worker command: codex --full-auto --search -c sandbox_workspace_write.network_access=true exec --sandbox=workspace-write --reasoning-effort=${reasoning} ${prompt}"
-  (cd "${dir}" && codex --full-auto --search -c sandbox_workspace_write.network_access=true exec --sandbox=workspace-write --reasoning-effort="${reasoning}" "${prompt}" >> "${log_file}" 2>&1)
+  log_verbose "Worker command: codex --full-auto --search --reasoning-effort=${reasoning} -c sandbox_workspace_write.network_access=true exec --sandbox=workspace-write ${prompt}"
+  (cd "${dir}" && codex --full-auto --search -c sandbox_workspace_write.network_access=true exec --reasoning-effort="${reasoning}" --sandbox=workspace-write "${prompt}" >> "${log_file}" 2>&1)
 }
 
 # Run the reviewer synchronously so a review.json is produced.
@@ -1332,8 +1332,8 @@ run_codex_reviewer() {
 
   local reasoning
   reasoning="$(read_reasoning_effort "reviewer")"
-  log_verbose "Reviewer command: codex --full-auto --search -c sandbox_workspace_write.network_access=true exec --sandbox=workspace-write --reasoning-effort=${reasoning} ${prompt}"
-  (cd "${dir}" && codex --full-auto --search -c sandbox_workspace_write.network_access=true exec --sandbox=workspace-write --reasoning-effort="${reasoning}" "${prompt}")
+  log_verbose "Reviewer command: codex --full-auto --search --reasoning-effort=${reasoning} -c sandbox_workspace_write.network_access=true exec --sandbox=workspace-write ${prompt}"
+  (cd "${dir}" && codex --full-auto --search -c sandbox_workspace_write.network_access=true exec --reasoning-effort="${reasoning}" --sandbox=workspace-write "${prompt}")
 }
 
 format_prompt_files() {
