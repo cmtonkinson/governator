@@ -351,7 +351,7 @@ read_reasoning_effort() {
   local value
   value="$(
     awk -v role="${role}" -v fallback="${fallback}" '
-      BEGIN { default=fallback }
+      BEGIN { default=fallback; found=0 }
       $0 ~ /^[[:space:]]*#/ { next }
       $0 ~ /^[[:space:]]*$/ { next }
       $0 ~ /^[[:space:]]*[^:]+[[:space:]]*:[[:space:]]*[^[:space:]]+[[:space:]]*$/ {
@@ -365,11 +365,15 @@ read_reasoning_effort() {
           next
         }
         if (key == role) {
+          found = 1
           print val
-          exit 0
         }
       }
-      END { print default }
+      END {
+        if (found == 0) {
+          print default
+        }
+      }
     ' "${REASONING_EFFORT_FILE}" || true
   )"
 
@@ -980,6 +984,17 @@ log_task_warn() {
   local message="$*"
   log_warn "${task_name} -> ${message}"
   audit_log "${task_name}" "${message}"
+}
+
+commit_audit_log_if_dirty() {
+  if [[ ! -f "${AUDIT_LOG}" ]]; then
+    return 0
+  fi
+  if [[ -n "$(git -C "${ROOT_DIR}" status --porcelain -- "${AUDIT_LOG}")" ]]; then
+    git -C "${ROOT_DIR}" add "${AUDIT_LOG}"
+    git -C "${ROOT_DIR}" commit -q -m "[governator] Update audit log"
+    git_push_default_branch
+  fi
 }
 
 # Move a task file to a new queue and record an audit entry.
@@ -2399,6 +2414,7 @@ main() {
   process_worker_branches
   resume_assigned_tasks
   assign_pending_tasks
+  commit_audit_log_if_dirty
 }
 
 #############################################################################
@@ -2500,6 +2516,7 @@ run_locked_action() {
     return 0
   fi
   "$@"
+  commit_audit_log_if_dirty
 }
 
 parse_run_args() {
