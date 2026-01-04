@@ -2430,6 +2430,7 @@ main() {
   resume_assigned_tasks
   assign_pending_tasks
   commit_audit_log_if_dirty
+  git_checkout_default_branch
 }
 
 #############################################################################
