@@ -43,8 +43,7 @@ SYSTEM_LOCK_PATH="${SYSTEM_LOCK_FILE#"${ROOT_DIR}/"}"
 GITIGNORE_PATH="${ROOT_DIR}/.gitignore"
 
 CODEX_BIN="${CODEX_BIN:-codex}"
-CODEX_WORKER_ARGS="${CODEX_WORKER_ARGS:---sandbox=workspace-write --search}"
-CODEX_REVIEW_ARGS="${CODEX_REVIEW_ARGS:---sandbox=workspace-write --search}"
+CODEX_ARGS="${CODEX_ARGS:---search --sandbox=workspace-write}"
 GOV_QUIET=0
 
 DEFAULT_GLOBAL_CAP=1
@@ -1206,13 +1205,13 @@ run_codex_worker_detached() {
 
   # Use nohup to prevent worker exit from being tied to this process.
   local args=()
-  parse_shell_args "${CODEX_WORKER_ARGS}" args
+  parse_shell_args "${CODEX_ARGS}" args
   (
     cd "${dir}"
     if [[ -n "${prompt}" ]]; then
-      nohup "${CODEX_BIN}" exec "${args[@]}" "${prompt}" >> "${log_file}" 2>&1 &
+      nohup "${CODEX_BIN}" "${args[@]}" exec "${prompt}" >> "${log_file}" 2>&1 &
     else
-      nohup "${CODEX_BIN}" exec "${args[@]}" >> "${log_file}" 2>&1 &
+      nohup "${CODEX_BIN}" "${args[@]}" exec >> "${log_file}" 2>&1 &
     fi
     echo $!
   )
@@ -1229,11 +1228,11 @@ run_codex_worker_blocking() {
   fi
 
   local args=()
-  parse_shell_args "${CODEX_WORKER_ARGS}" args
+  parse_shell_args "${CODEX_ARGS}" args
   if [[ -n "${prompt}" ]]; then
-    (cd "${dir}" && "${CODEX_BIN}" exec "${args[@]}" "${prompt}" >> "${log_file}" 2>&1)
+    (cd "${dir}" && "${CODEX_BIN}" "${args[@]}" exec "${prompt}" >> "${log_file}" 2>&1)
   else
-    (cd "${dir}" && "${CODEX_BIN}" exec "${args[@]}" >> "${log_file}" 2>&1)
+    (cd "${dir}" && "${CODEX_BIN}" "${args[@]}" exec >> "${log_file}" 2>&1)
   fi
 }
 
@@ -1247,11 +1246,11 @@ run_codex_reviewer() {
   fi
 
   local args=()
-  parse_shell_args "${CODEX_REVIEW_ARGS}" args
+  parse_shell_args "${CODEX_ARGS}" args
   if [[ -n "${prompt}" ]]; then
-    (cd "${dir}" && "${CODEX_BIN}" exec "${args[@]}" "${prompt}")
+    (cd "${dir}" && "${CODEX_BIN}" "${args[@]}" exec "${prompt}")
   else
-    (cd "${dir}" && "${CODEX_BIN}" exec "${args[@]}")
+    (cd "${dir}" && "${CODEX_BIN}" "${args[@]}" exec)
   fi
 }
 
