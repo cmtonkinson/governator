@@ -165,7 +165,7 @@ ensure_clean_git() {
 ensure_dependencies() {
   local missing=()
   local dep
-  for dep in awk date find git mktemp nohup stat sgpt; do
+  for dep in awk date find git jq mktemp nohup stat sgpt; do
     if ! command -v "${dep}" > /dev/null 2>&1; then
       missing+=("${dep}")
     fi
@@ -1937,30 +1937,15 @@ parse_review_json() {
     return 0
   fi
 
-  # Use Python for strict JSON parsing; shell parsing is error-prone.
-  if command -v python3 > /dev/null 2>&1; then
-    if ! python3 - "${file}" << 'PY'; then
-import json
-import sys
-
-with open(sys.argv[1], "r", encoding="utf-8") as f:
-    data = json.load(f)
-
-result = str(data.get("result", "")).strip()
-comments = data.get("comments") or []
-if not isinstance(comments, list):
-    comments = [str(comments)]
-
-print(result)
-for comment in comments:
-    print(comment)
-PY
-      printf 'block\nFailed to parse review.json\n'
-    fi
+  if ! jq -e '.result' "${file}" > /dev/null 2>&1; then
+    printf 'block\nFailed to parse review.json\n'
     return 0
   fi
 
-  printf 'block\nPython3 unavailable to parse review.json\n'
+  local result
+  result="$(jq -r '.result // ""' "${file}")"
+  printf '%s\n' "${result}"
+  jq -r '.comments // [] | if type == "array" then .[] else . end' "${file}"
 }
 
 # Run reviewer flow in a clean clone and return parsed review output.
@@ -1988,6 +1973,13 @@ code_review() {
 
   if ! run_codex_reviewer "${tmp_dir}" "${prompt}"; then
     log_warn "Reviewer command failed for ${local_branch}."
+  fi
+
+  if [[ "${GOV_VERBOSE}" -eq 1 ]]; then
+    {
+      log_with_level "INFO" "Reviewer output file: ${tmp_dir}/review.json"
+      cat "${tmp_dir}/review.json"
+    } >&2
   fi
 
   local review_output=()

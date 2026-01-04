@@ -9,7 +9,7 @@ lint-and-test:
   stage: test
   before_script:
     - apt-get update
-    - apt-get install -y --no-install-recommends git curl ca-certificates wget shellcheck shfmt
+    - apt-get install -y --no-install-recommends git curl ca-certificates wget shellcheck shfmt jq
     - git clone https://github.com/bats-core/bats-core.git /tmp/bats-core
     - /tmp/bats-core/install.sh /usr/local
     - pip install --no-cache-dir shell-gpt
