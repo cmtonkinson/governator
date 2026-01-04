@@ -178,6 +178,7 @@ _governator/
 ├── default_branch
 ├── project_mode
 ├── next_ticket_id
+├── reasoning_effort
 ├── remote_name
 ├── worker_timeout_seconds
 ├── global_worker_cap

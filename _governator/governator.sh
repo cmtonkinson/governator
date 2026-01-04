@@ -27,6 +27,7 @@ NEXT_TICKET_FILE="${DB_DIR}/next_ticket_id"
 GLOBAL_CAP_FILE="${DB_DIR}/global_worker_cap"
 WORKER_CAPS_FILE="${DB_DIR}/worker_caps"
 WORKER_TIMEOUT_FILE="${DB_DIR}/worker_timeout_seconds"
+REASONING_EFFORT_FILE="${DB_DIR}/reasoning_effort"
 
 AUDIT_LOG="${DB_DIR}/audit.log"
 WORKER_PROCESSES_LOG="${DB_DIR}/worker-processes.log"
@@ -338,6 +339,45 @@ read_worker_timeout_seconds() {
   read_numeric_file "${WORKER_TIMEOUT_FILE}" "${DEFAULT_WORKER_TIMEOUT_SECONDS}"
 }
 
+# Read the reasoning effort for a role (defaults to "medium").
+read_reasoning_effort() {
+  local role="$1"
+  local fallback="medium"
+  if [[ ! -f "${REASONING_EFFORT_FILE}" ]]; then
+    printf '%s\n' "${fallback}"
+    return 0
+  fi
+
+  local value
+  value="$(
+    awk -v role="${role}" -v fallback="${fallback}" '
+      BEGIN { default=fallback }
+      $0 ~ /^[[:space:]]*#/ { next }
+      $0 ~ /^[[:space:]]*$/ { next }
+      $0 ~ /^[[:space:]]*[^:]+[[:space:]]*:[[:space:]]*[^[:space:]]+[[:space:]]*$/ {
+        split($0, parts, ":")
+        key = parts[1]
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+        val = parts[2]
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
+        if (key == "default") {
+          default = val
+          next
+        }
+        if (key == role) {
+          print val
+          exit 0
+        }
+      }
+      END { print default }
+    ' "${REASONING_EFFORT_FILE}" || true
+  )"
+
+  if [[ -z "${value}" ]]; then
+    value="${fallback}"
+  fi
+  printf '%s\n' "${value}"
+}
 # Read per-worker cap from worker_caps (defaults to 1).
 read_worker_cap() {
   local role="$1"
@@ -1240,6 +1280,7 @@ run_codex_worker_detached() {
   local dir="$1"
   local prompt="$2"
   local log_file="$3"
+  local role="$4"
   if [[ -n "${CODEX_WORKER_CMD:-}" ]]; then
     log_verbose "Worker command: GOV_PROMPT=${prompt} nohup bash -c ${CODEX_WORKER_CMD}"
     (
@@ -1251,10 +1292,12 @@ run_codex_worker_detached() {
   fi
 
   # Use nohup to prevent worker exit from being tied to this process.
+  local reasoning
+  reasoning="$(read_reasoning_effort "${role}")"
   (
     cd "${dir}"
-    log_verbose "Worker command: codex --search exec --sandbox=workspace-write ${prompt}"
-    nohup codex --search exec --sandbox=workspace-write "${prompt}" >> "${log_file}" 2>&1 &
+    log_verbose "Worker command: codex --full-auto --search -c sandbox_workspace_write.network_access=true exec --sandbox=workspace-write --reasoning-effort=${reasoning} ${prompt}"
+    nohup codex --full-auto --search -c sandbox_workspace_write.network_access=true exec --sandbox=workspace-write --reasoning-effort="${reasoning}" "${prompt}" >> "${log_file}" 2>&1 &
     echo $!
   )
 }
@@ -1264,14 +1307,17 @@ run_codex_worker_blocking() {
   local dir="$1"
   local prompt="$2"
   local log_file="$3"
+  local role="$4"
   if [[ -n "${CODEX_WORKER_CMD:-}" ]]; then
     log_verbose "Worker command: GOV_PROMPT=${prompt} bash -c ${CODEX_WORKER_CMD}"
     (cd "${dir}" && GOV_PROMPT="${prompt}" bash -c "${CODEX_WORKER_CMD}" >> "${log_file}" 2>&1)
     return $?
   fi
 
-  log_verbose "Worker command: codex --search exec --sandbox=workspace-write ${prompt}"
-  (cd "${dir}" && codex --search exec --sandbox=workspace-write "${prompt}" >> "${log_file}" 2>&1)
+  local reasoning
+  reasoning="$(read_reasoning_effort "${role}")"
+  log_verbose "Worker command: codex --full-auto --search -c sandbox_workspace_write.network_access=true exec --sandbox=workspace-write --reasoning-effort=${reasoning} ${prompt}"
+  (cd "${dir}" && codex --full-auto --search -c sandbox_workspace_write.network_access=true exec --sandbox=workspace-write --reasoning-effort="${reasoning}" "${prompt}" >> "${log_file}" 2>&1)
 }
 
 # Run the reviewer synchronously so a review.json is produced.
@@ -1284,8 +1330,10 @@ run_codex_reviewer() {
     return 0
   fi
 
-  log_verbose "Reviewer command: codex --search exec --sandbox=workspace-write ${prompt}"
-  (cd "${dir}" && codex --search exec --sandbox=workspace-write "${prompt}")
+  local reasoning
+  reasoning="$(read_reasoning_effort "reviewer")"
+  log_verbose "Reviewer command: codex --full-auto --search -c sandbox_workspace_write.network_access=true exec --sandbox=workspace-write --reasoning-effort=${reasoning} ${prompt}"
+  (cd "${dir}" && codex --full-auto --search -c sandbox_workspace_write.network_access=true exec --sandbox=workspace-write --reasoning-effort="${reasoning}" "${prompt}")
 }
 
 format_prompt_files() {
@@ -1696,7 +1744,7 @@ spawn_special_worker_for_task() {
   fi
 
   log_task_event "${task_name}" "starting special worker ${worker}"
-  if run_codex_worker_blocking "${tmp_dir}" "${prompt}" "${log_file}"; then
+  if run_codex_worker_blocking "${tmp_dir}" "${prompt}" "${log_file}" "${worker}"; then
     log_task_event "${task_name}" "special worker ${worker} completed"
   else
     log_task_warn "${task_name}" "special worker ${worker} exited with error"
@@ -2138,7 +2186,7 @@ spawn_worker_for_task() {
   local pid
   local started_at
   started_at="$(date +%s)"
-  pid="$(run_codex_worker_detached "${tmp_dir}" "${prompt}" "${log_file}")"
+  pid="$(run_codex_worker_detached "${tmp_dir}" "${prompt}" "${log_file}" "${worker}")"
   if [[ -n "${pid}" ]]; then
     worker_process_set "${task_name}" "${worker}" "${pid}" "${tmp_dir}" "${branch_name}" "${started_at}"
     if [[ -n "${audit_message}" ]]; then
