@@ -10,6 +10,4 @@ message="$*"
 
 git add -A
 git commit -m "${message}"
-git tag -f latest
 git push
-git push -f origin latest

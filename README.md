@@ -1,7 +1,6 @@
 # Governator
 
 [![pipeline status](https://gitlab.com/cmtonkinson/governator/badges/main/pipeline.svg)](https://gitlab.com/cmtonkinson/governator/pipelines)
-[![latest tag](https://img.shields.io/gitlab/v/tag/77419954?label=latest&tag=latest)](https://gitlab.com/cmtonkinson/governator/-/tags/latest)
 
 Governator is a deterministic, file-driven orchestration system for delegating software development work to
 non-interactive LLM "workers" (e.g. Codex CLI), reviewing their output, and merging results safely into the configured
