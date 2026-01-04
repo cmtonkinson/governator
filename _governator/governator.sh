@@ -109,15 +109,6 @@ log_error() {
   log_with_level "ERROR" "$@" >&2
 }
 
-format_command() {
-  local arg
-  local output=""
-  for arg in "$@"; do
-    output+=$(printf '%q ' "${arg}")
-  done
-  printf '%s' "${output%" "}"
-}
-
 # Append visible separators to per-task worker logs before each new worker starts.
 append_worker_log_separator() {
   local log_file="$1"
@@ -1250,7 +1241,7 @@ run_codex_worker_detached() {
   local prompt="$2"
   local log_file="$3"
   if [[ -n "${CODEX_WORKER_CMD:-}" ]]; then
-    log_verbose "Worker command: GOV_PROMPT=$(printf '%q' "${prompt}") $(format_command nohup bash -c "${CODEX_WORKER_CMD}")"
+    log_verbose "Worker command: GOV_PROMPT=${prompt} nohup bash -c ${CODEX_WORKER_CMD}"
     (
       cd "${dir}"
       GOV_PROMPT="${prompt}" nohup bash -c "${CODEX_WORKER_CMD}" >> "${log_file}" 2>&1 &
@@ -1262,8 +1253,8 @@ run_codex_worker_detached() {
   # Use nohup to prevent worker exit from being tied to this process.
   (
     cd "${dir}"
-    log_verbose "Worker command: $(format_command nohup codex --search --sandbox=workspace-write exec "${prompt}")"
-    nohup codex --search --sandbox=workspace-write exec "${prompt}" >> "${log_file}" 2>&1 &
+    log_verbose "Worker command: codex --search exec --sandbox=workspace-write ${prompt}"
+    nohup codex --search exec --sandbox=workspace-write "${prompt}" >> "${log_file}" 2>&1 &
     echo $!
   )
 }
@@ -1274,13 +1265,13 @@ run_codex_worker_blocking() {
   local prompt="$2"
   local log_file="$3"
   if [[ -n "${CODEX_WORKER_CMD:-}" ]]; then
-    log_verbose "Worker command: GOV_PROMPT=$(printf '%q' "${prompt}") $(format_command bash -c "${CODEX_WORKER_CMD}")"
+    log_verbose "Worker command: GOV_PROMPT=${prompt} bash -c ${CODEX_WORKER_CMD}"
     (cd "${dir}" && GOV_PROMPT="${prompt}" bash -c "${CODEX_WORKER_CMD}" >> "${log_file}" 2>&1)
     return $?
   fi
 
-  log_verbose "Worker command: $(format_command codex --search --sandbox=workspace-write exec "${prompt}")"
-  (cd "${dir}" && codex --search --sandbox=workspace-write exec "${prompt}" >> "${log_file}" 2>&1)
+  log_verbose "Worker command: codex --search exec --sandbox=workspace-write ${prompt}"
+  (cd "${dir}" && codex --search exec --sandbox=workspace-write "${prompt}" >> "${log_file}" 2>&1)
 }
 
 # Run the reviewer synchronously so a review.json is produced.
@@ -1288,13 +1279,13 @@ run_codex_reviewer() {
   local dir="$1"
   local prompt="$2"
   if [[ -n "${CODEX_REVIEW_CMD:-}" ]]; then
-    log_verbose "Reviewer command: GOV_PROMPT=$(printf '%q' "${prompt}") $(format_command bash -c "${CODEX_REVIEW_CMD}")"
+    log_verbose "Reviewer command: GOV_PROMPT=${prompt} bash -c ${CODEX_REVIEW_CMD}"
     (cd "${dir}" && GOV_PROMPT="${prompt}" bash -c "${CODEX_REVIEW_CMD}")
     return 0
   fi
 
-  log_verbose "Reviewer command: $(format_command codex --search --sandbox=workspace-write exec "${prompt}")"
-  (cd "${dir}" && codex --search --sandbox=workspace-write exec "${prompt}")
+  log_verbose "Reviewer command: codex --search exec --sandbox=workspace-write ${prompt}"
+  (cd "${dir}" && codex --search exec --sandbox=workspace-write "${prompt}")
 }
 
 format_prompt_files() {
