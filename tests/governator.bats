@@ -89,8 +89,13 @@ exit 0
 EOF
   chmod +x "${BIN_DIR}/sgpt"
 
+  cat > "${BIN_DIR}/codex" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+  chmod +x "${BIN_DIR}/codex"
+
   export PATH="${BIN_DIR}:${PATH}"
-  export CODEX_BIN="true"
 }
 
 @test "assign-backlog assigns task and logs in-flight" {
