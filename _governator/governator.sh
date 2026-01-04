@@ -2363,7 +2363,7 @@ process_worker_branch() {
       ;;
   esac
 
-  git -C "${ROOT_DIR}" add "${STATE_DIR}"
+  git -C "${ROOT_DIR}" add "${STATE_DIR}" "${AUDIT_LOG}"
   git -C "${ROOT_DIR}" commit -q -m "[governator] Process task ${task_name}"
 
   git_checkout_default_branch
