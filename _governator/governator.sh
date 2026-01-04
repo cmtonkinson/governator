@@ -1346,16 +1346,25 @@ run_codex_worker_blocking() {
 run_codex_reviewer() {
   local dir="$1"
   local prompt="$2"
+  local log_file="${3:-}"
   if [[ -n "${CODEX_REVIEW_CMD:-}" ]]; then
     log_verbose "Reviewer command: GOV_PROMPT=${prompt} bash -c ${CODEX_REVIEW_CMD}"
-    (cd "${dir}" && GOV_PROMPT="${prompt}" bash -c "${CODEX_REVIEW_CMD}")
+    if [[ -n "${log_file}" ]]; then
+      (cd "${dir}" && GOV_PROMPT="${prompt}" bash -c "${CODEX_REVIEW_CMD}" >> "${log_file}" 2>&1)
+    else
+      (cd "${dir}" && GOV_PROMPT="${prompt}" bash -c "${CODEX_REVIEW_CMD}")
+    fi
     return 0
   fi
 
   local reasoning
   reasoning="$(read_reasoning_effort "reviewer")"
   log_verbose "Reviewer command: codex --full-auto --search -c sandbox_workspace_write.network_access=true -c model_reasoning_effort=\"${reasoning}\" exec --sandbox=workspace-write \"${prompt}\""
-  (cd "${dir}" && codex --full-auto --search -c sandbox_workspace_write.network_access=true -c model_reasoning_effort="${reasoning}" exec --sandbox=workspace-write "${prompt}")
+  if [[ -n "${log_file}" ]]; then
+    (cd "${dir}" && codex --full-auto --search -c sandbox_workspace_write.network_access=true -c model_reasoning_effort="${reasoning}" exec --sandbox=workspace-write "${prompt}" >> "${log_file}" 2>&1)
+  else
+    (cd "${dir}" && codex --full-auto --search -c sandbox_workspace_write.network_access=true -c model_reasoning_effort="${reasoning}" exec --sandbox=workspace-write "${prompt}")
+  fi
 }
 
 format_prompt_files() {
@@ -1975,10 +1984,17 @@ code_review() {
     cp "${TEMPLATES_DIR}/review.json" "${tmp_dir}/review.json"
   fi
 
+  local log_dir
+  log_dir="${DB_DIR}/logs"
+  mkdir -p "${log_dir}"
+  local log_file
+  log_file="${log_dir}/reviewer-${local_branch//\//-}.log"
+  append_worker_log_separator "${log_file}"
+
   local prompt
   prompt="$(build_special_prompt "reviewer" "${task_relpath}")"
 
-  if ! run_codex_reviewer "${tmp_dir}" "${prompt}"; then
+  if ! run_codex_reviewer "${tmp_dir}" "${prompt}" "${log_file}"; then
     log_warn "Reviewer command failed for ${local_branch}."
   fi
 
