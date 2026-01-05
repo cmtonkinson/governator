@@ -10,7 +10,7 @@ reviewing their output, and merging results safely into the configured
 There is no shared memory, no long-lived agent state, and no hidden context. All
 state, intent, decisions, and artifacts live on disk and in git.
 
-![Governator](img/governator.png)
+![Governator](img/governator_512.png)
 
 ---
 
