@@ -1932,6 +1932,7 @@ spawn_special_worker_for_task() {
 
   local tmp_dir
   tmp_dir="$(mktemp -d "/tmp/governator-${PROJECT_NAME}-${worker}-${task_name}-XXXXXX")"
+  log_verbose "Worker tmp dir: ${tmp_dir}"
 
   local log_dir
   log_dir="${DB_DIR}/logs"
@@ -2556,6 +2557,7 @@ spawn_worker_for_task() {
 
   local tmp_dir
   tmp_dir="$(mktemp -d "/tmp/governator-${PROJECT_NAME}-${worker}-${task_name}-XXXXXX")"
+  log_verbose "Worker tmp dir: ${tmp_dir}"
 
   local log_dir
   log_dir="${DB_DIR}/logs"
