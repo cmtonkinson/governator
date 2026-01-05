@@ -2595,6 +2595,14 @@ process_worker_branch() {
       mapfile -t review_lines < <(code_review "${remote_branch}" "${local_branch}" "${task_relpath}")
       decision="${review_lines[0]:-block}"
       ;;
+    task-assigned)
+      if [[ "${worker_name}" == "reviewer" && "${task_name}" == 000-* ]]; then
+        mapfile -t review_lines < <(code_review "${remote_branch}" "${local_branch}" "${task_relpath}")
+        decision="${review_lines[0]:-block}"
+      else
+        block_reason="Unexpected task state ${task_dir} during processing."
+      fi
+      ;;
     task-feedback)
       :
       ;;
