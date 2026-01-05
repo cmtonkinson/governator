@@ -39,7 +39,7 @@ RETRY_COUNTS_LOG="${DB_DIR}/retry-counts.log"
 WORKER_ROLES_DIR="${STATE_DIR}/roles-worker"
 SPECIAL_ROLES_DIR="${STATE_DIR}/roles-special"
 TEMPLATES_DIR="${STATE_DIR}/templates"
-LOCK_FILE="${STATE_DIR}/governator.lock"
+LOCK_FILE="${DB_DIR}/governator.lock"
 FAILED_MERGES_LOG="${DB_DIR}/failed-merges.log"
 IN_FLIGHT_LOG="${DB_DIR}/in-flight.log"
 SYSTEM_LOCK_FILE="${DB_DIR}/governator.locked"
@@ -77,7 +77,7 @@ DONE_CHECK_REVIEW_TEMPLATE="${TEMPLATES_DIR}/000-done-check-reviewer.md"
 DONE_CHECK_PLANNER_TEMPLATE="${TEMPLATES_DIR}/000-done-check-planner.md"
 
 GITIGNORE_ENTRIES=(
-  "_governator/governator.lock"
+  ".governator/governator.lock"
   ".governator/governator.locked"
   ".governator/logs/"
 )
@@ -1992,6 +1992,7 @@ spawn_special_worker_for_task() {
     git_checkout_default_branch
     apply_review_decision "${task_name}" "${worker}" "${decision}" "${block_reason}" "${review_lines[@]}"
     git_push_default_branch
+    rm -f "${tmp_dir}/review.json"
   elif [[ "${worker_status}" -eq 0 ]]; then
     process_special_worker_branch "${task_name}" "${worker}"
   fi
