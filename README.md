@@ -2,12 +2,15 @@
 
 [![pipeline status](https://gitlab.com/cmtonkinson/governator/badges/main/pipeline.svg)](https://gitlab.com/cmtonkinson/governator/pipelines)
 
-Governator is a deterministic, file-driven orchestration system for delegating software development work to
-non-interactive LLM "workers" (e.g. Codex CLI), reviewing their output, and merging results safely into the configured
+Governator is a deterministic, file-driven orchestration system for delegating
+software development work to non-interactive LLM "workers" (e.g. Codex CLI),
+reviewing their output, and merging results safely into the configured
 `default_branch` (default=`main`).
 
-There is no shared memory, no long-lived agent state, and no hidden context. All state, intent, decisions, and artifacts
-live on disk and in git.
+There is no shared memory, no long-lived agent state, and no hidden context. All
+state, intent, decisions, and artifacts live on disk and in git.
+
+![Governator](img/governator.png)
 
 ---
 
@@ -194,11 +197,14 @@ Customizable configuration and internal state are stored here.
 ```
 
 ### Key Concepts
-- **Worker Contract** defines global, non-negotiable execution rules for all workers.
+- **Worker Contract** defines global, non-negotiable execution rules for all
+  workers.
 
-- **Roles** define authority and constraints for each type of worker (what they may and may not do).
+- **Roles** define authority and constraints for each type of worker (what they
+  may and may not do).
 
-- **Tasks** markdown files representing one unit of work, flowing through lifecycle directories.
+- **Tasks** markdown files representing one unit of work, flowing through
+  lifecycle directories.
 
 ## Task Naming and Assignment
 Tasks are created with a 3-digit numeric prefix, a kebab-case slugified name, 
@@ -350,9 +356,13 @@ for the full list and behavior.
 
 ### GitLab CI
 
-The included `.gitlab-ci.yml` job installs `sgpt` and runs `./scripts/all-tests.sh`. To keep CI non-interactive:
+The included `.gitlab-ci.yml` job installs `sgpt` and runs
+`./scripts/all-tests.sh`. To keep CI non-interactive:
 
-- Define `SGPT_API_KEY` as a masked, protected GitLab CI variable that holds the API key used by `sgpt`.
-- Define `SGPT_MODEL` if you want to pin a cheaper/faster model (it defaults to `gpt-4o-mini` when unset).
+- Define `SGPT_API_KEY` as a masked, protected GitLab CI variable that holds the
+  API key used by `sgpt`.
+- Define `SGPT_MODEL` if you want to pin a cheaper/faster model (it defaults to
+  `gpt-4o-mini` when unset).
 
-Once those variables are set, the pipeline can hit the real service without manual token entry.
+Once those variables are set, the pipeline can hit the real service without
+manual token entry.

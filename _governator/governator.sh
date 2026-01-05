@@ -79,6 +79,8 @@ DONE_CHECK_PLANNER_TEMPLATE="${TEMPLATES_DIR}/000-done-check-planner.md"
 GITIGNORE_ENTRIES=(
   ".governator/governator.lock"
   ".governator/governator.locked"
+  ".governator/failed-merges.log"
+  ".governator/in-flight.log"
   ".governator/logs/"
 )
 
@@ -2314,7 +2316,7 @@ code_review() {
   local prompt
   prompt="$(build_special_prompt "reviewer" "${task_relpath}")"
 
-  log_task_event "${task_relpath##*/}" "starting review for ${local_branch}"
+  log_task_event "${task_base}" "starting review for ${local_branch}"
 
   if ! run_codex_reviewer "${tmp_dir}" "${prompt}" "${log_file}"; then
     log_warn "Reviewer command failed for ${local_branch}."
