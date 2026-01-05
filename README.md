@@ -30,8 +30,8 @@ curl -fsSL https://gitlab.com/cmtonkinson/governator/-/archive/main/governator-m
 ```
 
 ### Configuration
-`GOVERNATOR.md` is a markdown file that governs the system. It is required.
-This is effectively your design-time "prompt" to control what the Governator
+`GOVERNATOR.md` is a markdown file that controls the system. It is required;
+this is effectively your design-time "prompt" to control what the Governator
 does. Here you should explain exactly what you want. Your vision, goals, non-
 goals, ideas, hard requirements, nice to haves, assumptions, definitions of
 "done," use cases, guiding principles, etc.
@@ -94,8 +94,8 @@ It is intended for:
 - long-running background development
 - constrained, reviewable LLM execution
 
-My primary (or at least first) use-case is to get me from 0 to 1 on a proofs of
-concept, because... `PoC || GFTO`, amirite?
+My primary use-case is to get me from 0 to 1 on a proofs of concept, because
+`PoC || GFTO`, amirite?
 
 ## Core Idea
 Governator enforces a strict separation of concerns:
@@ -219,6 +219,11 @@ assigned to the default `generalist` role.
 The `templates/task.md` file is the stub for new tasks. `next_task_id`
 stores the next auto-increment id.
 
+There are some specialized task templates that are pre-programmed into the
+system, mostly for initial bootstrapping and goal testing. Whenever those are
+used by the control loop, they will be prefixed with the special number `000-`
+just to distinguish them from anything unique to your project.
+
 ## Concurrency Controls
 Governator limits concurrent work using:
 
@@ -228,10 +233,6 @@ Governator limits concurrent work using:
 
 In-flight assignments are tracked in `.governator/in-flight.log` with one line
 per task:
-
-```
-001-set-up-initial-migrations-data_engineer -> data_engineer
-```
 
 ## Audit Log
 Governator writes fine-grained lifecycle events to `.governator/audit.log`:
@@ -274,13 +275,17 @@ Each worker execution:
   2. `_governator/roles-<type>/<role>.md`
   3. `_governator/custom-prompts/_global.md`
   4. `_governator/custom-prompts/<role>.md`
-  5. `_governator/task-assigned/<task>.md`
+  5. `_governator/<task-path>/<task>.md`
 - Operates in a fresh clone on a dedicated branch
 - Pushes its branch exactly once
 - Exits
 
-Think of each file we "send" to the worker (ask it to read on boot) as just
-an additional system prompt, because that's effectively what they are.
+Each file we "send to" the worker (read: each file we prompt it to read) is just
+another layer of prompt/context for execution. `_governator/custom-prompts/`
+contains optional prompt files that are always included (even if empty) to give
+the operator direct control over extra instructions:
+- `_global.md` applies to all workers and reviewers.
+- `<role>.md` applies to the specific role.
 
 Workers never:
 - merge to `main`
@@ -288,18 +293,9 @@ Workers never:
 - retain memory between runs
 
 ## Review Flow
-When a worker moves a task to `task-worked`, Governator invokes the reviewer
-role defined in `_governator/roles-special/reviewer.md`. Review output is
-captured in `review.json`, based on the template in
-`_governator/templates/review.json`.
-
-## Custom Prompts
-`_governator/custom-prompts/` contains optional prompt files that are always
-included (even if empty) to give the operator direct control over extra
-instructions:
-
-- `_global.md` applies to all workers and reviewers.
-- `<role>.md` applies to the specific role.
+When a worker completes a task, it is pushed to the repository under a dedicated
+branch. The task is moved to `task-worked` and Governator initiates a review to
+determin whether the work done satisfies what was asked in the ticket.
 
 ## Determinism by Design
 Governator intentionally avoids:
@@ -325,7 +321,7 @@ ensure all of the prereqs met, and whine stubbornly if not.
 It requires:
 - git
 - cron (or some other means of invocation)
-- one or more non-interactive LLM CLIs (e.g. Codex, Claude)
+- one or more non-interactive LLM CLIs (currently only supports Codex CLI)
 - a fully-baked `GOVERNATOR.md`
   - overview
   - goals & non-goals
