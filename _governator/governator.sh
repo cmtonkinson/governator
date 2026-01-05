@@ -1491,6 +1491,20 @@ task_file_for_name() {
   printf '%s\n' "${matches[0]}"
 }
 
+task_dir_for_branch() {
+  local branch="$1"
+  local task_name="$2"
+  local path
+  path="$(
+    git -C "${ROOT_DIR}" ls-tree -r --name-only "${branch}" "${STATE_DIR}" 2> /dev/null |
+      awk -v task="${task_name}.md" '$0 ~ ("/" task "$") { print; exit }'
+  )"
+  if [[ -z "${path}" ]]; then
+    return 1
+  fi
+  basename "$(dirname "${path}")"
+}
+
 task_file_for_prefix() {
   local prefix="$1"
   if [[ -z "${prefix}" ]]; then
@@ -2322,15 +2336,15 @@ process_worker_branch() {
   worker_name="${worker_name%%/*}"
 
   git_fetch_remote
-  git -C "${ROOT_DIR}" checkout -B "${local_branch}" "${remote_branch}" > /dev/null 2>&1
+  git -C "${ROOT_DIR}" branch -f "${local_branch}" "${remote_branch}" > /dev/null 2>&1
 
   local task_name
   task_name="${local_branch##*/}"
 
-  local task_file
-  if ! task_file="$(task_file_for_name "${task_name}")"; then
+  local task_dir
+  if ! task_dir="$(task_dir_for_branch "${remote_branch}" "${task_name}")"; then
     # No task to annotate; record and drop the branch.
-    log_warn "No task file found for ${task_name}, skipping merge."
+    log_warn "No task file found for ${task_name} on ${remote_branch}, skipping merge."
     printf '%s %s missing task file\n' "$(timestamp_utc_seconds)" "${local_branch}" >> "${FAILED_MERGES_LOG}"
     in_flight_remove "${task_name}" "${worker_name}"
     delete_worker_branch "${local_branch}"
@@ -2338,90 +2352,108 @@ process_worker_branch() {
     return 0
   fi
 
-  local task_dir
-  task_dir="$(basename "$(dirname "${task_file}")")"
+  local task_relpath="${STATE_DIR}/${task_dir}/${task_name}.md"
+  local decision="block"
+  local review_lines=()
+  local block_reason=""
 
   case "${task_dir}" in
     task-worked)
-      local review_lines=()
-      mapfile -t review_lines < <(code_review "${remote_branch}" "${local_branch}" "${task_file#"${ROOT_DIR}/"}")
-      local decision="${review_lines[0]:-block}"
-      annotate_review "${task_file}" "${decision}" "${review_lines[@]:1}"
-      log_task_event "${task_name}" "review decision: ${decision}"
-
-      case "${decision}" in
-        approve)
-          move_task_file "${task_file}" "${STATE_DIR}/task-done" "${task_name}" "moved to task-done"
-          ;;
-        reject)
-          move_task_file "${task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "moved to task-assigned"
-          ;;
-        *)
-          move_task_file "${task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
-          ;;
-      esac
+      mapfile -t review_lines < <(code_review "${remote_branch}" "${local_branch}" "${task_relpath}")
+      decision="${review_lines[0]:-block}"
       ;;
     task-feedback)
-      annotate_feedback "${task_file}"
-      move_task_file "${task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "moved to task-assigned"
+      :
       ;;
     *)
-      log_warn "Unexpected task state ${task_dir} for ${task_name}, blocking."
-      annotate_blocked "${task_file}" "Unexpected task state ${task_dir} during processing."
-      move_task_file "${task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
+      block_reason="Unexpected task state ${task_dir} during processing."
       ;;
   esac
 
-  git -C "${ROOT_DIR}" add "${STATE_DIR}" "${AUDIT_LOG}"
-  git -C "${ROOT_DIR}" commit -q -m "[governator] Process task ${task_name}"
-
   git_checkout_default_branch
 
+  local merged=0
   if git -C "${ROOT_DIR}" merge --ff-only -q "${local_branch}" > /dev/null; then
-    git_push_default_branch
+    merged=1
   else
     local base_branch
     base_branch="$(read_default_branch)"
     log_warn "Fast-forward merge failed for ${local_branch}; attempting rebase onto ${base_branch}."
     if git -C "${ROOT_DIR}" rebase -q "${base_branch}" "${local_branch}" > /dev/null 2>&1; then
       if git -C "${ROOT_DIR}" merge --ff-only -q "${local_branch}" > /dev/null; then
-        git_push_default_branch
-        delete_worker_branch "${local_branch}"
-        cleanup_worker_tmp_dirs "${worker_name}" "${task_name}"
-        return 0
+        merged=1
       fi
     else
       git -C "${ROOT_DIR}" rebase --abort > /dev/null 2>&1 || true
     fi
 
-    log_warn "Fast-forward still not possible; attempting merge commit for ${local_branch} into ${base_branch}."
-    if git -C "${ROOT_DIR}" merge -q --no-ff "${local_branch}" -m "[governator] Merge task ${task_name}" > /dev/null; then
-      git_push_default_branch
-      delete_worker_branch "${local_branch}"
-      cleanup_worker_tmp_dirs "${worker_name}" "${task_name}"
-      return 0
-    else
-      git -C "${ROOT_DIR}" merge --abort > /dev/null 2>&1 || true
+    if [[ "${merged}" -eq 0 ]]; then
+      log_warn "Fast-forward still not possible; attempting merge commit for ${local_branch} into ${base_branch}."
+      if git -C "${ROOT_DIR}" merge -q --no-ff "${local_branch}" -m "[governator] Merge task ${task_name}" > /dev/null; then
+        merged=1
+      else
+        git -C "${ROOT_DIR}" merge --abort > /dev/null 2>&1 || true
+      fi
     fi
 
-    log_error "Failed to merge ${local_branch} into ${base_branch} after rebase/merge attempts."
-    log_warn "Pending commits for ${local_branch}: $(git -C "${ROOT_DIR}" log --oneline "${base_branch}..${local_branch}" | tr '\n' ' ' | sed 's/ $//')"
+    if [[ "${merged}" -eq 0 ]]; then
+      log_error "Failed to merge ${local_branch} into ${base_branch} after rebase/merge attempts."
+      log_warn "Pending commits for ${local_branch}: $(git -C "${ROOT_DIR}" log --oneline "${base_branch}..${local_branch}" | tr '\n' ' ' | sed 's/ $//')"
 
+      local main_task_file
+      if main_task_file="$(task_file_for_name "${task_name}")"; then
+        # Keep the default branch task state authoritative; block and surface the failure.
+        annotate_merge_failure "${main_task_file}" "${local_branch}"
+        move_task_file "${main_task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
+        git -C "${ROOT_DIR}" add "${STATE_DIR}" "${AUDIT_LOG}"
+        git -C "${ROOT_DIR}" commit -q -m "[governator] Block task ${task_name} on merge failure"
+        git_push_default_branch
+      fi
+
+      printf '%s %s\n' "$(timestamp_utc_seconds)" "${local_branch}" >> "${FAILED_MERGES_LOG}"
+      in_flight_remove "${task_name}" "${worker_name}"
+      cleanup_worker_tmp_dirs "${worker_name}" "${task_name}"
+      # Preserve worker branch for debugging on merge failure.
+      return 0
+    fi
+  fi
+
+  if [[ "${merged}" -eq 1 ]]; then
     local main_task_file
     if main_task_file="$(task_file_for_name "${task_name}")"; then
-      # Keep the default branch task state authoritative; block and surface the failure.
-      annotate_merge_failure "${main_task_file}" "${local_branch}"
-      move_task_file "${main_task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
-      git -C "${ROOT_DIR}" add "${STATE_DIR}"
-      git -C "${ROOT_DIR}" commit -q -m "[governator] Block task ${task_name} on merge failure"
-      git_push_default_branch
-    fi
+      case "${task_dir}" in
+        task-worked)
+          annotate_review "${main_task_file}" "${decision}" "${review_lines[@]:1}"
+          log_task_event "${task_name}" "review decision: ${decision}"
+          case "${decision}" in
+            approve)
+              move_task_file "${main_task_file}" "${STATE_DIR}/task-done" "${task_name}" "moved to task-done"
+              ;;
+            reject)
+              move_task_file "${main_task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "moved to task-assigned"
+              ;;
+            *)
+              move_task_file "${main_task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
+              ;;
+          esac
+          ;;
+        task-feedback)
+          annotate_feedback "${main_task_file}"
+          move_task_file "${main_task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "moved to task-assigned"
+          ;;
+        *)
+          log_warn "Unexpected task state ${task_dir} for ${task_name}, blocking."
+          annotate_blocked "${main_task_file}" "${block_reason}"
+          move_task_file "${main_task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
+          ;;
+      esac
 
-    printf '%s %s\n' "$(timestamp_utc_seconds)" "${local_branch}" >> "${FAILED_MERGES_LOG}"
-    in_flight_remove "${task_name}" "${worker_name}"
-    cleanup_worker_tmp_dirs "${worker_name}" "${task_name}"
-    # Preserve worker branch for debugging on merge failure.
-    return 0
+      git -C "${ROOT_DIR}" add "${STATE_DIR}" "${AUDIT_LOG}"
+      git -C "${ROOT_DIR}" commit -q -m "[governator] Process task ${task_name}"
+    else
+      log_warn "Task file missing for ${task_name} after merge; skipping state update."
+    fi
+    git_push_default_branch
   fi
 
   in_flight_remove "${task_name}" "${worker_name}"
