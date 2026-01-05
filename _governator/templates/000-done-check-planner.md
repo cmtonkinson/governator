@@ -2,7 +2,7 @@
 
 ## Objective
 Translate the done-check review feedback into actionable and concrete tasks in
-order to complete the project (as per GOVERNATOR.md).
+order to complete the project (as per `GOVERNATOR.md`).
 
 ## Input
 - The main project `GOVERNATOR.md` file.
