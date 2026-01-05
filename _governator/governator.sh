@@ -1084,16 +1084,14 @@ move_done_check_to_planner() {
   local task_file="$1"
   local task_name="$2"
   local dest="${STATE_DIR}/task-assigned/${DONE_CHECK_PLANNER_TASK}.md"
-  local tmp
-  tmp="$(mktemp)"
-  if [[ -f "${DONE_CHECK_PLANNER_TEMPLATE}" ]]; then
-    cat "${DONE_CHECK_PLANNER_TEMPLATE}" > "${tmp}"
-    printf '\n\n' >> "${tmp}"
+  if [[ ! -f "${DONE_CHECK_PLANNER_TEMPLATE}" ]]; then
+    log_error "Missing done-check template at ${DONE_CHECK_PLANNER_TEMPLATE}."
+    return 1
   fi
-  cat "${task_file}" >> "${tmp}"
-  mv "${tmp}" "${dest}"
-  rm -f "${task_file}"
-  log_task_event "${task_name}" "moved to task-assigned for planner"
+  cp "${DONE_CHECK_PLANNER_TEMPLATE}" "${dest}"
+  append_section "${dest}" "## Reviewer Notes" "reviewer" "$(cat "${task_file}")"
+  move_task_file "${task_file}" "${STATE_DIR}/task-done" "${task_name}" "moved to task-done"
+  log_task_event "${DONE_CHECK_PLANNER_TASK}" "created planner follow-up"
 }
 
 # Read a file mtime in epoch seconds (BSD/GNU stat compatible).

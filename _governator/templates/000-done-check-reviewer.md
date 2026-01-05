@@ -1,12 +1,19 @@
 # Task 000: Done Check (Reviewer)
 
 ## Objective
-Determine whether the project is complete relative to `GOVERNATOR.md`.
+Determine whether the project is complete relative to `GOVERNATOR.md`:
+- Are all stated requirements met?
+- Are all stated constraints met?
+- Does the current state of the project generally conform with any listed "soft"
+  aspirations? (e.g. mission, vision, philosphy, etc)
 
-## Required Output
-Update `review.json` at the repo root using strict JSON. Set:
-- `result` to `approve` if the project is complete
-- `result` to `reject` if gaps remain and more work is needed
-- `result` to `block` only if the review cannot be completed safely
+## Inputs
+- The main project `GOVERNATOR.md` file.
+- Any/all architecture artifcats under `_governator/docs/`.
+- Relevant project source code, tests, configuration files, templates, etc.
 
-Include concise comments explaining the decision and any gaps.
+## Output
+In your revew JSON comments, be exhaustive. Whether accepting or rejecting
+overall, be sure to sure to independently address compliance with:
+- Every listed requirement
+- Every listed constraint
