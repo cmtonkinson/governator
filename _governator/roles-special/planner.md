@@ -69,6 +69,10 @@ selecting a role for a given task, you must choose the _best_ available role
 without resorting to guesswork. If there are no good matches, choose the
 "generalist" role and explain why.
 
+Task filenames must follow this pattern: `<id>-<kebab-case-title>-<role>.md`.
+Use a hyphen before the role suffix (e.g. `001-exchange-adapter-generalist.md`),
+never a dot.
+
 ## 6. Sequencing & Dependency Management
 You are responsible for:
 - Identifying task prerequisites

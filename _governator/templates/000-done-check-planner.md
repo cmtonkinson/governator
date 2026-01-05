@@ -11,5 +11,6 @@ order to complete the project (as per `GOVERNATOR.md`).
 ## Output
 - Create new task files in `_governator/task-backlog/` using the standard
   task template.
-- One task per file; include role suffixes in filenames.
+- One task per file; include role suffixes in filenames using a hyphen, not a dot.
+- Filename format: `<id>-<kebab-case-title>-<role>.md` (example: `001-exchange-adapter-generalist.md`).
 - Each task should map directly to a gap identified by the review.
