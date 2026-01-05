@@ -1834,7 +1834,7 @@ bootstrap_adrs_ok() {
     fi
   fi
   if [[ -d "${BOOTSTRAP_DOCS_DIR}" ]]; then
-    if find "${BOOTSTRAP_DOCS_DIR}" -maxdepth 1 -type f -iname 'adr*.md' -print -quit 2> /dev/null | grep -q .; then
+    if find "${BOOTSTRAP_DOCS_DIR}" "${BOOTSTRAP_DOCS_DIR}/adr" -maxdepth 1 -type f -iname 'adr*.md' -print -quit 2> /dev/null | grep -q .; then
       return 0
     fi
   fi
@@ -2282,6 +2282,7 @@ assign_pending_tasks() {
 
   # Gate normal task assignment until bootstrap completes.
   if ! architecture_bootstrap_complete; then
+    log_verbose "Not bootstrapped; skipping task assignment"
     local blocking_task
     if blocking_task="$(has_non_bootstrap_tasks)"; then
       log_warn "Bootstrap incomplete; ignoring task ${blocking_task}."
@@ -2310,12 +2311,27 @@ assign_pending_tasks() {
 
   if [[ "${queues_empty}" -eq 1 ]]; then
     log_verbose "All queues empty"
-  fi
-
-  if [[ "${queues_empty}" -eq 1 ]]; then
-    if done_check_needed && done_check_due; then
-      create_done_check_task || true
+    if done_check_needed; then
+      if done_check_due; then
+        create_done_check_task || true
+      else
+        local last_run
+        last_run="$(read_done_check_last_run)"
+        local cooldown
+        cooldown="$(read_done_check_cooldown_seconds)"
+        local now
+        now="$(date +%s)"
+        local remaining=$((cooldown - (now - last_run)))
+        if [[ "${remaining}" -lt 0 ]]; then
+          remaining=0
+        fi
+        log_verbose "Done check cooldown active (${remaining}s remaining)"
+      fi
+    else
+      log_verbose "Done check not needed (project_done matches GOVERNATOR.md)"
     fi
+  else
+    log_verbose "Tasks pending; skipping done check"
   fi
 
   local task_file
