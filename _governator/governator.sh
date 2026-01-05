@@ -2663,35 +2663,41 @@ process_worker_branch() {
     local main_task_file
     if main_task_file="$(task_file_for_name "${task_name}")"; then
       case "${task_dir}" in
-        task-worked)
-          annotate_review "${main_task_file}" "${decision}" "${review_lines[@]:1}"
-          log_task_event "${task_name}" "review decision: ${decision}"
-          case "${decision}" in
-            approve)
-              if [[ "${task_name}" == "${DONE_CHECK_REVIEW_TASK}" ]]; then
-                write_project_done_sha "$(governator_doc_sha)"
-                move_task_file "${main_task_file}" "${STATE_DIR}/task-done" "${task_name}" "moved to task-done"
-              else
-                move_task_file "${main_task_file}" "${STATE_DIR}/task-done" "${task_name}" "moved to task-done"
-              fi
-              ;;
-            reject)
-              if [[ "${task_name}" == "${DONE_CHECK_REVIEW_TASK}" ]]; then
-                write_project_done_sha ""
-                move_done_check_to_planner "${main_task_file}" "${task_name}"
-              else
-                move_task_file "${main_task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "moved to task-assigned"
-              fi
-              ;;
-            *)
-              if [[ "${task_name}" == "${DONE_CHECK_REVIEW_TASK}" ]]; then
-                write_project_done_sha ""
-                move_done_check_to_planner "${main_task_file}" "${task_name}"
-              else
-                move_task_file "${main_task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
-              fi
-              ;;
-          esac
+        task-worked | task-assigned)
+          if [[ "${task_dir}" == "task-assigned" && ! ("${worker_name}" == "reviewer" && "${task_name}" == 000-*) ]]; then
+            log_warn "Unexpected task state ${task_dir} for ${task_name}, blocking."
+            annotate_blocked "${main_task_file}" "${block_reason}"
+            move_task_file "${main_task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
+          else
+            annotate_review "${main_task_file}" "${decision}" "${review_lines[@]:1}"
+            log_task_event "${task_name}" "review decision: ${decision}"
+            case "${decision}" in
+              approve)
+                if [[ "${task_name}" == "${DONE_CHECK_REVIEW_TASK}" ]]; then
+                  write_project_done_sha "$(governator_doc_sha)"
+                  move_task_file "${main_task_file}" "${STATE_DIR}/task-done" "${task_name}" "moved to task-done"
+                else
+                  move_task_file "${main_task_file}" "${STATE_DIR}/task-done" "${task_name}" "moved to task-done"
+                fi
+                ;;
+              reject)
+                if [[ "${task_name}" == "${DONE_CHECK_REVIEW_TASK}" ]]; then
+                  write_project_done_sha ""
+                  move_done_check_to_planner "${main_task_file}" "${task_name}"
+                else
+                  move_task_file "${main_task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "moved to task-assigned"
+                fi
+                ;;
+              *)
+                if [[ "${task_name}" == "${DONE_CHECK_REVIEW_TASK}" ]]; then
+                  write_project_done_sha ""
+                  move_done_check_to_planner "${main_task_file}" "${task_name}"
+                else
+                  move_task_file "${main_task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
+                fi
+                ;;
+            esac
+          fi
           ;;
         task-feedback)
           annotate_feedback "${main_task_file}"
