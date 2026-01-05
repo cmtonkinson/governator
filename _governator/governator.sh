@@ -1935,7 +1935,11 @@ spawn_special_worker_for_task() {
   log_dir="${DB_DIR}/logs"
   mkdir -p "${log_dir}"
   local log_file
-  log_file="${log_dir}/${task_name}.log"
+  if [[ "${worker}" == "reviewer" ]]; then
+    log_file="${log_dir}/${task_name}-reviewer.log"
+  else
+    log_file="${log_dir}/${task_name}.log"
+  fi
   append_worker_log_separator "${log_file}"
 
   local remote
@@ -1949,6 +1953,10 @@ spawn_special_worker_for_task() {
   local prompt
   prompt="$(build_special_prompt "${worker}" "${task_relpath}")"
 
+  if [[ "${worker}" == "reviewer" && -f "${TEMPLATES_DIR}/review.json" ]]; then
+    cp "${TEMPLATES_DIR}/review.json" "${tmp_dir}/review.json"
+  fi
+
   local started_at
   started_at="$(date +%s)"
   if [[ -n "${audit_message}" ]]; then
@@ -1956,10 +1964,34 @@ spawn_special_worker_for_task() {
   fi
 
   log_task_event "${task_name}" "starting special worker ${worker}"
-  if run_codex_worker_blocking "${tmp_dir}" "${prompt}" "${log_file}" "${worker}"; then
+  local worker_status=0
+  if [[ "${worker}" == "reviewer" ]]; then
+    if ! run_codex_reviewer "${tmp_dir}" "${prompt}" "${log_file}"; then
+      worker_status=1
+    fi
+  elif ! run_codex_worker_blocking "${tmp_dir}" "${prompt}" "${log_file}" "${worker}"; then
+    worker_status=1
+  fi
+
+  if [[ "${worker_status}" -eq 0 ]]; then
     log_task_event "${task_name}" "special worker ${worker} completed"
   else
     log_task_warn "${task_name}" "special worker ${worker} exited with error"
+  fi
+
+  if [[ "${worker}" == "reviewer" ]]; then
+    log_verbose_file "Reviewer output file" "${tmp_dir}/review.json"
+    local review_output=()
+    mapfile -t review_output < <(parse_review_json "${tmp_dir}/review.json")
+    if [[ "${#review_output[@]}" -eq 0 ]]; then
+      review_output=("block" "Review output missing")
+    fi
+    local decision="${review_output[0]}"
+    local review_lines=("${review_output[@]:1}")
+    local block_reason="Unexpected task state during processing."
+    git_checkout_default_branch
+    apply_review_decision "${task_name}" "${worker}" "${decision}" "${block_reason}" "${review_lines[@]}"
+    git_push_default_branch
   fi
   local finished_at
   finished_at="$(date +%s)"
@@ -2171,6 +2203,80 @@ parse_review_json() {
   result="$(jq -r '.result // ""' "${file}")"
   printf '%s\n' "${result}"
   jq -r '.comments // [] | if type == "array" then .[] else . end' "${file}"
+}
+
+# Apply a reviewer decision to the task file and commit the state update.
+apply_review_decision() {
+  local task_name="$1"
+  local worker_name="$2"
+  local decision="$3"
+  local block_reason="$4"
+  shift 4
+  local review_lines=("$@")
+
+  local main_task_file
+  if ! main_task_file="$(task_file_for_name "${task_name}")"; then
+    log_warn "Task file missing for ${task_name} after review; skipping state update."
+    return 1
+  fi
+
+  local task_dir
+  task_dir="$(basename "$(dirname "${main_task_file}")")"
+
+  case "${task_dir}" in
+    task-worked | task-assigned)
+      if [[ "${task_dir}" == "task-assigned" && ! ("${worker_name}" == "reviewer" && "${task_name}" == 000-*) ]]; then
+        log_warn "Unexpected task state ${task_dir} for ${task_name}, blocking."
+        annotate_blocked "${main_task_file}" "${block_reason}"
+        move_task_file "${main_task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
+      else
+        annotate_review "${main_task_file}" "${decision}" "${review_lines[@]}"
+        log_task_event "${task_name}" "review decision: ${decision}"
+        case "${decision}" in
+          approve)
+            if [[ "${task_name}" == "${DONE_CHECK_REVIEW_TASK}" ]]; then
+              write_project_done_sha "$(governator_doc_sha)"
+              move_task_file "${main_task_file}" "${STATE_DIR}/task-done" "${task_name}" "moved to task-done"
+            else
+              move_task_file "${main_task_file}" "${STATE_DIR}/task-done" "${task_name}" "moved to task-done"
+            fi
+            ;;
+          reject)
+            if [[ "${task_name}" == "${DONE_CHECK_REVIEW_TASK}" ]]; then
+              write_project_done_sha ""
+              move_done_check_to_planner "${main_task_file}" "${task_name}"
+            else
+              move_task_file "${main_task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "moved to task-assigned"
+            fi
+            ;;
+          *)
+            if [[ "${task_name}" == "${DONE_CHECK_REVIEW_TASK}" ]]; then
+              write_project_done_sha ""
+              move_done_check_to_planner "${main_task_file}" "${task_name}"
+            else
+              move_task_file "${main_task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
+            fi
+            ;;
+        esac
+      fi
+      ;;
+    task-feedback)
+      annotate_feedback "${main_task_file}"
+      move_task_file "${main_task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "moved to task-assigned"
+      ;;
+    *)
+      log_warn "Unexpected task state ${task_dir} for ${task_name}, blocking."
+      annotate_blocked "${main_task_file}" "${block_reason}"
+      move_task_file "${main_task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
+      ;;
+  esac
+
+  git -C "${ROOT_DIR}" add "${STATE_DIR}" "${AUDIT_LOG}"
+  if [[ -f "${PROJECT_DONE_FILE}" ]]; then
+    git -C "${ROOT_DIR}" add "${PROJECT_DONE_FILE}"
+  fi
+  git -C "${ROOT_DIR}" commit -q -m "[governator] Process task ${task_name}"
+  return 0
 }
 
 # Run reviewer flow in a clean clone and return parsed review output.
@@ -2660,61 +2766,7 @@ process_worker_branch() {
   fi
 
   if [[ "${merged}" -eq 1 ]]; then
-    local main_task_file
-    if main_task_file="$(task_file_for_name "${task_name}")"; then
-      case "${task_dir}" in
-        task-worked | task-assigned)
-          if [[ "${task_dir}" == "task-assigned" && ! ("${worker_name}" == "reviewer" && "${task_name}" == 000-*) ]]; then
-            log_warn "Unexpected task state ${task_dir} for ${task_name}, blocking."
-            annotate_blocked "${main_task_file}" "${block_reason}"
-            move_task_file "${main_task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
-          else
-            annotate_review "${main_task_file}" "${decision}" "${review_lines[@]:1}"
-            log_task_event "${task_name}" "review decision: ${decision}"
-            case "${decision}" in
-              approve)
-                if [[ "${task_name}" == "${DONE_CHECK_REVIEW_TASK}" ]]; then
-                  write_project_done_sha "$(governator_doc_sha)"
-                  move_task_file "${main_task_file}" "${STATE_DIR}/task-done" "${task_name}" "moved to task-done"
-                else
-                  move_task_file "${main_task_file}" "${STATE_DIR}/task-done" "${task_name}" "moved to task-done"
-                fi
-                ;;
-              reject)
-                if [[ "${task_name}" == "${DONE_CHECK_REVIEW_TASK}" ]]; then
-                  write_project_done_sha ""
-                  move_done_check_to_planner "${main_task_file}" "${task_name}"
-                else
-                  move_task_file "${main_task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "moved to task-assigned"
-                fi
-                ;;
-              *)
-                if [[ "${task_name}" == "${DONE_CHECK_REVIEW_TASK}" ]]; then
-                  write_project_done_sha ""
-                  move_done_check_to_planner "${main_task_file}" "${task_name}"
-                else
-                  move_task_file "${main_task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
-                fi
-                ;;
-            esac
-          fi
-          ;;
-        task-feedback)
-          annotate_feedback "${main_task_file}"
-          move_task_file "${main_task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "moved to task-assigned"
-          ;;
-        *)
-          log_warn "Unexpected task state ${task_dir} for ${task_name}, blocking."
-          annotate_blocked "${main_task_file}" "${block_reason}"
-          move_task_file "${main_task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
-          ;;
-      esac
-
-      git -C "${ROOT_DIR}" add "${STATE_DIR}" "${AUDIT_LOG}"
-      git -C "${ROOT_DIR}" commit -q -m "[governator] Process task ${task_name}"
-    else
-      log_warn "Task file missing for ${task_name} after merge; skipping state update."
-    fi
+    apply_review_decision "${task_name}" "${worker_name}" "${decision}" "${block_reason}" "${review_lines[@]:1}"
     git_push_default_branch
   fi
 
