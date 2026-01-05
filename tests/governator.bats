@@ -107,7 +107,7 @@ EOF
   [ "$status" -eq 0 ]
 
   [ -f "${REPO_DIR}/_governator/task-assigned/001-sample-ruby.md" ]
-  run grep -F "001-sample-ruby -> ruby" "${REPO_DIR}/_governator/in-flight.log"
+  run grep -F "001-sample-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
   [ "$status" -eq 0 ]
 }
 
@@ -140,7 +140,7 @@ EOF
 @test "assign-backlog respects global cap" {
   complete_bootstrap
   write_task "task-backlog" "004-cap-ruby"
-  echo "004-busy-ruby -> ruby" >> "${REPO_DIR}/_governator/in-flight.log"
+  echo "004-busy-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
   commit_all "Prepare global cap"
 
   run bash "${REPO_DIR}/_governator/governator.sh" assign-backlog
@@ -153,7 +153,7 @@ EOF
 @test "assign-backlog respects per-worker cap" {
   complete_bootstrap
   write_task "task-backlog" "005-cap-ruby"
-  echo "006-busy-ruby -> ruby" >> "${REPO_DIR}/_governator/in-flight.log"
+  echo "006-busy-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
   printf '%s\n' "2" > "${REPO_DIR}/.governator/global_worker_cap"
   printf '%s\n' "ruby: 1" > "${REPO_DIR}/.governator/worker_caps"
   commit_all "Prepare worker cap"
@@ -167,7 +167,7 @@ EOF
 
 @test "check-zombies retries when branch missing and worker dead" {
   write_task "task-assigned" "007-zombie-ruby"
-  echo "007-zombie-ruby -> ruby" >> "${REPO_DIR}/_governator/in-flight.log"
+  echo "007-zombie-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
 
   tmp_dir="$(mktemp -d "${BATS_TMPDIR}/worker-tmp.XXXXXX")"
   echo "007-zombie-ruby | ruby | 999999 | ${tmp_dir} | worker/ruby/007-zombie-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
@@ -182,7 +182,7 @@ EOF
 
 @test "check-zombies blocks after second failure" {
   write_task "task-assigned" "008-stuck-ruby"
-  echo "008-stuck-ruby -> ruby" >> "${REPO_DIR}/_governator/in-flight.log"
+  echo "008-stuck-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
   echo "008-stuck-ruby | 1" >> "${REPO_DIR}/.governator/retry-counts.log"
 
   tmp_dir="$(mktemp -d "${BATS_TMPDIR}/worker-tmp.XXXXXX")"
@@ -193,7 +193,7 @@ EOF
   [ "$status" -eq 0 ]
 
   [ -f "${REPO_DIR}/_governator/task-blocked/008-stuck-ruby.md" ]
-  run grep -F "008-stuck-ruby -> ruby" "${REPO_DIR}/_governator/in-flight.log"
+  run grep -F "008-stuck-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
   [ "$status" -ne 0 ]
   run grep -F "008-stuck-ruby |" "${REPO_DIR}/.governator/retry-counts.log"
   [ "$status" -ne 0 ]
@@ -219,7 +219,7 @@ EOF
 
 @test "process-branches approves worked task and moves to done" {
   write_task "task-worked" "010-review-ruby"
-  echo "010-review-ruby -> ruby" >> "${REPO_DIR}/_governator/in-flight.log"
+  echo "010-review-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
   echo "010-review-ruby | ruby | 999999 | /tmp/governator-test | worker/ruby/010-review-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
   commit_all "Prepare worked task"
 
@@ -234,13 +234,13 @@ EOF'
   [ -f "${REPO_DIR}/_governator/task-done/010-review-ruby.md" ]
   run grep -F "Decision: approve" "${REPO_DIR}/_governator/task-done/010-review-ruby.md"
   [ "$status" -eq 0 ]
-  run grep -F "010-review-ruby -> ruby" "${REPO_DIR}/_governator/in-flight.log"
+  run grep -F "010-review-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
   [ "$status" -ne 0 ]
 }
 
 @test "process-branches moves feedback task back to assigned" {
   write_task "task-feedback" "011-feedback-ruby"
-  echo "011-feedback-ruby -> ruby" >> "${REPO_DIR}/_governator/in-flight.log"
+  echo "011-feedback-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
   commit_all "Prepare feedback task"
 
   create_worker_branch "011-feedback-ruby" "ruby"
@@ -343,8 +343,8 @@ EOF
 }
 
 @test "count-in-flight totals and per-role counts" {
-  printf '%s\n' "014-one-ruby -> ruby" >> "${REPO_DIR}/_governator/in-flight.log"
-  printf '%s\n' "015-one-sre -> sre" >> "${REPO_DIR}/_governator/in-flight.log"
+  printf '%s\n' "014-one-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+  printf '%s\n' "015-one-sre -> sre" >> "${REPO_DIR}/.governator/in-flight.log"
   commit_all "Add in-flight"
 
   run bash "${REPO_DIR}/_governator/governator.sh" count-in-flight
@@ -455,7 +455,7 @@ EOF
 
 @test "abort terminates worker, removes tmp dir, and blocks task" {
   write_task "task-assigned" "019-abort-ruby"
-  printf '%s\n' "019-abort-ruby -> ruby" >> "${REPO_DIR}/_governator/in-flight.log"
+  printf '%s\n' "019-abort-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
   tmp_dir="$(mktemp -d "${BATS_TMPDIR}/worker-XXXXXX")"
   sleep 60 >/dev/null &
   pid=$!
@@ -479,7 +479,7 @@ EOF
   run grep -F "Aborted by operator" "${REPO_DIR}/_governator/task-blocked/019-abort-ruby.md"
   [ "$status" -eq 0 ]
 
-  run grep -F "019-abort-ruby -> ruby" "${REPO_DIR}/_governator/in-flight.log"
+  run grep -F "019-abort-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
   [ "$status" -ne 0 ]
 
   [ ! -f "${ORIGIN_DIR}/refs/heads/worker/ruby/019-abort-ruby" ]

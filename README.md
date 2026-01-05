@@ -134,6 +134,8 @@ There is no conversational back-and-forth.
 7. Profit?
 
 ## Directory Structure
+The `_governator/` directory is the heart of the system. It contains the source
+code, prompts, templates, and full task "database."
 
 ```
 _governator/
@@ -172,6 +174,9 @@ _governator/
 ├── task-feedback/
 └── task-proposed/
 ```
+
+The `.governator/` directory is the system configuration/state "database."
+Customizable configuration and internal state are stored here.
 
 ```
 .governator/
@@ -215,7 +220,7 @@ Governator limits concurrent work using:
 - `.governator/worker_caps` for per-role caps (default `1` when absent)
 - `.governator/worker_timeout_seconds` for worker timeouts (default `900`)
 
-In-flight assignments are tracked in `_governator/in-flight.log` with one line
+In-flight assignments are tracked in `.governator/in-flight.log` with one line
 per task:
 
 ```

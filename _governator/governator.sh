@@ -40,8 +40,8 @@ WORKER_ROLES_DIR="${STATE_DIR}/roles-worker"
 SPECIAL_ROLES_DIR="${STATE_DIR}/roles-special"
 TEMPLATES_DIR="${STATE_DIR}/templates"
 LOCK_FILE="${STATE_DIR}/governator.lock"
-FAILED_MERGES_LOG="${STATE_DIR}/failed-merges.log"
-IN_FLIGHT_LOG="${STATE_DIR}/in-flight.log"
+FAILED_MERGES_LOG="${DB_DIR}/failed-merges.log"
+IN_FLIGHT_LOG="${DB_DIR}/in-flight.log"
 SYSTEM_LOCK_FILE="${DB_DIR}/governator.locked"
 SYSTEM_LOCK_PATH="${SYSTEM_LOCK_FILE#"${ROOT_DIR}/"}"
 GITIGNORE_PATH="${ROOT_DIR}/.gitignore"
@@ -1961,6 +1961,11 @@ spawn_special_worker_for_task() {
   else
     log_task_warn "${task_name}" "special worker ${worker} exited with error"
   fi
+  local finished_at
+  finished_at="$(date +%s)"
+  if [[ "${finished_at}" -ge "${started_at}" ]]; then
+    log_task_event "${task_name}" "worker elapsed ${worker}: $((finished_at - started_at))s"
+  fi
   cleanup_tmp_dir "${tmp_dir}"
 }
 
@@ -2035,6 +2040,29 @@ in_flight_has_worker() {
     fi
   done < <(in_flight_entries)
   return 1
+}
+
+worker_elapsed_seconds() {
+  local task_name="$1"
+  local worker="$2"
+  local branch="$3"
+  local proc_info=()
+  if ! mapfile -t proc_info < <(worker_process_get "${task_name}" "${worker}"); then
+    return 1
+  fi
+  local started_at="${proc_info[3]:-}"
+  if [[ -z "${started_at}" || ! "${started_at}" =~ ^[0-9]+$ ]]; then
+    return 1
+  fi
+  local finished_at
+  finished_at="$(git -C "${ROOT_DIR}" log -1 --format=%ct "${branch}" 2> /dev/null || true)"
+  if [[ -z "${finished_at}" || ! "${finished_at}" =~ ^[0-9]+$ ]]; then
+    return 1
+  fi
+  if [[ "${finished_at}" -lt "${started_at}" ]]; then
+    return 1
+  fi
+  printf '%s\n' "$((finished_at - started_at))"
 }
 
 # Block a task when required metadata is missing or invalid.
@@ -2168,8 +2196,10 @@ code_review() {
   local log_dir
   log_dir="${DB_DIR}/logs"
   mkdir -p "${log_dir}"
+  local task_base
+  task_base="$(basename "${task_relpath}" .md)"
   local log_file
-  log_file="${log_dir}/reviewer-${local_branch//\//-}.log"
+  log_file="${log_dir}/${task_base}-reviewer.log"
   append_worker_log_separator "${log_file}"
 
   local prompt
@@ -2279,6 +2309,10 @@ assign_pending_tasks() {
   fi
 
   if [[ "${queues_empty}" -eq 1 ]]; then
+    log_verbose "All queues empty"
+  fi
+
+  if [[ "${queues_empty}" -eq 1 ]]; then
     if done_check_needed && done_check_due; then
       create_done_check_task || true
     fi
@@ -2319,6 +2353,7 @@ assign_pending_tasks() {
       continue
     fi
 
+    log_verbose "Assigning backlog task ${task_name} to ${worker}"
     assign_task "${task_file}" "${worker}"
     in_flight_add "${task_name}" "${worker}"
   done < <(list_task_files_in_dir "${STATE_DIR}/task-backlog")
@@ -2329,6 +2364,7 @@ resume_assigned_tasks() {
   touch_logs
   require_project_mode
 
+  log_verbose "Resuming assigned tasks"
   local task_file
   while IFS= read -r task_file; do
     if [[ "${task_file}" == *"/.keep" ]]; then
@@ -2349,6 +2385,7 @@ resume_assigned_tasks() {
     local worker="${metadata[2]}"
 
     if in_flight_has_task "${task_name}"; then
+      log_verbose "Skipping in-flight task ${task_name}"
       continue
     fi
 
@@ -2365,6 +2402,7 @@ resume_assigned_tasks() {
     fi
 
     if special_role_exists "${worker}"; then
+      log_verbose "Dispatching special role ${worker} for ${task_name}"
       warn_if_task_template_incomplete "${task_file}" "${task_name}"
       in_flight_add "${task_name}" "${worker}"
       spawn_special_worker_for_task "${task_file}" "${worker}" "retrying ${worker} task"
@@ -2372,6 +2410,7 @@ resume_assigned_tasks() {
       continue
     fi
 
+    log_verbose "Dispatching worker ${worker} for ${task_name}"
     warn_if_task_template_incomplete "${task_file}" "${task_name}"
     in_flight_add "${task_name}" "${worker}"
     spawn_worker_for_task "${task_file}" "${worker}" "retrying ${worker} task"
@@ -2530,6 +2569,11 @@ process_worker_branch() {
   local review_lines=()
   local block_reason=""
 
+  local elapsed
+  if elapsed="$(worker_elapsed_seconds "${task_name}" "${worker_name}" "${local_branch}")"; then
+    log_task_event "${task_name}" "worker elapsed ${worker_name}: ${elapsed}s"
+  fi
+
   case "${task_dir}" in
     task-worked)
       mapfile -t review_lines < <(code_review "${remote_branch}" "${local_branch}" "${task_relpath}")
@@ -2658,12 +2702,15 @@ process_worker_branches() {
   check_zombie_workers
   cleanup_stale_worker_dirs
 
+  log_verbose "Scanning worker branches"
   local branch
   while IFS= read -r branch; do
     if [[ -z "${branch}" ]]; then
       continue
     fi
+    log_verbose "Found worker branch: ${branch}"
     if is_failed_merge_branch "${branch}"; then
+      log_verbose "Skipping failed merge branch: ${branch}"
       continue
     fi
     process_worker_branch "${branch}"
@@ -2681,12 +2728,15 @@ main() {
     return 0
   fi
   ensure_lock
+  log_verbose "Run start (branch: $(read_default_branch))"
   sync_default_branch
+  log_verbose "Sync complete"
   process_worker_branches
   resume_assigned_tasks
   assign_pending_tasks
   commit_audit_log_if_dirty
   git_checkout_default_branch
+  log_verbose "Run complete (branch: $(read_default_branch))"
 }
 
 #############################################################################
