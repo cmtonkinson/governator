@@ -1994,6 +1994,7 @@ spawn_special_worker_for_task() {
     git_checkout_default_branch
     apply_review_decision "${task_name}" "${worker}" "${decision}" "${block_reason}" "${review_lines[@]}"
     git_push_default_branch
+    delete_worker_branch "worker/${worker}/${task_name}"
     rm -f "${tmp_dir}/review.json"
   elif [[ "${worker_status}" -eq 0 ]]; then
     process_special_worker_branch "${task_name}" "${worker}"
