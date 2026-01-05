@@ -1080,6 +1080,33 @@ move_task_file_renamed() {
   log_task_event "${task_name}" "${audit_message}"
 }
 
+warn_if_task_template_incomplete() {
+  local task_file="$1"
+  local task_name="$2"
+  if [[ "${task_name}" == 000-* ]]; then
+    return 0
+  fi
+
+  local sections=(
+    "## Objective"
+    "## Context"
+    "## Requirements"
+    "## Non-Goals"
+    "## Constraints"
+    "## Acceptance Criteria"
+  )
+  local missing=()
+  local section
+  for section in "${sections[@]}"; do
+    if ! grep -Fq "${section}" "${task_file}"; then
+      missing+=("${section}")
+    fi
+  done
+  if [[ "${#missing[@]}" -gt 0 ]]; then
+    log_warn "Task ${task_name} missing template sections: ${missing[*]}"
+  fi
+}
+
 move_done_check_to_planner() {
   local task_file="$1"
   local task_name="$2"
@@ -2186,6 +2213,7 @@ assign_task() {
   git -C "${ROOT_DIR}" commit -q -m "[governator] Assign task ${task_name}"
   git_push_default_branch
 
+  warn_if_task_template_incomplete "${assigned_file}" "${task_name}"
   spawn_worker_for_task "${assigned_file}" "${worker}" ""
 }
 
@@ -2337,12 +2365,14 @@ resume_assigned_tasks() {
     fi
 
     if special_role_exists "${worker}"; then
+      warn_if_task_template_incomplete "${task_file}" "${task_name}"
       in_flight_add "${task_name}" "${worker}"
       spawn_special_worker_for_task "${task_file}" "${worker}" "retrying ${worker} task"
       in_flight_remove "${task_name}" "${worker}"
       continue
     fi
 
+    warn_if_task_template_incomplete "${task_file}" "${task_name}"
     in_flight_add "${task_name}" "${worker}"
     spawn_worker_for_task "${task_file}" "${worker}" "retrying ${worker} task"
   done < <(list_task_files_in_dir "${STATE_DIR}/task-assigned")

@@ -15,7 +15,7 @@ Provide the minimum background needed to execute safely. Include:
 
 Do **not** restate global project goals.
 
-## Explicit Requirements
+## Requirements
 List concrete, testable requirements.
 - Use bullet points
 - Each item should be objectively verifiable
@@ -53,3 +53,7 @@ Example:
 - [ ] Tests pass (or explanation provided if none exist)
 - [ ] Changes are limited to stated scope
 - [ ] No violations of worker contract
+
+=============================================================================
+=============================================================================
+
