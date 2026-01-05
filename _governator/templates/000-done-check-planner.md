@@ -10,6 +10,6 @@ order to complete the project (as per GOVERNATOR.md).
 
 ## Output
 - Create new task files in `_governator/task-backlog/` using the standard
-  ticket template.
+  task template.
 - One task per file; include role suffixes in filenames.
 - Each task should map directly to a gap identified by the review.

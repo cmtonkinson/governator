@@ -23,7 +23,7 @@ PROJECT_MODE_FILE="${DB_DIR}/project_mode"
 DEFAULT_BRANCH_FILE="${DB_DIR}/default_branch"
 REMOTE_NAME_FILE="${DB_DIR}/remote_name"
 
-NEXT_TICKET_FILE="${DB_DIR}/next_ticket_id"
+NEXT_TASK_FILE="${DB_DIR}/next_task_id"
 GLOBAL_CAP_FILE="${DB_DIR}/global_worker_cap"
 WORKER_CAPS_FILE="${DB_DIR}/worker_caps"
 WORKER_TIMEOUT_FILE="${DB_DIR}/worker_timeout_seconds"
@@ -52,7 +52,7 @@ GOV_VERBOSE=0
 
 DEFAULT_GLOBAL_CAP=1
 DEFAULT_WORKER_CAP=1
-DEFAULT_TICKET_ID=1
+DEFAULT_TASK_ID=1
 DEFAULT_WORKER_TIMEOUT_SECONDS=900
 DEFAULT_REMOTE_NAME="origin"
 DEFAULT_BRANCH_NAME="main"
@@ -941,66 +941,66 @@ Branch: ${branch:-n/a}"
   git_push_default_branch
 }
 
-# Read the next ticket id from disk, defaulting to 1.
-read_next_ticket_id() {
+# Read the next task id from disk, defaulting to 1.
+read_next_task_id() {
   ensure_db_dir
-  if [[ ! -f "${NEXT_TICKET_FILE}" ]]; then
-    printf '%s\n' "${DEFAULT_TICKET_ID}"
+  if [[ ! -f "${NEXT_TASK_FILE}" ]]; then
+    printf '%s\n' "${DEFAULT_TASK_ID}"
     return 0
   fi
 
   local value
-  value="$(tr -d '[:space:]' < "${NEXT_TICKET_FILE}")"
+  value="$(tr -d '[:space:]' < "${NEXT_TASK_FILE}")"
   if [[ -z "${value}" ]]; then
-    printf '%s\n' "${DEFAULT_TICKET_ID}"
+    printf '%s\n' "${DEFAULT_TASK_ID}"
     return 0
   fi
   printf '%s\n' "${value}"
 }
 
-# Persist the next ticket id.
-write_next_ticket_id() {
+# Persist the next task id.
+write_next_task_id() {
   local value="$1"
   ensure_db_dir
-  printf '%s\n' "${value}" > "${NEXT_TICKET_FILE}"
+  printf '%s\n' "${value}" > "${NEXT_TASK_FILE}"
 }
 
-# Format a numeric ticket id as zero-padded 3 digits.
-format_ticket_id() {
+# Format a numeric task id as zero-padded 3 digits.
+format_task_id() {
   local value="$1"
   printf '%03d' "${value}"
 }
 
-# Allocate the next ticket id and increment the stored value.
-allocate_ticket_id() {
+# Allocate the next task id and increment the stored value.
+allocate_task_id() {
   local current
-  current="$(read_next_ticket_id)"
+  current="$(read_next_task_id)"
   if ! [[ "${current}" =~ ^[0-9]+$ ]]; then
-    log_warn "Invalid ticket id value '${current}', resetting to 1."
+    log_warn "Invalid task id value '${current}', resetting to 1."
     current=1
   fi
 
   local next=$((current + 1))
-  write_next_ticket_id "${next}"
+  write_next_task_id "${next}"
   printf '%s\n' "${current}"
 }
 
-# Create a new ticket file using the template and allocated id.
-create_ticket_file() {
+# Create a new task file using the template and allocated id.
+create_task_file() {
   local short_name="$1"
   local role="$2"
   local target_dir="$3"
 
-  local ticket_id
-  ticket_id="$(allocate_ticket_id)"
+  local task_id
+  task_id="$(allocate_task_id)"
 
   local id_segment
-  id_segment="$(format_ticket_id "${ticket_id}")"
+  id_segment="$(format_task_id "${task_id}")"
   local filename="${id_segment}-${short_name}-${role}.md"
 
-  local template="${TEMPLATES_DIR}/ticket.md"
+  local template="${TEMPLATES_DIR}/task.md"
   if [[ ! -f "${template}" ]]; then
-    log_error "Missing ticket template at ${template}."
+    log_error "Missing task template at ${template}."
     return 1
   fi
 
@@ -2678,8 +2678,8 @@ main() {
 #   governator.sh extract-role <task-file>
 #   governator.sh read-caps [role]
 #   governator.sh count-in-flight [role]
-#   governator.sh format-ticket-id <number>
-#   governator.sh allocate-ticket-id
+#   governator.sh format-task-id <number>
+#   governator.sh allocate-task-id
 #   governator.sh normalize-tmp-path <path>
 #   governator.sh audit-log <task> <message>
 #
@@ -2723,11 +2723,11 @@ main() {
 #   Prints the total in-flight count. If a role is supplied, prints only that
 #   role's in-flight count.
 #
-# - format-ticket-id:
-#   Formats a numeric ticket id to zero-padded 3 digits.
+# - format-task-id:
+#   Formats a numeric task id to zero-padded 3 digits.
 #
-# - allocate-ticket-id:
-#   Reserves and prints the next ticket id (increments the stored counter).
+# - allocate-task-id:
+#   Reserves and prints the next task id (increments the stored counter).
 #
 # - normalize-tmp-path:
 #   Normalizes /tmp paths to their /private/tmp equivalents.
@@ -2946,17 +2946,17 @@ dispatch_subcommand() {
         count_in_flight_total
       fi
       ;;
-    format-ticket-id)
+    format-task-id)
       ensure_ready_with_lock
       if [[ -z "${1:-}" ]]; then
-        log_error "Usage: format-ticket-id <number>"
+        log_error "Usage: format-task-id <number>"
         exit 1
       fi
-      format_ticket_id "${1}"
+      format_task_id "${1}"
       ;;
-    allocate-ticket-id)
+    allocate-task-id)
       ensure_ready_with_lock
-      allocate_ticket_id
+      allocate_task_id
       ;;
     normalize-tmp-path)
       ensure_ready_with_lock

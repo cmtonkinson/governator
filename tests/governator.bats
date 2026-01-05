@@ -55,9 +55,9 @@ create_worker_branch() {
   repo_git checkout main >/dev/null
 }
 
-set_next_ticket_id() {
-  printf '%s\n' "$1" > "${REPO_DIR}/.governator/next_ticket_id"
-  commit_paths "Set ticket id" ".governator/next_ticket_id"
+set_next_task_id() {
+  printf '%s\n' "$1" > "${REPO_DIR}/.governator/next_task_id"
+  commit_paths "Set task id" ".governator/next_task_id"
 }
 
 setup() {
@@ -356,26 +356,26 @@ EOF
   [ "${output}" = "1" ]
 }
 
-@test "format-ticket-id pads to three digits" {
-  run bash "${REPO_DIR}/_governator/governator.sh" format-ticket-id 1
+@test "format-task-id pads to three digits" {
+  run bash "${REPO_DIR}/_governator/governator.sh" format-task-id 1
   [ "$status" -eq 0 ]
   [ "${output}" = "001" ]
-  run bash "${REPO_DIR}/_governator/governator.sh" format-ticket-id 12
+  run bash "${REPO_DIR}/_governator/governator.sh" format-task-id 12
   [ "$status" -eq 0 ]
   [ "${output}" = "012" ]
-  run bash "${REPO_DIR}/_governator/governator.sh" format-ticket-id 123
+  run bash "${REPO_DIR}/_governator/governator.sh" format-task-id 123
   [ "$status" -eq 0 ]
   [ "${output}" = "123" ]
 }
 
-@test "allocate-ticket-id increments counter" {
-  set_next_ticket_id "7"
+@test "allocate-task-id increments counter" {
+  set_next_task_id "7"
 
-  run bash "${REPO_DIR}/_governator/governator.sh" allocate-ticket-id
+  run bash "${REPO_DIR}/_governator/governator.sh" allocate-task-id
   [ "$status" -eq 0 ]
   [ "${output}" = "7" ]
-  commit_paths "Bump ticket id" ".governator/next_ticket_id"
-  run bash "${REPO_DIR}/_governator/governator.sh" allocate-ticket-id
+  commit_paths "Bump task id" ".governator/next_task_id"
+  run bash "${REPO_DIR}/_governator/governator.sh" allocate-task-id
   [ "$status" -eq 0 ]
   [ "${output}" = "8" ]
 }

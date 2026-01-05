@@ -118,19 +118,20 @@ There is no conversational back-and-forth.
 
 ## High-Level Workflow
 1. You copy the `_governator/` directory into the project root.
-2. You run `governator.sh init` to configure project mode, default branch/remote, and doc locations.
-3. You write `GOVERNATOR.md` for your project.
+2. You write `GOVERNATOR.md` for your project.
    - this is the only authoritative description of intent
    - workers never modify it
+3. You run `governator.sh init` to configure the tool.
 4. You set up a cron job that periodically runs `governator.sh run`.
 5. Governator:
    - reads the repository state
    - creates or updates task files
    - assigns tasks to roles
-   - spawns isolated worker executions
+   - spawns isolated codex cli workers to complete tasks
    - reviews results
    - merges approved work into `main`
-5. You come back later to a working system.
+6. You come back later to a working system.
+7. Profit?
 
 ## Directory Structure
 
@@ -162,7 +163,7 @@ _governator/
 │   └── reviewer.md
 ├── templates/
 │   ├── review.json
-│   └── ticket.md
+│   └── task.md
 ├── task-backlog/
 ├── task-assigned/
 ├── task-worked/
@@ -177,7 +178,7 @@ _governator/
 ├── default_branch
 ├── done_check_cooldown_seconds
 ├── project_mode
-├── next_ticket_id
+├── next_task_id
 ├── reasoning_effort
 ├── last_done_check
 ├── remote_name
@@ -194,17 +195,17 @@ _governator/
 
 - **Tasks** markdown files representing one unit of work, flowing through lifecycle directories.
 
-## Ticket Naming and Assignment
-Tasks are assigned to roles by their filename suffix. Filenames are kebab-case
-and use a three-digit numeric id prefix:
-
+## Task Naming and Assignment
+Tasks are created with a 3-digit numeric prefix, a kebab-case slugified name, 
+and a suffix matching the type of role the task should be assigned to.
 - Example: `001-create-database-data_engineer.md`
 - Example: `002-use-bundler-ruby.md`
 
 Governator derives the role from the suffix after the last dash. If the suffix
-does not match a role file in `_governator/roles-worker/`, the task is blocked.
+does not match a role file in `_governator/roles-worker/`, the task will be
+assigned to the default `generalist` role.
 
-The `templates/ticket.md` file is the stub for new tasks. `next_ticket_id`
+The `templates/task.md` file is the stub for new tasks. `next_task_id`
 stores the next auto-increment id.
 
 ## Concurrency Controls
