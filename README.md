@@ -175,10 +175,13 @@ _governator/
 ```
 .governator/
 ├── default_branch
+├── done_check_cooldown_seconds
 ├── project_mode
 ├── next_ticket_id
 ├── reasoning_effort
+├── last_done_check
 ├── remote_name
+├── project_done
 ├── worker_timeout_seconds
 ├── global_worker_cap
 └── worker_caps

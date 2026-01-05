@@ -28,6 +28,9 @@ GLOBAL_CAP_FILE="${DB_DIR}/global_worker_cap"
 WORKER_CAPS_FILE="${DB_DIR}/worker_caps"
 WORKER_TIMEOUT_FILE="${DB_DIR}/worker_timeout_seconds"
 REASONING_EFFORT_FILE="${DB_DIR}/reasoning_effort"
+DONE_CHECK_COOLDOWN_FILE="${DB_DIR}/done_check_cooldown_seconds"
+DONE_CHECK_LAST_RUN_FILE="${DB_DIR}/last_done_check"
+PROJECT_DONE_FILE="${DB_DIR}/project_done"
 
 AUDIT_LOG="${DB_DIR}/audit.log"
 WORKER_PROCESSES_LOG="${DB_DIR}/worker-processes.log"
@@ -65,6 +68,13 @@ BOOTSTRAP_NEW_REQUIRED_ARTIFACTS=("asr.md" "arc42.md")
 BOOTSTRAP_NEW_OPTIONAL_ARTIFACTS=("personas.md" "wardley.md")
 BOOTSTRAP_EXISTING_REQUIRED_ARTIFACTS=("existing-system-discovery.md")
 BOOTSTRAP_EXISTING_OPTIONAL_ARTIFACTS=()
+
+DONE_CHECK_REVIEW_ROLE="reviewer"
+DONE_CHECK_REVIEW_TASK="000-done-check-${DONE_CHECK_REVIEW_ROLE}"
+DONE_CHECK_PLANNER_ROLE="planner"
+DONE_CHECK_PLANNER_TASK="000-done-check-${DONE_CHECK_PLANNER_ROLE}"
+DONE_CHECK_REVIEW_TEMPLATE="${TEMPLATES_DIR}/000-done-check-reviewer.md"
+DONE_CHECK_PLANNER_TEMPLATE="${TEMPLATES_DIR}/000-done-check-planner.md"
 
 GITIGNORE_ENTRIES=(
   "_governator/governator.lock"
@@ -351,6 +361,37 @@ read_worker_timeout_seconds() {
   read_numeric_file "${WORKER_TIMEOUT_FILE}" "${DEFAULT_WORKER_TIMEOUT_SECONDS}"
 }
 
+# Read the done-check cooldown in seconds (defaults to 3600).
+read_done_check_cooldown_seconds() {
+  read_numeric_file "${DONE_CHECK_COOLDOWN_FILE}" "3600"
+}
+
+read_done_check_last_run() {
+  read_numeric_file "${DONE_CHECK_LAST_RUN_FILE}" "0"
+}
+
+write_done_check_last_run() {
+  local timestamp="$1"
+  printf '%s\n' "${timestamp}" > "${DONE_CHECK_LAST_RUN_FILE}"
+}
+
+read_project_done_sha() {
+  if [[ ! -f "${PROJECT_DONE_FILE}" ]]; then
+    printf '%s\n' ""
+    return 0
+  fi
+  trim_whitespace "$(cat "${PROJECT_DONE_FILE}")"
+}
+
+write_project_done_sha() {
+  local sha="$1"
+  printf '%s\n' "${sha}" > "${PROJECT_DONE_FILE}"
+}
+
+governator_doc_sha() {
+  git -C "${ROOT_DIR}" hash-object "${ROOT_DIR}/GOVERNATOR.md" 2> /dev/null || true
+}
+
 # Read the reasoning effort for a role (defaults to "medium").
 read_reasoning_effort() {
   local role="$1"
@@ -478,6 +519,9 @@ ensure_db_dir() {
       printf '%s\n' "# Use \"default\" to set the fallback for all roles."
       printf '%s\n' "default: medium"
     } > "${REASONING_EFFORT_FILE}"
+  fi
+  if [[ ! -f "${DONE_CHECK_COOLDOWN_FILE}" ]]; then
+    printf '%s\n' "3600" > "${DONE_CHECK_COOLDOWN_FILE}"
   fi
 }
 
@@ -1026,6 +1070,32 @@ move_task_file() {
   log_task_event "${task_name}" "${audit_message}"
 }
 
+move_task_file_renamed() {
+  local task_file="$1"
+  local dest_dir="$2"
+  local task_name="$3"
+  local new_name="$4"
+  local audit_message="$5"
+  mv "${task_file}" "${dest_dir}/${new_name}.md"
+  log_task_event "${task_name}" "${audit_message}"
+}
+
+move_done_check_to_planner() {
+  local task_file="$1"
+  local task_name="$2"
+  local dest="${STATE_DIR}/task-assigned/${DONE_CHECK_PLANNER_TASK}.md"
+  local tmp
+  tmp="$(mktemp)"
+  if [[ -f "${DONE_CHECK_PLANNER_TEMPLATE}" ]]; then
+    cat "${DONE_CHECK_PLANNER_TEMPLATE}" > "${tmp}"
+    printf '\n\n' >> "${tmp}"
+  fi
+  cat "${task_file}" >> "${tmp}"
+  mv "${tmp}" "${dest}"
+  rm -f "${task_file}"
+  log_task_event "${task_name}" "moved to task-assigned for planner"
+}
+
 # Read a file mtime in epoch seconds (BSD/GNU stat compatible).
 file_mtime_epoch() {
   local path="$1"
@@ -1475,6 +1545,14 @@ find_task_files() {
   find "${STATE_DIR}" -maxdepth 2 -type f -path "${STATE_DIR}/task-*/${pattern}.md" 2> /dev/null | sort
 }
 
+task_exists() {
+  local task_name="$1"
+  if find_task_files "${task_name}" | grep -q .; then
+    return 0
+  fi
+  return 1
+}
+
 task_file_for_name() {
   local task_name="$1"
   local matches=()
@@ -1622,6 +1700,58 @@ ensure_bootstrap_task_exists() {
   log_task_event "${BOOTSTRAP_TASK_NAME}" "created bootstrap task"
   git -C "${ROOT_DIR}" add "${dest}" "${AUDIT_LOG}"
   git -C "${ROOT_DIR}" commit -q -m "[governator] Create architecture bootstrap task"
+  git_push_default_branch
+}
+
+done_check_due() {
+  local last_run
+  last_run="$(read_done_check_last_run)"
+  local cooldown
+  cooldown="$(read_done_check_cooldown_seconds)"
+  local now
+  now="$(date +%s)"
+  if [[ "${last_run}" -eq 0 ]]; then
+    return 0
+  fi
+  if [[ $((now - last_run)) -ge "${cooldown}" ]]; then
+    return 0
+  fi
+  return 1
+}
+
+done_check_needed() {
+  local gov_sha
+  gov_sha="$(governator_doc_sha)"
+  if [[ -z "${gov_sha}" ]]; then
+    return 0
+  fi
+  local done_sha
+  done_sha="$(read_project_done_sha)"
+  if [[ "${done_sha}" != "${gov_sha}" ]]; then
+    return 0
+  fi
+  return 1
+}
+
+create_done_check_task() {
+  if task_exists "${DONE_CHECK_REVIEW_TASK}" || task_exists "${DONE_CHECK_PLANNER_TASK}"; then
+    return 0
+  fi
+
+  if [[ ! -f "${DONE_CHECK_REVIEW_TEMPLATE}" ]]; then
+    log_error "Missing done-check template at ${DONE_CHECK_REVIEW_TEMPLATE}."
+    return 1
+  fi
+
+  local dest="${STATE_DIR}/task-assigned/${DONE_CHECK_REVIEW_TASK}.md"
+  cp "${DONE_CHECK_REVIEW_TEMPLATE}" "${dest}"
+  annotate_assignment "${dest}" "${DONE_CHECK_REVIEW_ROLE}"
+  log_task_event "${DONE_CHECK_REVIEW_TASK}" "created done check task"
+
+  write_done_check_last_run "$(date +%s)"
+
+  git -C "${ROOT_DIR}" add "${dest}" "${AUDIT_LOG}" "${DONE_CHECK_LAST_RUN_FILE}"
+  git -C "${ROOT_DIR}" commit -q -m "[governator] Create done check task"
   git_push_default_branch
 }
 
@@ -2113,6 +2243,21 @@ assign_pending_tasks() {
     return 0
   fi
 
+  local queues_empty=1
+  if [[ "$(count_task_files "${STATE_DIR}/task-backlog")" -gt 0 ]] ||
+    [[ "$(count_task_files "${STATE_DIR}/task-assigned")" -gt 0 ]] ||
+    [[ "$(count_task_files "${STATE_DIR}/task-worked")" -gt 0 ]] ||
+    [[ "$(count_task_files "${STATE_DIR}/task-feedback")" -gt 0 ]] ||
+    [[ "$(count_task_files "${STATE_DIR}/task-blocked")" -gt 0 ]]; then
+    queues_empty=0
+  fi
+
+  if [[ "${queues_empty}" -eq 1 ]]; then
+    if done_check_needed && done_check_due; then
+      create_done_check_task || true
+    fi
+  fi
+
   local task_file
   while IFS= read -r task_file; do
     if [[ "${task_file}" == *"/.keep" ]]; then
@@ -2427,13 +2572,28 @@ process_worker_branch() {
           log_task_event "${task_name}" "review decision: ${decision}"
           case "${decision}" in
             approve)
-              move_task_file "${main_task_file}" "${STATE_DIR}/task-done" "${task_name}" "moved to task-done"
+              if [[ "${task_name}" == "${DONE_CHECK_REVIEW_TASK}" ]]; then
+                write_project_done_sha "$(governator_doc_sha)"
+                move_task_file "${main_task_file}" "${STATE_DIR}/task-done" "${task_name}" "moved to task-done"
+              else
+                move_task_file "${main_task_file}" "${STATE_DIR}/task-done" "${task_name}" "moved to task-done"
+              fi
               ;;
             reject)
-              move_task_file "${main_task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "moved to task-assigned"
+              if [[ "${task_name}" == "${DONE_CHECK_REVIEW_TASK}" ]]; then
+                write_project_done_sha ""
+                move_done_check_to_planner "${main_task_file}" "${task_name}"
+              else
+                move_task_file "${main_task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "moved to task-assigned"
+              fi
               ;;
             *)
-              move_task_file "${main_task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
+              if [[ "${task_name}" == "${DONE_CHECK_REVIEW_TASK}" ]]; then
+                write_project_done_sha ""
+                move_done_check_to_planner "${main_task_file}" "${task_name}"
+              else
+                move_task_file "${main_task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
+              fi
               ;;
           esac
           ;;
