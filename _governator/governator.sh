@@ -1992,6 +1992,8 @@ spawn_special_worker_for_task() {
     git_checkout_default_branch
     apply_review_decision "${task_name}" "${worker}" "${decision}" "${block_reason}" "${review_lines[@]}"
     git_push_default_branch
+  elif [[ "${worker_status}" -eq 0 ]]; then
+    process_special_worker_branch "${task_name}" "${worker}"
   fi
   local finished_at
   finished_at="$(date +%s)"
@@ -2658,6 +2660,26 @@ check_zombie_workers() {
       spawn_worker_for_task "${task_file}" "${worker}" "retry started for ${worker}"
     fi
   done < <(in_flight_entries)
+}
+
+# Merge a pushed special-worker branch into main (if present).
+process_special_worker_branch() {
+  local task_name="$1"
+  local worker="$2"
+
+  local remote
+  remote="$(read_remote_name)"
+  local branch="worker/${worker}/${task_name}"
+  local remote_branch="${remote}/${branch}"
+
+  git_fetch_remote
+  if ! git -C "${ROOT_DIR}" show-ref --verify --quiet "refs/remotes/${remote}/${branch}"; then
+    log_task_warn "${task_name}" "special worker ${worker} did not push ${branch}"
+    return 1
+  fi
+
+  process_worker_branch "${remote_branch}"
+  return 0
 }
 
 # Process a single worker branch: review, move task, merge, cleanup.
