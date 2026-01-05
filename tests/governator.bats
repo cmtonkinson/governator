@@ -83,12 +83,6 @@ setup() {
   printf '%s\n' "new" > "${REPO_DIR}/.governator/project_mode"
   commit_paths "Set project mode" ".governator/project_mode"
 
-  cat > "${BIN_DIR}/sgpt" <<'EOF'
-#!/usr/bin/env bash
-exit 0
-EOF
-  chmod +x "${BIN_DIR}/sgpt"
-
   cat > "${BIN_DIR}/codex" <<'EOF'
 #!/usr/bin/env bash
 exit 0

@@ -189,7 +189,7 @@ ensure_clean_git() {
 ensure_dependencies() {
   local missing=()
   local dep
-  for dep in awk date find git jq mktemp nohup stat sgpt; do
+  for dep in awk date find git jq mktemp nohup stat; do
     if ! command -v "${dep}" > /dev/null 2>&1; then
       missing+=("${dep}")
     fi
@@ -1406,6 +1406,34 @@ join_by() {
   done
 }
 
+escape_log_value() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  printf '%s' "${value}"
+}
+
+build_codex_command() {
+  local role="$1"
+  local prompt="$2"
+  local reasoning
+  reasoning="$(read_reasoning_effort "${role}")"
+  local escaped_prompt
+  escaped_prompt="$(escape_log_value "${prompt}")"
+
+  CODEX_COMMAND=(
+    codex
+    --full-auto
+    --search
+    -c sandbox_workspace_write.network_access=true
+    -c model_reasoning_effort="${reasoning}"
+    exec
+    --sandbox=workspace-write
+    "${prompt}"
+  )
+  CODEX_COMMAND_LOG="codex --full-auto --search -c sandbox_workspace_write.network_access=true -c model_reasoning_effort=\"${reasoning}\" exec --sandbox=workspace-write \"${escaped_prompt}\""
+}
+
 # Start the worker without blocking this script.
 run_codex_worker_detached() {
   local dir="$1"
@@ -1423,12 +1451,11 @@ run_codex_worker_detached() {
   fi
 
   # Use nohup to prevent worker exit from being tied to this process.
-  local reasoning
-  reasoning="$(read_reasoning_effort "${role}")"
+  build_codex_command "${role}" "${prompt}"
   (
     cd "${dir}"
-    log_verbose "Worker command: codex --full-auto --search -c sandbox_workspace_write.network_access=true -c model_reasoning_effort=\"${reasoning}\" exec --sandbox=workspace-write \"${prompt}\""
-    nohup codex --full-auto --search -c sandbox_workspace_write.network_access=true -c model_reasoning_effort="${reasoning}" exec --sandbox=workspace-write "${prompt}" >> "${log_file}" 2>&1 &
+    log_verbose "Worker command: ${CODEX_COMMAND_LOG}"
+    nohup "${CODEX_COMMAND[@]}" >> "${log_file}" 2>&1 &
     echo $!
   )
 }
@@ -1445,10 +1472,9 @@ run_codex_worker_blocking() {
     return $?
   fi
 
-  local reasoning
-  reasoning="$(read_reasoning_effort "${role}")"
-  log_verbose "Worker command: codex --full-auto --search -c sandbox_workspace_write.network_access=true -c model_reasoning_effort=\"${reasoning}\" exec --sandbox=workspace-write \"${prompt}\""
-  (cd "${dir}" && codex --full-auto --search -c sandbox_workspace_write.network_access=true -c model_reasoning_effort="${reasoning}" exec --sandbox=workspace-write "${prompt}" >> "${log_file}" 2>&1)
+  build_codex_command "${role}" "${prompt}"
+  log_verbose "Worker command: ${CODEX_COMMAND_LOG}"
+  (cd "${dir}" && "${CODEX_COMMAND[@]}" >> "${log_file}" 2>&1)
 }
 
 # Run the reviewer synchronously so a review.json is produced.
@@ -1466,13 +1492,12 @@ run_codex_reviewer() {
     return 0
   fi
 
-  local reasoning
-  reasoning="$(read_reasoning_effort "reviewer")"
-  log_verbose "Reviewer command: codex --full-auto --search -c sandbox_workspace_write.network_access=true -c model_reasoning_effort=\"${reasoning}\" exec --sandbox=workspace-write \"${prompt}\""
+  build_codex_command "reviewer" "${prompt}"
+  log_verbose "Reviewer command: ${CODEX_COMMAND_LOG}"
   if [[ -n "${log_file}" ]]; then
-    (cd "${dir}" && codex --full-auto --search -c sandbox_workspace_write.network_access=true -c model_reasoning_effort="${reasoning}" exec --sandbox=workspace-write "${prompt}" >> "${log_file}" 2>&1)
+    (cd "${dir}" && "${CODEX_COMMAND[@]}" >> "${log_file}" 2>&1)
   else
-    (cd "${dir}" && codex --full-auto --search -c sandbox_workspace_write.network_access=true -c model_reasoning_effort="${reasoning}" exec --sandbox=workspace-write "${prompt}")
+    (cd "${dir}" && "${CODEX_COMMAND[@]}")
   fi
 }
 
@@ -1983,12 +2008,8 @@ spawn_special_worker_for_task() {
   fi
 
   if [[ "${worker}" == "reviewer" ]]; then
-    log_verbose_file "Reviewer output file" "${tmp_dir}/review.json"
     local review_output=()
-    mapfile -t review_output < <(parse_review_json "${tmp_dir}/review.json")
-    if [[ "${#review_output[@]}" -eq 0 ]]; then
-      review_output=("block" "Review output missing")
-    fi
+    mapfile -t review_output < <(read_reviewer_output "${tmp_dir}")
     local decision="${review_output[0]}"
     local review_lines=("${review_output[@]:1}")
     local block_reason="Unexpected task state during processing."
@@ -2212,6 +2233,17 @@ parse_review_json() {
   jq -r '.comments // [] | if type == "array" then .[] else . end' "${file}"
 }
 
+read_reviewer_output() {
+  local tmp_dir="$1"
+  log_verbose_file "Reviewer output file" "${tmp_dir}/review.json"
+  local review_output=()
+  mapfile -t review_output < <(parse_review_json "${tmp_dir}/review.json")
+  if [[ "${#review_output[@]}" -eq 0 ]]; then
+    review_output=("block" "Review output missing")
+  fi
+  printf '%s\n' "${review_output[@]}"
+}
+
 # Apply a reviewer decision to the task file and commit the state update.
 apply_review_decision() {
   local task_name="$1"
@@ -2324,10 +2356,8 @@ code_review() {
     log_warn "Reviewer command failed for ${local_branch}."
   fi
 
-  log_verbose_file "Reviewer output file" "${tmp_dir}/review.json"
-
   local review_output=()
-  mapfile -t review_output < <(parse_review_json "${tmp_dir}/review.json")
+  mapfile -t review_output < <(read_reviewer_output "${tmp_dir}")
   cleanup_tmp_dir "${tmp_dir}"
 
   if [[ "${#review_output[@]}" -eq 0 ]]; then
@@ -2680,7 +2710,16 @@ process_special_worker_branch() {
 
   git_fetch_remote
   if ! git -C "${ROOT_DIR}" show-ref --verify --quiet "refs/remotes/${remote}/${branch}"; then
+    # Special non-reviewer workers must produce a branch; no branch means no reviewable output.
     log_task_warn "${task_name}" "special worker ${worker} did not push ${branch}"
+    local task_file
+    if task_file="$(task_file_for_name "${task_name}")"; then
+      annotate_blocked "${task_file}" "Special worker completed without pushing a branch; no reviewable output."
+      move_task_file "${task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
+      git -C "${ROOT_DIR}" add "${STATE_DIR}" "${AUDIT_LOG}"
+      git -C "${ROOT_DIR}" commit -q -m "[governator] Block task ${task_name} on missing worker branch"
+      git_push_default_branch
+    fi
     return 1
   fi
 
