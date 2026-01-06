@@ -1,11 +1,17 @@
 # Governator
+The agentic anti-swarm
 
 [![pipeline status](https://gitlab.com/cmtonkinson/governator/badges/main/pipeline.svg)](https://gitlab.com/cmtonkinson/governator/pipelines)
 
-Governator is a deterministic, file-driven orchestration system for delegating
-software development work to non-interactive LLM "workers" (e.g. Codex CLI),
-reviewing their output, and merging results safely into the configured
-`default_branch` (default=`main`).
+Governator is nothing more than an agentic state machine.
+
+More specificially, it's a file-backed, git-driven, auditable, deterministic
+orchestration framework for converting operator intent into working software.
+Governator uses a traditional waterfall approach to project planning: goals,
+requirements, constraints, and assumptions are defined in `GOVERNATOR.md`. Then
+Governator deploys agentic "workers" to assess the gap between the stated vision
+and the current repo, decomposes that gap into individual discrete tasks, and
+controls dispatch and quality control.
 
 There is no shared memory, no long-lived agent state, and no hidden context. All
 state, intent, decisions, and artifacts live on disk and in git.
