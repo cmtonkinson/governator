@@ -25,10 +25,6 @@
 #   governator.sh audit-log <task> <message>
 #
 # Subcommand reference:
-# - run:
-#   Runs the normal full loop: lock, clean git, dependency check, ensure DB,
-#   sync the default branch, process worker branches, then assign backlog tasks.
-#
 # - process-branches:
 #   Processes only worker branches (including zombie detection and tmp cleanup).
 #   This is useful to test review/merge behavior without assigning new work.
@@ -167,6 +163,8 @@ Usage: governator.sh <command>
 Public commands:
   run      Run the normal full loop.
   init     Configure the project mode and defaults.
+          Use --defaults for non-interactive defaults or --non-interactive
+          with --project-mode/--remote/--branch.
   update   Replace governator.sh with the latest upstream version.
   status   Show queue counts, in-flight workers, and blocked tasks.
   lock     Prevent new activity from starting and show a work snapshot.
@@ -215,7 +213,7 @@ dispatch_subcommand() {
       main
       ;;
     init)
-      init_governator
+      init_governator "$@"
       ;;
     update)
       update_governator "$@"

@@ -96,7 +96,12 @@ ensure_gitignore_entries() {
 
 # init_governator
 # Purpose: Initialize Governator config, defaults, and manifest.
-# Args: None.
+# Args:
+#   --defaults: Use sane defaults (new, origin, main) without prompting.
+#   --non-interactive: Require explicit inputs or fall back to defaults.
+#   --project-mode=<new|existing>: Project mode for non-interactive init.
+#   --remote=<name>: Remote name for non-interactive init.
+#   --branch=<name>: Default branch for non-interactive init.
 # Output: Prompts for project mode, remote, branch; logs initialization.
 # Returns: 0 on success; exits 1 on invalid state.
 init_governator() {
@@ -107,29 +112,85 @@ init_governator() {
     exit 1
   fi
 
+  local non_interactive=0
+  local use_defaults=0
   local project_mode=""
-  while true; do
-    read -r -p "Is this a new or existing project? (new/existing): " project_mode
-    project_mode="$(trim_whitespace "${project_mode}")"
-    project_mode="$(printf '%s' "${project_mode}" | tr '[:upper:]' '[:lower:]')"
-    if [[ "${project_mode}" == "new" || "${project_mode}" == "existing" ]]; then
-      break
-    fi
-    printf 'Please enter "new" or "existing".\n'
+  local remote_name=""
+  local default_branch=""
+
+  local arg
+  for arg in "$@"; do
+    case "${arg}" in
+      --defaults)
+        use_defaults=1
+        non_interactive=1
+        ;;
+      --non-interactive)
+        non_interactive=1
+        ;;
+      --project-mode=*)
+        project_mode="${arg#*=}"
+        ;;
+      --remote=*)
+        remote_name="${arg#*=}"
+        ;;
+      --branch=*)
+        default_branch="${arg#*=}"
+        ;;
+      *)
+        log_error "Unknown init option: ${arg}"
+        exit 1
+        ;;
+    esac
   done
 
-  local remote_name
-  read -r -p "Default remote [${DEFAULT_REMOTE_NAME}]: " remote_name
-  remote_name="$(trim_whitespace "${remote_name}")"
-  if [[ -z "${remote_name}" ]]; then
+  if [[ "${use_defaults}" -eq 1 ]]; then
+    project_mode="new"
     remote_name="${DEFAULT_REMOTE_NAME}"
+    default_branch="${DEFAULT_BRANCH_NAME}"
   fi
 
-  local default_branch
-  read -r -p "Default branch [${DEFAULT_BRANCH_NAME}]: " default_branch
-  default_branch="$(trim_whitespace "${default_branch}")"
-  if [[ -z "${default_branch}" ]]; then
-    default_branch="${DEFAULT_BRANCH_NAME}"
+  if [[ "${non_interactive}" -eq 1 ]]; then
+    project_mode="$(trim_whitespace "${project_mode}")"
+    project_mode="$(printf '%s' "${project_mode}" | tr '[:upper:]' '[:lower:]')"
+    if [[ -z "${project_mode}" ]]; then
+      log_error "Missing required --project-mode for non-interactive init."
+      exit 1
+    fi
+    if [[ "${project_mode}" != "new" && "${project_mode}" != "existing" ]]; then
+      log_error "Invalid --project-mode: ${project_mode}."
+      exit 1
+    fi
+    remote_name="$(trim_whitespace "${remote_name}")"
+    if [[ -z "${remote_name}" ]]; then
+      remote_name="${DEFAULT_REMOTE_NAME}"
+    fi
+    default_branch="$(trim_whitespace "${default_branch}")"
+    if [[ -z "${default_branch}" ]]; then
+      default_branch="${DEFAULT_BRANCH_NAME}"
+    fi
+  else
+    while true; do
+      read -r -p "Is this a new or existing project? (new/existing): " project_mode
+      project_mode="$(trim_whitespace "${project_mode}")"
+      project_mode="$(printf '%s' "${project_mode}" | tr '[:upper:]' '[:lower:]')"
+      if [[ "${project_mode}" == "new" || "${project_mode}" == "existing" ]]; then
+        break
+      fi
+      printf 'Please enter "new" or "existing".\n'
+    done
+
+    read -r -p "Default remote [${DEFAULT_REMOTE_NAME}]: " remote_name
+    remote_name="$(trim_whitespace "${remote_name}")"
+    if [[ -z "${remote_name}" ]]; then
+      remote_name="${DEFAULT_REMOTE_NAME}"
+    fi
+
+    read -r -p "Default branch [${DEFAULT_BRANCH_NAME}]: " default_branch
+    default_branch="$(trim_whitespace "${default_branch}")"
+    if [[ -z "${default_branch}" ]]; then
+      default_branch="${DEFAULT_BRANCH_NAME}"
+    fi
   fi
 
   printf '%s\n' "${project_mode}" > "${PROJECT_MODE_FILE}"

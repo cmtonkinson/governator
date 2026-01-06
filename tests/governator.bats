@@ -484,6 +484,36 @@ EOF
   [ "$status" -eq 0 ]
 }
 
+@test "init supports defaults and non-interactive options" {
+  rm -f "${REPO_DIR}/.governator/project_mode" \
+    "${REPO_DIR}/.governator/remote_name" \
+    "${REPO_DIR}/.governator/default_branch"
+  commit_paths "Clear init files" ".governator"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" init --defaults
+  [ "$status" -eq 0 ]
+  run cat "${REPO_DIR}/.governator/project_mode"
+  [ "$status" -eq 0 ]
+  [ "${output}" = "new" ]
+
+  rm -f "${REPO_DIR}/.governator/project_mode" \
+    "${REPO_DIR}/.governator/remote_name" \
+    "${REPO_DIR}/.governator/default_branch"
+  commit_paths "Clear init files again" ".governator"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" init --non-interactive --project-mode=existing --remote=upstream --branch=trunk
+  [ "$status" -eq 0 ]
+  run cat "${REPO_DIR}/.governator/project_mode"
+  [ "$status" -eq 0 ]
+  [ "${output}" = "existing" ]
+  run cat "${REPO_DIR}/.governator/remote_name"
+  [ "$status" -eq 0 ]
+  [ "${output}" = "upstream" ]
+  run cat "${REPO_DIR}/.governator/default_branch"
+  [ "$status" -eq 0 ]
+  [ "${output}" = "trunk" ]
+}
+
 @test "update refreshes code and writes audit entry" {
   upstream_root="$(create_upstream_dir)"
   printf '%s\n' "# upstream update" >> "${upstream_root}/governator-main/_governator/governator.sh"
