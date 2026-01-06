@@ -32,6 +32,7 @@ REASONING_EFFORT_FILE="${DB_DIR}/reasoning_effort"
 DONE_CHECK_COOLDOWN_FILE="${DB_DIR}/done_check_cooldown_seconds"
 DONE_CHECK_LAST_RUN_FILE="${DB_DIR}/last_done_check"
 PROJECT_DONE_FILE="${DB_DIR}/project_done"
+MANIFEST_FILE="${DB_DIR}/manifest.json"
 
 AUDIT_LOG="${DB_DIR}/audit.log"
 WORKER_PROCESSES_LOG="${DB_DIR}/worker-processes.log"
@@ -46,7 +47,6 @@ IN_FLIGHT_LOG="${DB_DIR}/in-flight.log"
 SYSTEM_LOCK_FILE="${DB_DIR}/governator.locked"
 SYSTEM_LOCK_PATH="${SYSTEM_LOCK_FILE#"${ROOT_DIR}/"}"
 GITIGNORE_PATH="${ROOT_DIR}/.gitignore"
-UPDATE_URL="https://gitlab.com/cmtonkinson/governator/-/raw/main/_governator/governator.sh"
 
 GOV_QUIET=0
 GOV_VERBOSE=0
@@ -116,6 +116,8 @@ source "${LIB_DIR}/queues.sh"
 source "${LIB_DIR}/status.sh"
 # shellcheck source=_governator/lib/internal.sh
 source "${LIB_DIR}/internal.sh"
+# shellcheck source=_governator/lib/update.sh
+source "${LIB_DIR}/update.sh"
 
 ensure_gitignore_entries() {
   if [[ ! -f "${GITIGNORE_PATH}" ]]; then
@@ -166,6 +168,8 @@ init_governator() {
   printf '%s\n' "${remote_name}" > "${REMOTE_NAME_FILE}"
   printf '%s\n' "${default_branch}" > "${DEFAULT_BRANCH_FILE}"
 
+  write_manifest "${ROOT_DIR}" "${STATE_DIR}" "${MANIFEST_FILE}"
+
   printf 'Governator initialized:\n'
   printf '  project mode: %s\n' "${project_mode}"
   printf '  default remote: %s\n' "${remote_name}"
@@ -175,47 +179,6 @@ init_governator() {
   if [[ -n "$(git -C "${ROOT_DIR}" status --porcelain 2> /dev/null)" ]]; then
     git -C "${ROOT_DIR}" commit -q -m "[governator] Initialize configuration"
   fi
-}
-
-update_governator() {
-  ensure_update_dependencies
-
-  local script_path="${STATE_DIR}/governator.sh"
-  if [[ -n "$(git -C "${ROOT_DIR}" status --porcelain -- "${script_path}")" ]]; then
-    log_error "Local changes detected in ${script_path}; commit or stash before update."
-    exit 1
-  fi
-
-  local tmp_file
-  tmp_file="$(mktemp)"
-  if ! curl -fsSL "${UPDATE_URL}" -o "${tmp_file}"; then
-    rm -f "${tmp_file}"
-    log_error "Failed to download ${UPDATE_URL}"
-    exit 1
-  fi
-  if [[ ! -s "${tmp_file}" ]]; then
-    rm -f "${tmp_file}"
-    log_error "Downloaded update is empty; aborting."
-    exit 1
-  fi
-
-  local local_hash
-  local remote_hash
-  local_hash="$(shasum -a 256 "${script_path}" | awk '{print $1}')"
-  remote_hash="$(shasum -a 256 "${tmp_file}" | awk '{print $1}')"
-  if [[ -n "${local_hash}" && "${local_hash}" == "${remote_hash}" ]]; then
-    rm -f "${tmp_file}"
-    log_info "Already up to date."
-    return 0
-  fi
-
-  mv "${tmp_file}" "${script_path}"
-  chmod +x "${script_path}"
-  git -C "${ROOT_DIR}" add "${script_path}"
-  if [[ -n "$(git -C "${ROOT_DIR}" status --porcelain -- "${script_path}")" ]]; then
-    git -C "${ROOT_DIR}" commit -q -m "[governator] Update governator.sh"
-  fi
-  log_info "Updated ${script_path} from ${UPDATE_URL}"
 }
 
 abort_task() {

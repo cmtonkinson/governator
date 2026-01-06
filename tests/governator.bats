@@ -55,6 +55,29 @@ create_worker_branch() {
   repo_git checkout main >/dev/null
 }
 
+create_upstream_dir() {
+  local upstream_root
+  upstream_root="$(mktemp -d "${BATS_TMPDIR}/upstream.XXXXXX")"
+  mkdir -p "${upstream_root}/governator-main"
+  cp -R "${REPO_DIR}/_governator" "${upstream_root}/governator-main/_governator"
+  printf '%s\n' "${upstream_root}"
+}
+
+build_upstream_tarball() {
+  local upstream_root="$1"
+  local tar_path="$2"
+  tar -cz -C "${upstream_root}" -f "${tar_path}" governator-main/_governator
+}
+
+stub_curl_with_tarball() {
+  local tar_path="$1"
+  cat > "${BIN_DIR}/curl" <<EOF
+#!/usr/bin/env bash
+cat "${tar_path}"
+EOF
+  chmod +x "${BIN_DIR}/curl"
+}
+
 set_next_task_id() {
   printf '%s\n' "$1" > "${REPO_DIR}/.governator/next_task_id"
   commit_paths "Set task id" ".governator/next_task_id"
@@ -439,6 +462,97 @@ EOF
   [ "$status" -eq 0 ]
   run grep -F "origin/worker/ruby/021-other-ruby" <<< "${status_output}"
   [ "$status" -ne 0 ]
+}
+
+@test "update refreshes code and writes audit entry" {
+  upstream_root="$(create_upstream_dir)"
+  printf '%s\n' "# upstream update" >> "${upstream_root}/governator-main/_governator/governator.sh"
+  tar_path="${BATS_TMPDIR}/upstream-code.tar.gz"
+  build_upstream_tarball "${upstream_root}" "${tar_path}"
+  stub_curl_with_tarball "${tar_path}"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" update --force-remote
+  local update_output="${output}"
+  printf 'status=%s\n' "$status"
+  printf 'output:\n%s\n' "$update_output"
+  [ "$status" -eq 0 ]
+  run grep -F "Updated files:" <<< "${update_output}"
+  [ "$status" -eq 0 ]
+  run grep -F "updated _governator/governator.sh" <<< "${update_output}"
+  [ "$status" -eq 0 ]
+
+  run grep -F "# upstream update" "${REPO_DIR}/_governator/governator.sh"
+  [ "$status" -eq 0 ]
+  run grep -F "update applied: updated _governator/governator.sh" "${REPO_DIR}/.governator/audit.log"
+  [ "$status" -eq 0 ]
+}
+
+@test "update keeps local prompt with --keep-local" {
+  upstream_root="$(create_upstream_dir)"
+  tar_path="${BATS_TMPDIR}/upstream-baseline.tar.gz"
+  build_upstream_tarball "${upstream_root}" "${tar_path}"
+  stub_curl_with_tarball "${tar_path}"
+  run bash "${REPO_DIR}/_governator/governator.sh" update --force-remote
+  local update_output="${output}"
+  [ "$status" -eq 0 ]
+
+  local_template="${REPO_DIR}/_governator/templates/task.md"
+  original_template="$(cat "${local_template}")"
+  printf '%s\n' "local change" >> "${local_template}"
+
+  upstream_root="$(create_upstream_dir)"
+  printf '%s\n' "${original_template}" > "${upstream_root}/governator-main/_governator/templates/task.md"
+  printf '%s\n' "upstream change" >> "${upstream_root}/governator-main/_governator/templates/task.md"
+  tar_path="${BATS_TMPDIR}/upstream-template.tar.gz"
+  build_upstream_tarball "${upstream_root}" "${tar_path}"
+  stub_curl_with_tarball "${tar_path}"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" update --keep-local
+  local keep_output="${output}"
+  [ "$status" -eq 0 ]
+  run grep -F "No updates applied." <<< "${keep_output}"
+  [ "$status" -eq 0 ]
+  run grep -F "local change" "${local_template}"
+  [ "$status" -eq 0 ]
+  run grep -F "upstream change" "${local_template}"
+  [ "$status" -ne 0 ]
+  run grep -F "update applied" "${REPO_DIR}/.governator/audit.log"
+  [ "$status" -ne 0 ]
+}
+
+@test "update overwrites local prompt with --force-remote" {
+  upstream_root="$(create_upstream_dir)"
+  tar_path="${BATS_TMPDIR}/upstream-baseline2.tar.gz"
+  build_upstream_tarball "${upstream_root}" "${tar_path}"
+  stub_curl_with_tarball "${tar_path}"
+  run bash "${REPO_DIR}/_governator/governator.sh" update --force-remote
+  local update_output="${output}"
+  [ "$status" -eq 0 ]
+
+  local_template="${REPO_DIR}/_governator/templates/task.md"
+  original_template="$(cat "${local_template}")"
+  printf '%s\n' "local change" >> "${local_template}"
+
+  upstream_root="$(create_upstream_dir)"
+  printf '%s\n' "${original_template}" > "${upstream_root}/governator-main/_governator/templates/task.md"
+  printf '%s\n' "upstream change" >> "${upstream_root}/governator-main/_governator/templates/task.md"
+  tar_path="${BATS_TMPDIR}/upstream-template2.tar.gz"
+  build_upstream_tarball "${upstream_root}" "${tar_path}"
+  stub_curl_with_tarball "${tar_path}"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" update --force-remote
+  local update_output="${output}"
+  [ "$status" -eq 0 ]
+  run grep -F "Updated files:" <<< "${update_output}"
+  [ "$status" -eq 0 ]
+  run grep -F "updated _governator/templates/task.md" <<< "${update_output}"
+  [ "$status" -eq 0 ]
+  run grep -F "upstream change" "${local_template}"
+  [ "$status" -eq 0 ]
+  run grep -F "local change" "${local_template}"
+  [ "$status" -ne 0 ]
+  run grep -F "update applied: updated _governator/templates/task.md" "${REPO_DIR}/.governator/audit.log"
+  [ "$status" -eq 0 ]
 }
 
 @test "locked state stops assign-backlog" {

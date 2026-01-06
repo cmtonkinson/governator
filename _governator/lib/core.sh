@@ -27,6 +27,10 @@ ensure_update_dependencies() {
     log_error "Missing dependency: shasum"
     exit 1
   fi
+  if ! command -v tar > /dev/null 2>&1; then
+    log_error "Missing dependency: tar"
+    exit 1
+  fi
 }
 
 require_governator_doc() {

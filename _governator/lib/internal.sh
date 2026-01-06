@@ -177,7 +177,7 @@ dispatch_subcommand() {
       init_governator
       ;;
     update)
-      update_governator
+      update_governator "$@"
       ;;
     status)
       ensure_db_dir

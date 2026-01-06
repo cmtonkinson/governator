@@ -144,6 +144,7 @@ code, prompts, templates, and full task "database."
 _governator/
 ├── governator.sh
 ├── lib/
+│   ├── internal.sh
 │   ├── branches.sh
 │   ├── bootstrap.sh
 │   ├── config.sh
@@ -200,6 +201,7 @@ Customizable configuration and internal state are stored here.
 ├── done_check_cooldown_seconds
 ├── project_mode
 ├── next_task_id
+├── manifest.json
 ├── reasoning_effort
 ├── last_done_check
 ├── remote_name
@@ -309,6 +311,17 @@ Workers never:
 When a worker completes a task, it is pushed to the repository under a dedicated
 branch. The task is moved to `task-worked` and Governator initiates a review to
 determin whether the work done satisfies what was asked in the ticket.
+
+## Updates
+Governator can be updated at any time with `governator.sh update`. This will
+automatically download the latest version and:
+- for each code file: install a newer version if available
+- for each prompt and template: if you haven't modified it, install the newer
+  version. If you have, you are prompted with a choice to keep your changes or
+  accept the newer version.
+
+_**Note**: `update` will never modify any tasks or docs; but most of the other stuff under
+`_governator` is fair game._
 
 ## Determinism by Design
 Governator intentionally avoids:
