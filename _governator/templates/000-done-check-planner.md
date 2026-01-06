@@ -63,6 +63,8 @@ Each epic:
 - must include an epic-level definition of "done"
 - must not include tasks or implementation steps
 
+A milestone should usually contain about 3-7 epics.
+
 Start epic identifiers at 1 prefixed with a lowercase "e" (e.g. "e1"), and
 increment by 1 for each subsequent epic.
 
