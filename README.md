@@ -132,10 +132,11 @@ There is no conversational back-and-forth.
 4. You set up a cron job that periodically runs `governator.sh run`.
 5. Governator:
    - reads the repository state
-   - creates or updates task files
-   - assigns tasks to roles
-   - spawns isolated codex cli workers to complete tasks
-   - reviews results
+   - manages project architecture & planning documentation
+   - creates or updates tasks
+   - assigns tasks to specific roles
+   - spawns isolated Codex CLI workers to complete tasks
+   - reviews results against requirements
    - merges approved work into `main`
 6. You come back later to a working system.
 7. Profit?
@@ -217,6 +218,36 @@ A task moves through directories as its state changes:
    - Governator decides whether to accept or discard
 
 All state transitions are explicit and reviewable.
+
+## Architecture Discovery and Project Planning
+Governator relies on A) software architecture and B) project planning documents
+to drive its workflow.
+
+The key software architecture documents (the "Power Six" artifacts) are:
+1. User Personas
+2. Architecturally Significant Requirements
+3. Wardley Map
+4. Architecture Overview (in the "arc42" style)
+5. C4 Model Diagrams
+5. Architecture Decision Records
+
+All of these have built-in predefined templates.
+
+Governator will create canonical documentation in `_governator/docs` for these
+artifacts (as appropriate), whether that means analyzing the current codebase or
+synthesizing a new system design from scratch.
+
+Once the system architecture is created/discovered and documented, Governator
+moves on to the planning phase. By comparing the current system to the intent
+specified in `GOVERNATOR.md`, Governator maps out a set of one or more project
+milestones, then decomposes each of those into one or more epics. This structure
+helps the system reason more reliably and produce more predictably useful
+results. These files are written to:
+- `_governator/docs/milestones.md`
+- `_governator/docs/epics.md`
+
+It is each epic, with the architectural documentation as context, which is used
+to generate the actual tasks that get carried out by worker processes.
 
 ## Worker Execution Model
 Each worker execution:

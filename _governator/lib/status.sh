@@ -35,6 +35,112 @@ format_task_label() {
   task_label "${path}"
 }
 
+# frontmatter_value
+# Purpose: Extract a YAML frontmatter value from a task file.
+# Args:
+#   $1: Task file path (string).
+#   $2: Key name (string).
+# Output: Prints the value when present.
+# Returns: 0 always.
+frontmatter_value() {
+  local file="$1"
+  local key="$2"
+  awk -v want="${key}" '
+    NR == 1 && $0 == "---" { in_frontmatter=1; next }
+    in_frontmatter == 1 {
+      if ($0 == "---") exit
+      if ($0 ~ /^[A-Za-z0-9_-]+:[[:space:]]*/) {
+        split($0, parts, ":")
+        k = parts[1]
+        v = substr($0, index($0, ":") + 1)
+        sub(/^[ \t]+/, "", v)
+        sub(/[ \t]+$/, "", v)
+        if (k == want) { print v; exit }
+      }
+    }
+  ' "${file}"
+}
+
+# milestone_epic_rows
+# Purpose: Emit milestone and epic status rows from task frontmatter.
+# Args: None.
+# Output: Writes "milestone|epic|done" rows to stdout.
+# Returns: 0 on completion.
+milestone_epic_rows() {
+  local task_file
+  while IFS= read -r task_file; do
+    local task_name
+    task_name="$(basename "${task_file}" .md)"
+    if [[ "${task_name}" == 000-* ]]; then
+      continue
+    fi
+    local milestone
+    milestone="$(frontmatter_value "${task_file}" "milestone")"
+    if [[ -z "${milestone}" ]]; then
+      continue
+    fi
+    local epic
+    epic="$(frontmatter_value "${task_file}" "epic")"
+    if [[ -z "${epic}" ]]; then
+      epic="unscoped"
+    fi
+    local done=0
+    if [[ "$(basename "$(dirname "${task_file}")")" == "task-done" ]]; then
+      done=1
+    fi
+    printf '%s|%s|%s\n' "${milestone}" "${epic}" "${done}"
+  done < <(
+    list_task_files_in_dir "${STATE_DIR}/task-backlog"
+    list_task_files_in_dir "${STATE_DIR}/task-assigned"
+    list_task_files_in_dir "${STATE_DIR}/task-worked"
+    list_task_files_in_dir "${STATE_DIR}/task-blocked"
+    list_task_files_in_dir "${STATE_DIR}/task-done"
+  )
+}
+
+# print_milestone_epic_summary
+# Purpose: Summarize milestone and epic completion from task frontmatter.
+# Args: None.
+# Output: Writes milestone and epic completion summary to stdout.
+# Returns: 0 on completion.
+print_milestone_epic_summary() {
+  printf 'Milestone progress:\n'
+  local summary
+  summary="$(
+    milestone_epic_rows | sort -t '|' -k1,1 -k2,2 | awk -F'|' '
+      {
+        m=$1; e=$2; done=$3
+        if (m == "") next
+        total[m SUBSEP e]++
+        if (done == "1") done_count[m SUBSEP e]++
+        m_total[m]++
+        if (done == "1") m_done[m]++
+        if (!(m in m_order)) { m_order[m]=++m_idx; m_list[m_idx]=m }
+        if (!(m SUBSEP e in e_order)) { e_order[m SUBSEP e]=++e_idx; e_list[e_idx]=m SUBSEP e }
+      }
+      END {
+        for (i=1; i<=m_idx; i++) {
+          m=m_list[i]
+          pct=int((m_done[m]*100)/m_total[m])
+          printf "Milestone %s: %d%%\n", m, pct
+          for (j=1; j<=e_idx; j++) {
+            split(e_list[j], parts, SUBSEP)
+            if (parts[1] != m) continue
+            e=parts[2]
+            epct=int((done_count[e_list[j]]*100)/total[e_list[j]])
+            printf "\tEpic %s: %d%%\n", e, epct
+          }
+        }
+      }
+    '
+  )"
+  if [[ -z "${summary}" ]]; then
+    printf '  (none)\n'
+  else
+    printf '%s\n' "${summary}"
+  fi
+}
+
 # format_blocked_task
 # Purpose: Format a blocked task with its block reason.
 # Args:
@@ -198,6 +304,8 @@ print_inflight_summary() {
 print_activity_snapshot() {
   print_inflight_summary
   printf '\n'
+  print_milestone_epic_summary
+  printf '\n'
   print_stage_task_list "Pending reviews" "${STATE_DIR}/task-worked"
   printf '\n'
   print_pending_reviewer_branches
@@ -231,6 +339,8 @@ status_dashboard() {
   print_task_queue_summary
   printf '\n'
   print_inflight_summary
+  printf '\n'
+  print_milestone_epic_summary
   printf '\n'
   print_stage_task_list "Pending reviews" "${STATE_DIR}/task-worked"
   printf '\n'

@@ -68,12 +68,13 @@ increment by 1 for each subsequent epic.
 
 ### 3. Tasks
 Read and review existing tasks (except "done") for context. Where gaps were 
-identified, and now miletones/epics exist without all necessary tasks required
+identified, and now certain epics exist without all the necessary tasks required
 to implement them, create those new tasks in `_governator/task-backlog/` using
 the standard task template at `_governator/templates/task.md`. Be sure to
 include the correct milestone and epic numbers in the YAML frontmatter.
 
 Each task file:
+- must be part of the work required to implement a documented epic
 - must be marked with the correct YAML frontmatter milestone, epic, and task
   identifiers (e.g. `milestone: m1`, `epic: e3`, `task: 024`)
 - must include only one logical work order; any task which would be estimated at

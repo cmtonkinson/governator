@@ -454,6 +454,36 @@ EOF
   [ "$status" -ne 0 ]
 }
 
+@test "status summarizes milestone and epic progress" {
+  cat > "${REPO_DIR}/_governator/task-done/030-done-ruby.md" <<'EOF'
+---
+milestone: m1
+epic: e1
+---
+# Task
+EOF
+  cat > "${REPO_DIR}/_governator/task-assigned/031-pending-ruby.md" <<'EOF'
+---
+milestone: m1
+epic: e2
+---
+# Task
+EOF
+  commit_paths "Add milestone tasks" \
+    "_governator/task-done/030-done-ruby.md" \
+    "_governator/task-assigned/031-pending-ruby.md"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" status
+  local status_output="${output}"
+  [ "$status" -eq 0 ]
+  run grep -F "Milestone m1: 50%" <<< "${status_output}"
+  [ "$status" -eq 0 ]
+  run grep -F "Epic e1: 100%" <<< "${status_output}"
+  [ "$status" -eq 0 ]
+  run grep -F "Epic e2: 0%" <<< "${status_output}"
+  [ "$status" -eq 0 ]
+}
+
 @test "update refreshes code and writes audit entry" {
   upstream_root="$(create_upstream_dir)"
   printf '%s\n' "# upstream update" >> "${upstream_root}/governator-main/_governator/governator.sh"
