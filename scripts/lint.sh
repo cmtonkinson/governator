@@ -8,7 +8,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${ROOT_DIR}/scripts/common.sh"
 require_deps shellcheck shfmt
 
-shellcheck "${ROOT_DIR}/_governator/governator.sh"
+shellcheck -x "${ROOT_DIR}/_governator/governator.sh"
 shfmt -d -i 2 -ci -sr "${ROOT_DIR}/_governator/governator.sh"
 
 printf '%s\n' "lint ok"

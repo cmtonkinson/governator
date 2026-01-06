@@ -143,6 +143,19 @@ code, prompts, templates, and full task "database."
 ```
 _governator/
 ├── governator.sh
+├── lib/
+│   ├── branches.sh
+│   ├── bootstrap.sh
+│   ├── config.sh
+│   ├── core.sh
+│   ├── git.sh
+│   ├── locks.sh
+│   ├── logging.sh
+│   ├── queues.sh
+│   ├── review.sh
+│   ├── status.sh
+│   ├── tasks.sh
+│   ├── utils.sh
 ├── worker-contract.md
 ├── custom-prompts/
 │   ├── _global.md
@@ -315,7 +328,7 @@ This makes the system:
 - safe to automate
 
 ## Requirements
-The Governator itself is a single self-contained bash script. It will check to
+The Governator itself is a CLI application written in bash. It will check to
 ensure all of the prereqs met, and whine stubbornly if not.
 
 It requires:

@@ -1,0 +1,306 @@
+# shellcheck shell=bash
+
+bootstrap_template_path() {
+  local mode
+  if ! mode="$(read_project_mode)"; then
+    printf '%s\n' "${BOOTSTRAP_NEW_TEMPLATE}"
+    return 0
+  fi
+  if [[ "${mode}" == "existing" ]]; then
+    printf '%s\n' "${BOOTSTRAP_EXISTING_TEMPLATE}"
+    return 0
+  fi
+  printf '%s\n' "${BOOTSTRAP_NEW_TEMPLATE}"
+}
+
+bootstrap_required_artifacts() {
+  local mode
+  if ! mode="$(read_project_mode)"; then
+    printf '%s\n' "${BOOTSTRAP_NEW_REQUIRED_ARTIFACTS[@]}"
+    return 0
+  fi
+  if [[ "${mode}" == "existing" ]]; then
+    printf '%s\n' "${BOOTSTRAP_EXISTING_REQUIRED_ARTIFACTS[@]}"
+    return 0
+  fi
+  printf '%s\n' "${BOOTSTRAP_NEW_REQUIRED_ARTIFACTS[@]}"
+}
+
+bootstrap_optional_artifacts() {
+  local mode
+  if ! mode="$(read_project_mode)"; then
+    printf '%s\n' "${BOOTSTRAP_NEW_OPTIONAL_ARTIFACTS[@]}"
+    return 0
+  fi
+  if [[ "${mode}" == "existing" ]]; then
+    printf '%s\n' "${BOOTSTRAP_EXISTING_OPTIONAL_ARTIFACTS[@]}"
+    return 0
+  fi
+  printf '%s\n' "${BOOTSTRAP_NEW_OPTIONAL_ARTIFACTS[@]}"
+}
+
+bootstrap_task_path() {
+  local path
+  while IFS= read -r path; do
+    if [[ -n "${path}" ]]; then
+      printf '%s\n' "${path}"
+      return 0
+    fi
+  done < <(find_task_files "${BOOTSTRAP_TASK_NAME}" || true)
+  return 1
+}
+
+bootstrap_task_dir() {
+  local task_file
+  if ! task_file="$(bootstrap_task_path)"; then
+    return 1
+  fi
+  basename "$(dirname "${task_file}")"
+}
+
+ensure_bootstrap_task_exists() {
+  if bootstrap_task_path > /dev/null 2>&1; then
+    return 0
+  fi
+  local template
+  template="$(bootstrap_template_path)"
+  if [[ ! -f "${template}" ]]; then
+    log_error "Missing bootstrap template at ${template}."
+    return 1
+  fi
+
+  local dest="${STATE_DIR}/task-backlog/${BOOTSTRAP_TASK_NAME}.md"
+  cp "${template}" "${dest}"
+  log_task_event "${BOOTSTRAP_TASK_NAME}" "created bootstrap task"
+  git -C "${ROOT_DIR}" add "${dest}" "${AUDIT_LOG}"
+  git -C "${ROOT_DIR}" commit -q -m "[governator] Create architecture bootstrap task"
+  git_push_default_branch
+}
+
+done_check_due() {
+  local last_run
+  last_run="$(read_done_check_last_run)"
+  local cooldown
+  cooldown="$(read_done_check_cooldown_seconds)"
+  local now
+  now="$(date +%s)"
+  if [[ "${last_run}" -eq 0 ]]; then
+    return 0
+  fi
+  if [[ $((now - last_run)) -ge "${cooldown}" ]]; then
+    return 0
+  fi
+  return 1
+}
+
+done_check_needed() {
+  local gov_sha
+  gov_sha="$(governator_doc_sha)"
+  if [[ -z "${gov_sha}" ]]; then
+    return 0
+  fi
+  local done_sha
+  done_sha="$(read_project_done_sha)"
+  if [[ "${done_sha}" != "${gov_sha}" ]]; then
+    return 0
+  fi
+  return 1
+}
+
+create_done_check_task() {
+  if task_exists "${DONE_CHECK_REVIEW_TASK}" || task_exists "${DONE_CHECK_PLANNER_TASK}"; then
+    return 0
+  fi
+
+  if [[ ! -f "${DONE_CHECK_REVIEW_TEMPLATE}" ]]; then
+    log_error "Missing done-check template at ${DONE_CHECK_REVIEW_TEMPLATE}."
+    return 1
+  fi
+
+  local dest="${STATE_DIR}/task-assigned/${DONE_CHECK_REVIEW_TASK}.md"
+  cp "${DONE_CHECK_REVIEW_TEMPLATE}" "${dest}"
+  annotate_assignment "${dest}" "${DONE_CHECK_REVIEW_ROLE}"
+  log_task_event "${DONE_CHECK_REVIEW_TASK}" "created done check task"
+
+  write_done_check_last_run "$(date +%s)"
+
+  git -C "${ROOT_DIR}" add "${dest}" "${AUDIT_LOG}" "${DONE_CHECK_LAST_RUN_FILE}"
+  git -C "${ROOT_DIR}" commit -q -m "[governator] Create done check task"
+  git_push_default_branch
+}
+
+move_done_check_to_planner() {
+  local task_file="$1"
+  local task_name="$2"
+  local dest="${STATE_DIR}/task-assigned/${DONE_CHECK_PLANNER_TASK}.md"
+  if [[ ! -f "${DONE_CHECK_PLANNER_TEMPLATE}" ]]; then
+    log_error "Missing done-check template at ${DONE_CHECK_PLANNER_TEMPLATE}."
+    return 1
+  fi
+  cp "${DONE_CHECK_PLANNER_TEMPLATE}" "${dest}"
+  append_section "${dest}" "## Reviewer Notes" "reviewer" "$(cat "${task_file}")"
+  move_task_file "${task_file}" "${STATE_DIR}/task-done" "${task_name}" "moved to task-done"
+  log_task_event "${DONE_CHECK_PLANNER_TASK}" "created planner follow-up"
+}
+
+artifact_present() {
+  local file="$1"
+  [[ -f "${BOOTSTRAP_DOCS_DIR}/${file}" && -s "${BOOTSTRAP_DOCS_DIR}/${file}" ]]
+}
+
+artifact_skipped_in_task() {
+  local task_file="$1"
+  local artifact="$2"
+  if [[ ! -f "${task_file}" ]]; then
+    return 1
+  fi
+  local base="${artifact%.md}"
+  grep -Eiq "(skip|omit|n/a|not needed).*${base}|${base}.*(skip|omit|n/a|not needed)" "${task_file}"
+}
+
+bootstrap_required_artifacts_ok() {
+  local artifacts=()
+  mapfile -t artifacts < <(bootstrap_required_artifacts)
+  local artifact
+  for artifact in "${artifacts[@]}"; do
+    if ! artifact_present "${artifact}"; then
+      return 1
+    fi
+  done
+  return 0
+}
+
+bootstrap_optional_artifacts_ok() {
+  local task_file
+  if ! task_file="$(bootstrap_task_path)"; then
+    return 1
+  fi
+  local artifacts=()
+  mapfile -t artifacts < <(bootstrap_optional_artifacts)
+  local artifact
+  for artifact in "${artifacts[@]}"; do
+    if artifact_present "${artifact}"; then
+      continue
+    fi
+    if ! artifact_skipped_in_task "${task_file}" "${artifact}"; then
+      return 1
+    fi
+  done
+  return 0
+}
+
+bootstrap_adrs_ok() {
+  local mode
+  if mode="$(read_project_mode)"; then
+    if [[ "${mode}" == "existing" ]]; then
+      return 0
+    fi
+  fi
+  if [[ -d "${BOOTSTRAP_DOCS_DIR}" ]]; then
+    if find "${BOOTSTRAP_DOCS_DIR}" "${BOOTSTRAP_DOCS_DIR}/adr" -maxdepth 1 -type f -iname 'adr*.md' -print -quit 2> /dev/null | grep -q .; then
+      return 0
+    fi
+  fi
+  local task_file
+  if task_file="$(bootstrap_task_path)"; then
+    if grep -Eiq "no adr|no adrs|adr not required" "${task_file}"; then
+      return 0
+    fi
+  fi
+  return 1
+}
+
+has_non_bootstrap_tasks() {
+  local path
+  while IFS= read -r path; do
+    local base
+    base="$(basename "${path}")"
+    if [[ "${base}" == ".keep" ]]; then
+      continue
+    fi
+    if [[ "${base}" == "${BOOTSTRAP_TASK_NAME}.md" ]]; then
+      continue
+    fi
+    printf '%s\n' "${path}"
+    return 0
+  done < <(find "${STATE_DIR}" -maxdepth 2 -type f -path "${STATE_DIR}/task-*/*" -name '*.md' 2> /dev/null | sort)
+  return 1
+}
+
+bootstrap_requirements_met() {
+  if ! bootstrap_task_path > /dev/null 2>&1; then
+    return 1
+  fi
+  if ! bootstrap_required_artifacts_ok; then
+    return 1
+  fi
+  if ! bootstrap_optional_artifacts_ok; then
+    return 1
+  fi
+  if ! bootstrap_adrs_ok; then
+    return 1
+  fi
+  return 0
+}
+
+architecture_bootstrap_complete() {
+  local task_dir
+  if ! task_dir="$(bootstrap_task_dir)"; then
+    return 1
+  fi
+  if [[ "${task_dir}" != "task-done" ]]; then
+    return 1
+  fi
+  if ! bootstrap_requirements_met; then
+    return 1
+  fi
+  return 0
+}
+
+complete_bootstrap_task_if_ready() {
+  if ! bootstrap_requirements_met; then
+    return 1
+  fi
+  if has_non_bootstrap_tasks > /dev/null 2>&1; then
+    return 1
+  fi
+  if in_flight_has_task "${BOOTSTRAP_TASK_NAME}"; then
+    return 0
+  fi
+  local task_file
+  if ! task_file="$(bootstrap_task_path)"; then
+    return 0
+  fi
+  local task_dir
+  task_dir="$(basename "$(dirname "${task_file}")")"
+  if [[ "${task_dir}" == "task-done" ]]; then
+    return 0
+  fi
+  move_task_file "${task_file}" "${STATE_DIR}/task-done" "${BOOTSTRAP_TASK_NAME}" "moved to task-done"
+  git -C "${ROOT_DIR}" add "${STATE_DIR}"
+  git -C "${ROOT_DIR}" commit -q -m "[governator] Complete architecture bootstrap"
+  git_push_default_branch
+  return 0
+}
+
+assign_bootstrap_task() {
+  local task_file="$1"
+  local worker="${BOOTSTRAP_ROLE}"
+
+  sync_default_branch
+
+  local task_name
+  task_name="$(basename "${task_file}" .md)"
+
+  local assigned_file="${STATE_DIR}/task-assigned/${task_name}.md"
+  annotate_assignment "${task_file}" "${worker}"
+  move_task_file "${task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "assigned to ${worker}"
+
+  git -C "${ROOT_DIR}" add "${STATE_DIR}"
+  git -C "${ROOT_DIR}" commit -q -m "[governator] Assign task ${task_name}"
+  git_push_default_branch
+
+  in_flight_add "${task_name}" "${worker}"
+  spawn_special_worker_for_task "${assigned_file}" "${worker}" ""
+  in_flight_remove "${task_name}" "${worker}"
+}
