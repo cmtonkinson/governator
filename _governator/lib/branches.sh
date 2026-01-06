@@ -72,6 +72,9 @@ process_worker_branch() {
   local worker_name="${local_branch#worker/}"
   worker_name="${worker_name%%/*}"
 
+  local task_name
+  task_name="${local_branch##*/}"
+
   git_fetch_remote
   if ! git -C "${ROOT_DIR}" show-ref --verify --quiet "refs/remotes/${remote_branch}"; then
     log_warn "Worker branch missing at ${remote_branch}, skipping."
@@ -80,9 +83,6 @@ process_worker_branch() {
     return 0
   fi
   git -C "${ROOT_DIR}" branch -f "${local_branch}" "${remote_branch}" > /dev/null 2>&1
-
-  local task_name
-  task_name="${local_branch##*/}"
 
   local task_dir
   if ! task_dir="$(task_dir_for_branch "${remote_branch}" "${task_name}")"; then

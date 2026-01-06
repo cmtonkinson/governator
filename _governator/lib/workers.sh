@@ -620,7 +620,7 @@ spawn_worker_for_task() {
 }
 
 # check_zombie_workers
-# Purpose: Detect in-flight workers missing branches and retry or block tasks.
+# Purpose: Detect in-flight workers missing branches and retry or block tasks across all entries.
 # Args: None.
 # Output: Logs warnings and task transitions.
 # Returns: 0 on completion.
@@ -688,7 +688,7 @@ check_zombie_workers() {
       fi
       in_flight_remove "${task_name}" "${worker}"
       worker_process_clear "${task_name}" "${worker}"
-      return 0
+      continue
     fi
 
     local task_file

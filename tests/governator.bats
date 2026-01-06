@@ -260,6 +260,76 @@ EOF
   [ "$status" -ne 0 ]
 }
 
+@test "process_worker_branch clears in-flight entry when branch is missing" {
+  write_task "task-assigned" "011-missing-ruby"
+  echo "011-missing-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+
+  project_name="$(basename "${REPO_DIR}")"
+  tmp_dir="$(mktemp -d "/tmp/governator-${project_name}-ruby-011-missing-ruby-XXXXXX")"
+  echo "011-missing-ruby | ruby | 999999 | ${tmp_dir} | worker/ruby/011-missing-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  commit_all "Prepare missing branch task"
+
+  run bash -c "
+    set -euo pipefail
+    ROOT_DIR=\"${REPO_DIR}\"
+    STATE_DIR=\"${REPO_DIR}/_governator\"
+    DB_DIR=\"${REPO_DIR}/.governator\"
+    PROJECT_NAME=\"${project_name}\"
+    DEFAULT_REMOTE_NAME=\"origin\"
+    DEFAULT_BRANCH_NAME=\"main\"
+    REMOTE_NAME_FILE=\"\${DB_DIR}/remote_name\"
+    DEFAULT_BRANCH_FILE=\"\${DB_DIR}/default_branch\"
+    IN_FLIGHT_LOG=\"\${DB_DIR}/in-flight.log\"
+    RETRY_COUNTS_LOG=\"\${DB_DIR}/retry-counts.log\"
+    WORKER_PROCESSES_LOG=\"\${DB_DIR}/worker-processes.log\"
+    FAILED_MERGES_LOG=\"\${DB_DIR}/failed-merges.log\"
+    AUDIT_LOG=\"\${DB_DIR}/audit.log\"
+    GOV_QUIET=1
+    GOV_VERBOSE=0
+    source \"\${STATE_DIR}/lib/utils.sh\"
+    source \"\${STATE_DIR}/lib/logging.sh\"
+    source \"\${STATE_DIR}/lib/config.sh\"
+    source \"\${STATE_DIR}/lib/git.sh\"
+    source \"\${STATE_DIR}/lib/tasks.sh\"
+    source \"\${STATE_DIR}/lib/workers.sh\"
+    source \"\${STATE_DIR}/lib/branches.sh\"
+    process_worker_branch \"origin/worker/ruby/011-missing-ruby\"
+  "
+  [ "$status" -eq 0 ]
+
+  run grep -F "011-missing-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
+  [ "$status" -ne 0 ]
+  run grep -F "011-missing-ruby | ruby" "${REPO_DIR}/.governator/worker-processes.log"
+  [ "$status" -ne 0 ]
+  [ ! -d "${tmp_dir}" ]
+}
+
+@test "check-zombies blocks multiple tasks in one pass" {
+  write_task "task-assigned" "012-zombie-a-ruby"
+  write_task "task-assigned" "013-zombie-b-ruby"
+  echo "012-zombie-a-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+  echo "013-zombie-b-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+  echo "012-zombie-a-ruby | 1" >> "${REPO_DIR}/.governator/retry-counts.log"
+  echo "013-zombie-b-ruby | 1" >> "${REPO_DIR}/.governator/retry-counts.log"
+
+  project_name="$(basename "${REPO_DIR}")"
+  tmp_dir_a="$(mktemp -d "/tmp/governator-${project_name}-ruby-012-zombie-a-ruby-XXXXXX")"
+  tmp_dir_b="$(mktemp -d "/tmp/governator-${project_name}-ruby-013-zombie-b-ruby-XXXXXX")"
+  echo "012-zombie-a-ruby | ruby | 999999 | ${tmp_dir_a} | worker/ruby/012-zombie-a-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  echo "013-zombie-b-ruby | ruby | 999999 | ${tmp_dir_b} | worker/ruby/013-zombie-b-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  commit_all "Prepare multiple zombie tasks"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" check-zombies
+  [ "$status" -eq 0 ]
+
+  [ -f "${REPO_DIR}/_governator/task-blocked/012-zombie-a-ruby.md" ]
+  [ -f "${REPO_DIR}/_governator/task-blocked/013-zombie-b-ruby.md" ]
+  run grep -F "012-zombie-a-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
+  [ "$status" -ne 0 ]
+  run grep -F "013-zombie-b-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
+  [ "$status" -ne 0 ]
+}
+
 @test "parse-review blocks on missing file" {
   run bash "${REPO_DIR}/_governator/governator.sh" parse-review "${REPO_DIR}/missing.json"
   [ "$status" -eq 0 ]
