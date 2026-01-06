@@ -302,7 +302,8 @@ remove_prompt_file() {
 # Args:
 #   --keep-local: Keep local prompt changes without prompting.
 #   --force-remote: Overwrite local prompt changes without prompting.
-# Output: Prints update summary, runs pending migrations, and logs audit entry.
+# Output: Prints update summary, runs pending migrations, and records audit/timestamp
+#   metadata when updates are applied.
 # Returns: 0 on success; exits on fatal errors.
 update_governator() {
   UPDATE_KEEP_LOCAL=0
@@ -408,13 +409,11 @@ update_governator() {
   chmod +x "${STATE_DIR}/governator.sh"
   write_manifest "${ROOT_DIR}" "${STATE_DIR}" "${MANIFEST_FILE}"
 
-  git -C "${ROOT_DIR}" add "${STATE_DIR}" "${MANIFEST_FILE}"
-  if [[ -n "$(git -C "${ROOT_DIR}" status --porcelain -- "${STATE_DIR}" "${MANIFEST_FILE}")" ]]; then
-    git -C "${ROOT_DIR}" commit -q -m "[governator] Update governator"
-  fi
-
   if [[ "${#UPDATED_FILES[@]}" -gt 0 ]]; then
     audit_log "governator" "update applied: $(join_by ", " "${UPDATED_FILES[@]}")"
+    local updated_at
+    updated_at="$(timestamp_utc_seconds)"
+    write_last_update_at "${updated_at}"
     log_info "Updated files:"
     printf 'Updated files:\n'
     printf '  - %s\n' "${UPDATED_FILES[@]}"
@@ -423,7 +422,11 @@ update_governator() {
     printf 'No updates applied.\n'
   fi
 
-  local updated_at
-  updated_at="$(timestamp_utc_seconds)"
-  write_last_update_at "${updated_at}"
+  git -C "${ROOT_DIR}" add "${STATE_DIR}" "${MANIFEST_FILE}"
+  if [[ "${#UPDATED_FILES[@]}" -gt 0 ]]; then
+    git -C "${ROOT_DIR}" add "${AUDIT_LOG}" "${LAST_UPDATE_FILE}"
+  fi
+  if [[ -n "$(git -C "${ROOT_DIR}" status --porcelain -- "${STATE_DIR}" "${MANIFEST_FILE}" "${AUDIT_LOG}" "${LAST_UPDATE_FILE}")" ]]; then
+    git -C "${ROOT_DIR}" commit -q -m "[governator] Update governator"
+  fi
 }
