@@ -253,6 +253,57 @@ in_flight_has_task_worker() {
   return 1
 }
 
+# recover_reviewer_output
+# Purpose: Commit and push reviewer output when review.json exists but no branch was pushed.
+# Args:
+#   $1: Task name (string).
+#   $2: Temp dir path (string).
+# Output: None.
+# Returns: 0 if a reviewer branch was created and pushed; 1 otherwise.
+recover_reviewer_output() {
+  local task_name="$1"
+  local tmp_dir="$2"
+  if [[ -z "${tmp_dir}" || ! -d "${tmp_dir}" ]]; then
+    return 1
+  fi
+  if [[ ! -f "${tmp_dir}/review.json" ]]; then
+    return 1
+  fi
+  if ! git -C "${tmp_dir}" rev-parse --git-dir > /dev/null 2>&1; then
+    return 1
+  fi
+
+  local branch="worker/reviewer/${task_name}"
+  git -C "${tmp_dir}" checkout -q "${branch}" > /dev/null 2>&1 || true
+  git -C "${tmp_dir}" add "review.json"
+  if git -C "${tmp_dir}" diff --cached --quiet; then
+    return 1
+  fi
+
+  if [[ -z "$(git -C "${tmp_dir}" config user.email || true)" ]]; then
+    local email
+    email="$(git -C "${ROOT_DIR}" config user.email || true)"
+    if [[ -n "${email}" ]]; then
+      git -C "${tmp_dir}" config user.email "${email}"
+    fi
+  fi
+  if [[ -z "$(git -C "${tmp_dir}" config user.name || true)" ]]; then
+    local name
+    name="$(git -C "${ROOT_DIR}" config user.name || true)"
+    if [[ -n "${name}" ]]; then
+      git -C "${tmp_dir}" config user.name "${name}"
+    fi
+  fi
+
+  if ! git -C "${tmp_dir}" commit -q -m "Review ${task_name}" > /dev/null 2>&1; then
+    return 1
+  fi
+  if ! git -C "${tmp_dir}" push -q origin "${branch}" > /dev/null 2>&1; then
+    return 1
+  fi
+  return 0
+}
+
 # cleanup_tmp_dir
 # Purpose: Remove a worker temporary directory if it exists.
 # Args:
@@ -684,6 +735,14 @@ check_zombie_workers() {
         log_task_warn "${task_name}" "worker ${worker} exceeded timeout (${elapsed}s)"
         kill -9 "${pid}" > /dev/null 2>&1 || true
       else
+        continue
+      fi
+    fi
+
+    if [[ "${worker}" == "reviewer" ]]; then
+      if recover_reviewer_output "${task_name}" "${tmp_dir}"; then
+        log_task_event "${task_name}" "recovered reviewer output and pushed branch"
+        git_fetch_remote
         continue
       fi
     fi

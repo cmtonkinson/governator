@@ -362,6 +362,29 @@ EOF
   [ "$status" -ne 0 ]
 }
 
+@test "check-zombies recovers reviewer output by pushing review branch" {
+  write_task "task-worked" "016-review-ruby"
+  echo "016-review-ruby -> reviewer" >> "${REPO_DIR}/.governator/in-flight.log"
+
+  project_name="$(basename "${REPO_DIR}")"
+  tmp_dir="$(mktemp -d "/tmp/governator-${project_name}-reviewer-016-review-ruby-XXXXXX")"
+  git clone "${ORIGIN_DIR}" "${tmp_dir}" >/dev/null
+  git -C "${tmp_dir}" checkout -b "worker/reviewer/016-review-ruby" "origin/main" >/dev/null
+  git -C "${tmp_dir}" config user.email "test@example.com"
+  git -C "${tmp_dir}" config user.name "Test User"
+  cat > "${tmp_dir}/review.json" <<'EOF'
+{"result":"reject","comments":["needs work"]}
+EOF
+
+  echo "016-review-ruby | reviewer | 999999 | ${tmp_dir} | worker/reviewer/016-review-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  commit_all "Prepare reviewer recovery"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" check-zombies
+  [ "$status" -eq 0 ]
+
+  [ -f "${ORIGIN_DIR}/refs/heads/worker/reviewer/016-review-ruby" ]
+}
+
 @test "parse-review blocks on missing file" {
   run bash "${REPO_DIR}/_governator/governator.sh" parse-review "${REPO_DIR}/missing.json"
   [ "$status" -eq 0 ]
