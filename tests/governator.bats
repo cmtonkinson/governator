@@ -424,6 +424,23 @@ EOF
   [ "$status" -eq 0 ]
 }
 
+@test "status lists only tracked in-flight worker branches" {
+  create_worker_branch "020-status-ruby" "ruby"
+  create_worker_branch "021-other-ruby" "ruby"
+  printf '%s -> %s\n' "020-status-ruby" "ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+  commit_paths "Add status in-flight" ".governator/in-flight.log"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" status
+  local status_output="${output}"
+  [ "$status" -eq 0 ]
+  run grep -F "Pending worker branches:" <<< "${status_output}"
+  [ "$status" -eq 0 ]
+  run grep -F "origin/worker/ruby/020-status-ruby" <<< "${status_output}"
+  [ "$status" -eq 0 ]
+  run grep -F "origin/worker/ruby/021-other-ruby" <<< "${status_output}"
+  [ "$status" -ne 0 ]
+}
+
 @test "locked state stops assign-backlog" {
   write_task "task-backlog" "018-lock-test-ruby"
   commit_all "Add lock test task"

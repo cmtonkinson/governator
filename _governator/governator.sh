@@ -802,15 +802,21 @@ print_blocked_tasks_summary() {
 
 print_pending_branches() {
   printf 'Pending worker branches:\n'
+  local remote
+  remote="$(read_remote_name)"
   local printed=0
-  local branch
-  while IFS= read -r branch; do
-    if [[ -z "${branch}" ]]; then
+  local entry
+  local task
+  local worker
+  while IFS='|' read -r task worker; do
+    if [[ -z "${task}" || -z "${worker}" ]]; then
       continue
     fi
-    printf '  - %s\n' "${branch}"
+    local branch
+    branch="worker/${worker}/${task}"
+    printf '  - %s/%s\n' "${remote}" "${branch}"
     printed=1
-  done < <(list_worker_branches | sort -u)
+  done < <(in_flight_entries)
   if [[ "${printed}" -eq 0 ]]; then
     printf '  (none)\n'
   fi
@@ -869,6 +875,11 @@ status_dashboard() {
     fi
   fi
   printf 'Governator Status%s\n' "${locked_note}"
+  if git_fetch_remote > /dev/null 2>&1; then
+    :
+  else
+    log_warn 'Failed to fetch remote refs for status'
+  fi
   print_task_queue_summary
   printf '\n'
   print_inflight_summary
@@ -876,9 +887,14 @@ status_dashboard() {
   print_stage_task_list "Pending reviews" "${STATE_DIR}/task-worked"
   printf '\n'
   print_blocked_tasks_summary
+  printf '\n'
+  print_pending_branches
   if system_locked; then
     printf '\nNOTE: Governator is locked; no new activity will start and data may be stale.\n'
+  else
+    :
   fi
+  return 0
 }
 
 handle_locked_state() {
