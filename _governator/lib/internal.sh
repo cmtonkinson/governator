@@ -161,7 +161,7 @@ check_zombies_action() {
 # Output: Writes help text to stdout.
 # Returns: 0 always.
 print_help() {
-  cat << 'EOF'
+  cat << EOF
 Usage: governator.sh <command>
 
 Public commands:
@@ -178,6 +178,7 @@ Options:
   run -v, --verbose  Print worker/reviewer command lines.
 
 Note: You must run `governator.sh init` before using any other command.
+Last updated at: $(read_last_update_at)
 EOF
 }
 

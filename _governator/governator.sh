@@ -30,6 +30,7 @@ DONE_CHECK_COOLDOWN_FILE="${DB_DIR}/done_check_cooldown_seconds"
 DONE_CHECK_LAST_RUN_FILE="${DB_DIR}/last_done_check"
 PROJECT_DONE_FILE="${DB_DIR}/project_done"
 MANIFEST_FILE="${DB_DIR}/manifest.json"
+LAST_UPDATE_FILE="${DB_DIR}/last_update_at"
 
 AUDIT_LOG="${DB_DIR}/audit.log"
 WORKER_PROCESSES_LOG="${DB_DIR}/worker-processes.log"

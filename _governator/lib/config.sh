@@ -214,6 +214,36 @@ write_done_check_last_run() {
   printf '%s\n' "${timestamp}" > "${DONE_CHECK_LAST_RUN_FILE}"
 }
 
+# read_last_update_at
+# Purpose: Read the last update timestamp for the update command.
+# Args: None.
+# Output: Prints the timestamp string or "never".
+# Returns: 0 always.
+read_last_update_at() {
+  if [[ ! -f "${LAST_UPDATE_FILE}" ]]; then
+    printf '%s\n' "never"
+    return 0
+  fi
+  local value
+  value="$(tr -d '[:space:]' < "${LAST_UPDATE_FILE}")"
+  if [[ -z "${value}" ]]; then
+    printf '%s\n' "never"
+    return 0
+  fi
+  printf '%s\n' "${value}"
+}
+
+# write_last_update_at
+# Purpose: Persist the last update timestamp for the update command.
+# Args:
+#   $1: Timestamp string (string).
+# Output: None.
+# Returns: 0 on success.
+write_last_update_at() {
+  local timestamp="$1"
+  printf '%s\n' "${timestamp}" > "${LAST_UPDATE_FILE}"
+}
+
 # read_project_done_sha
 # Purpose: Read the stored GOVERNATOR.md hash for done checks.
 # Args: None.

@@ -317,6 +317,7 @@ update_governator() {
         ;;
       -h | --help)
         printf 'Usage: governator.sh update [--keep-local|--force-remote]\n'
+        printf 'Last updated at: %s\n' "$(read_last_update_at)"
         return 0
         ;;
       *)
@@ -335,6 +336,7 @@ update_governator() {
   ensure_update_dependencies
   ensure_db_dir
   ensure_manifest_exists
+  printf 'Last updated at: %s\n' "$(read_last_update_at)"
 
   UPDATE_TMP_ROOT="$(mktemp -d "/tmp/governator-${PROJECT_NAME}-update-XXXXXX")"
   local cleanup
@@ -419,4 +421,8 @@ update_governator() {
     log_info "No updates applied."
     printf 'No updates applied.\n'
   fi
+
+  local updated_at
+  updated_at="$(timestamp_utc_seconds)"
+  write_last_update_at "${updated_at}"
 }
