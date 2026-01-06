@@ -8,10 +8,10 @@ The agentic anti-swarm (read: just a state machine)
 More specificially, it's a file-backed, git-driven, auditable, deterministic,
 waterfall orchestration framework for converting operator intent into working
 software. Goals, requirements, constraints, and assumptions are defined in
-`GOVERNATOR.md`. Then Governator deploys agentic "workers" to assess the gap
+`GOVERNATOR.md`. Then Governator deploys agentic workers to assess the gap
 between the stated vision and the current repo, decomposes that gap into
-individually executable discrete tasks, and controls dispatch and quality
-control.
+individually executable discrete tasks, and oversees planning, dispatch and
+quality control.
 
 There is no shared memory, no long-lived agent state, and no hidden context. All
 state, intent, decisions, and artifacts live on disk and in git.
