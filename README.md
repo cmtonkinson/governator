@@ -147,7 +147,7 @@ code, prompts, templates, and full task "database."
 `.governator/` directory is the system configuration/state "database."
 Customizable configuration and internal state are stored here.
 
-Think `_governator` for shared state and `.governator` for runtime/local statee.
+Think `_governator` for shared state and `.governator` for runtime/local state.
 
 ### Key Concepts
 - **Worker Contract** defines global, non-negotiable execution rules for all
