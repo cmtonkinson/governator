@@ -800,6 +800,22 @@ print_blocked_tasks_summary() {
   print_task_list "Blocked tasks" "${STATE_DIR}/task-blocked" format_blocked_task
 }
 
+print_pending_branches() {
+  printf 'Pending worker branches:\n'
+  local printed=0
+  local branch
+  while IFS= read -r branch; do
+    if [[ -z "${branch}" ]]; then
+      continue
+    fi
+    printf '  - %s\n' "${branch}"
+    printed=1
+  done < <(list_worker_branches | sort -u)
+  if [[ "${printed}" -eq 0 ]]; then
+    printf '  (none)\n'
+  fi
+}
+
 print_inflight_summary() {
   local total
   total="$(count_in_flight_total)"
@@ -838,6 +854,8 @@ print_activity_snapshot() {
   print_stage_task_list "Pending reviews" "${STATE_DIR}/task-worked"
   printf '\n'
   print_blocked_tasks_summary
+  printf '\n'
+  print_pending_branches
 }
 
 status_dashboard() {
