@@ -302,7 +302,7 @@ remove_prompt_file() {
 # Args:
 #   --keep-local: Keep local prompt changes without prompting.
 #   --force-remote: Overwrite local prompt changes without prompting.
-# Output: Prints update summary and logs audit entry.
+# Output: Prints update summary, runs pending migrations, and logs audit entry.
 # Returns: 0 on success; exits on fatal errors.
 update_governator() {
   UPDATE_KEEP_LOCAL=0
@@ -404,6 +404,7 @@ update_governator() {
 
   rm -f "${upstream_list}" "${local_list}"
 
+  run_governator_migrations
   chmod +x "${STATE_DIR}/governator.sh"
   write_manifest "${ROOT_DIR}" "${STATE_DIR}" "${MANIFEST_FILE}"
 

@@ -39,12 +39,14 @@ RETRY_COUNTS_LOG="${DB_DIR}/retry-counts.log"
 WORKER_ROLES_DIR="${STATE_DIR}/roles-worker"
 SPECIAL_ROLES_DIR="${STATE_DIR}/roles-special"
 TEMPLATES_DIR="${STATE_DIR}/templates"
+MIGRATIONS_DIR="${STATE_DIR}/migrations"
 LOCK_FILE="${DB_DIR}/governator.lock"
 FAILED_MERGES_LOG="${DB_DIR}/failed-merges.log"
 IN_FLIGHT_LOG="${DB_DIR}/in-flight.log"
 SYSTEM_LOCK_FILE="${DB_DIR}/governator.locked"
 SYSTEM_LOCK_PATH="${SYSTEM_LOCK_FILE#"${ROOT_DIR}/"}"
 GITIGNORE_PATH="${ROOT_DIR}/.gitignore"
+MIGRATIONS_STATE_FILE="${DB_DIR}/migrations.json"
 
 GOV_QUIET=0
 GOV_VERBOSE=0
@@ -114,6 +116,8 @@ source "${LIB_DIR}/queues.sh"
 source "${LIB_DIR}/status.sh"
 # shellcheck source=_governator/lib/internal.sh
 source "${LIB_DIR}/internal.sh"
+# shellcheck source=_governator/lib/migrations.sh
+source "${LIB_DIR}/migrations.sh"
 # shellcheck source=_governator/lib/update.sh
 source "${LIB_DIR}/update.sh"
 

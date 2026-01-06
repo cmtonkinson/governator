@@ -487,6 +487,28 @@ EOF
   [ "$status" -eq 0 ]
 }
 
+@test "update runs migrations and records state" {
+  upstream_root="$(create_upstream_dir)"
+  migration_path="${upstream_root}/governator-main/_governator/migrations/202501010000__sample.sh"
+  cat > "${migration_path}" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "migrated" >> "migration-output.txt"
+EOF
+  chmod +x "${migration_path}"
+  tar_path="${BATS_TMPDIR}/upstream-migrations.tar.gz"
+  build_upstream_tarball "${upstream_root}" "${tar_path}"
+  stub_curl_with_tarball "${tar_path}"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" update --force-remote
+  [ "$status" -eq 0 ]
+  run grep -F "migrated" "${REPO_DIR}/migration-output.txt"
+  [ "$status" -eq 0 ]
+  run jq -e --arg id "202501010000__sample.sh" '.applied[]? | select(.id == $id)' \
+    "${REPO_DIR}/.governator/migrations.json"
+  [ "$status" -eq 0 ]
+}
+
 @test "update keeps local prompt with --keep-local" {
   upstream_root="$(create_upstream_dir)"
   tar_path="${BATS_TMPDIR}/upstream-baseline.tar.gz"

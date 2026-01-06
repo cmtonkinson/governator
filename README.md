@@ -257,8 +257,11 @@ automatically download the latest version and:
 - for each prompt and template: if you haven't modified it, install the newer
   version. If you have, you are prompted with a choice to keep your changes or
   accept the newer version.
+- run any unapplied bash migrations in `_governator/migrations`, recording
+  applied entries in the tracked `.governator/migrations.json`.
 
-_**Note**: `update` will never modify any tasks or docs; but most of the other stuff under
+_**Note**: `update` itself will never modify any tasks or docs; migrations are
+opt-in and can change anything they touch. Most of the other stuff under
 `_governator` is fair game._
 
 ## Determinism by Design

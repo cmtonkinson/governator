@@ -379,6 +379,7 @@ ensure_db_dir() {
   mkdir -p "${DB_DIR}/logs"
   touch "${AUDIT_LOG}"
   touch "${WORKER_PROCESSES_LOG}" "${RETRY_COUNTS_LOG}"
+  ensure_migrations_state_file
   if [[ ! -f "${WORKER_TIMEOUT_FILE}" ]]; then
     printf '%s\n' "${DEFAULT_WORKER_TIMEOUT_SECONDS}" > "${WORKER_TIMEOUT_FILE}"
   fi
