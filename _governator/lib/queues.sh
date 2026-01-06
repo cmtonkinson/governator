@@ -198,6 +198,11 @@ resume_assigned_tasks() {
       log_verbose "Skipping in-flight task ${task_name}"
       continue
     fi
+    if worker_process_get "${task_name}" "${worker}" > /dev/null 2>&1; then
+      in_flight_add "${task_name}" "${worker}"
+      log_verbose "Skipping task ${task_name}; worker process already recorded for ${worker}"
+      continue
+    fi
 
     if ! role_exists "${worker}"; then
       log_warn "Unknown role ${worker} for ${task_name}, blocking."
