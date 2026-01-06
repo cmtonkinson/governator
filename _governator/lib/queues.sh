@@ -95,7 +95,6 @@ assign_pending_tasks() {
   if [[ "$(count_task_files "${STATE_DIR}/task-backlog")" -gt 0 ]] ||
     [[ "$(count_task_files "${STATE_DIR}/task-assigned")" -gt 0 ]] ||
     [[ "$(count_task_files "${STATE_DIR}/task-worked")" -gt 0 ]] ||
-    [[ "$(count_task_files "${STATE_DIR}/task-feedback")" -gt 0 ]] ||
     [[ "$(count_task_files "${STATE_DIR}/task-blocked")" -gt 0 ]]; then
     queues_empty=0
   fi

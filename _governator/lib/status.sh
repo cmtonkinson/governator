@@ -10,7 +10,6 @@ print_task_queue_summary() {
     "task-backlog:Backlog"
     "task-assigned:Assigned"
     "task-worked:Awaiting review"
-    "task-feedback:Feedback"
     "task-blocked:Blocked"
     "task-done:Done"
   )

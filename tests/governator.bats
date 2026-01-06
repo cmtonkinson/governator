@@ -260,21 +260,6 @@ EOF
   [ "$status" -ne 0 ]
 }
 
-@test "process-branches moves feedback task back to assigned" {
-  write_task "task-feedback" "011-feedback-ruby"
-  echo "011-feedback-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
-  commit_all "Prepare feedback task"
-
-  create_worker_branch "011-feedback-ruby" "ruby"
-
-  run bash "${REPO_DIR}/_governator/governator.sh" process-branches
-  [ "$status" -eq 0 ]
-
-  [ -f "${REPO_DIR}/_governator/task-assigned/011-feedback-ruby.md" ]
-  run grep -F "## Feedback" "${REPO_DIR}/_governator/task-assigned/011-feedback-ruby.md"
-  [ "$status" -eq 0 ]
-}
-
 @test "parse-review blocks on missing file" {
   run bash "${REPO_DIR}/_governator/governator.sh" parse-review "${REPO_DIR}/missing.json"
   [ "$status" -eq 0 ]

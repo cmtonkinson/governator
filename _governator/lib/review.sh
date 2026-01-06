@@ -111,10 +111,6 @@ apply_review_decision() {
         esac
       fi
       ;;
-    task-feedback)
-      annotate_feedback "${main_task_file}"
-      move_task_file "${main_task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "moved to task-assigned"
-      ;;
     *)
       log_warn "Unexpected task state ${task_dir} for ${task_name}, blocking."
       annotate_blocked "${main_task_file}" "${block_reason}"

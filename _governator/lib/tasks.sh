@@ -352,17 +352,6 @@ annotate_review() {
   append_section "${task_file}" "## Review Result" "reviewer" "${body}"
 }
 
-# annotate_feedback
-# Purpose: Append feedback annotation to a task file.
-# Args:
-#   $1: Task file path (string).
-# Output: Writes to the task file.
-# Returns: 0 on success.
-annotate_feedback() {
-  local task_file="$1"
-  append_section "${task_file}" "## Feedback" "governator" "Moved back to task-assigned for follow-up."
-}
-
 # annotate_blocked
 # Purpose: Append a block reason to a task file.
 # Args:

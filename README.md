@@ -210,11 +210,9 @@ A task moves through directories as its state changes:
 4. `task-blocked/`
    - Worker cannot proceed safely
    - Includes a worker-written blocking reason
-5. `task-feedback/`
-   - The assigned worker needs additional guidance
-6. `task-done/`
+5. `task-done/`
    - Task accepted and merged into `main`
-7. `task-proposed/`
+6. `task-proposed/`
    - Optional follow-up work suggested by workers
    - Governator decides whether to accept or discard
 

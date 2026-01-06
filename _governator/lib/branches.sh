@@ -154,9 +154,6 @@ process_worker_branch() {
         block_reason="Unexpected task state ${task_dir} during processing."
       fi
       ;;
-    task-feedback)
-      :
-      ;;
     *)
       decision="block"
       block_reason="Unexpected task state ${task_dir} during processing."
