@@ -39,7 +39,7 @@ in `.governator/default_branch` before you push.
 Do NOT make or commit any changes to or within the following locations:
 - _governator/custom-prompts/
 - _governator/governator.sh
-- _governator/roles-*/
+- _governator/roles/
 - _governator/templates/
 - _governator/worker-contract.md
 

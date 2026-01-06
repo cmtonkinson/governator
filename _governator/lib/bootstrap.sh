@@ -387,7 +387,7 @@ complete_bootstrap_task_if_ready() {
 # Purpose: Assign the bootstrap task to the architect role.
 # Args:
 #   $1: Task file path (string).
-# Output: Logs assignment and spawns special worker.
+# Output: Logs assignment and spawns worker.
 # Returns: 0 on completion.
 assign_bootstrap_task() {
   local task_file="$1"
@@ -407,6 +407,5 @@ assign_bootstrap_task() {
   git_push_default_branch
 
   in_flight_add "${task_name}" "${worker}"
-  spawn_special_worker_for_task "${assigned_file}" "${worker}" ""
-  in_flight_remove "${task_name}" "${worker}"
+  spawn_worker_for_task "${assigned_file}" "${worker}" ""
 }

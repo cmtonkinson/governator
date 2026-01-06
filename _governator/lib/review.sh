@@ -24,77 +24,26 @@ parse_review_json() {
   jq -r '.comments // [] | if type == "array" then .[] else . end' "${file}"
 }
 
-# read_reviewer_output
-# Purpose: Read and normalize reviewer output from a temp directory.
+# read_review_output_from_branch
+# Purpose: Read and normalize reviewer output from a git branch.
 # Args:
-#   $1: Temp directory containing review.json (string).
+#   $1: Branch ref containing review.json (string).
 # Output: Prints decision and comments to stdout, one per line.
 # Returns: 0 always; falls back to "block" when output is missing.
-read_reviewer_output() {
-  local tmp_dir="$1"
-  log_verbose_file "Reviewer output file" "${tmp_dir}/review.json"
+read_review_output_from_branch() {
+  local branch="$1"
+  local tmp_file
+  tmp_file="$(mktemp "/tmp/governator-${PROJECT_NAME}-review-XXXXXX.json")"
   local review_output=()
-  mapfile -t review_output < <(parse_review_json "${tmp_dir}/review.json")
+  if git -C "${ROOT_DIR}" show "${branch}:review.json" > "${tmp_file}" 2> /dev/null; then
+    mapfile -t review_output < <(parse_review_json "${tmp_file}")
+  else
+    review_output=("block" "Review output missing at ${branch}:review.json")
+  fi
+  rm -f "${tmp_file}"
   if [[ "${#review_output[@]}" -eq 0 ]]; then
     review_output=("block" "Review output missing")
   fi
-  printf '%s\n' "${review_output[@]}"
-}
-
-# code_review
-# Purpose: Run the reviewer in a clean clone and return parsed output.
-# Args:
-#   $1: Remote branch ref to review (string).
-#   $2: Local branch name used for checkout (string).
-#   $3: Task relative path used in prompts (string).
-# Output: Writes decision followed by comments, one per line.
-# Returns: 0 on completion; emits "block" if reviewer output is missing.
-code_review() {
-  local remote_branch="$1"
-  local local_branch="$2"
-  local task_relpath="$3"
-
-  local tmp_dir
-  tmp_dir="$(mktemp -d "/tmp/governator-${PROJECT_NAME}-reviewer-${local_branch//\//-}-XXXXXX")"
-
-  local remote
-  remote="$(read_remote_name)"
-  git clone "$(git -C "${ROOT_DIR}" remote get-url "${remote}")" "${tmp_dir}" > /dev/null 2>&1
-  git -C "${tmp_dir}" fetch "${remote}" > /dev/null 2>&1
-  git -C "${tmp_dir}" checkout -B "${local_branch}" "${remote_branch}" > /dev/null 2>&1
-
-  # Seed with a template to guide reviewers toward the expected schema.
-  if [[ -f "${TEMPLATES_DIR}/review.json" ]]; then
-    cp "${TEMPLATES_DIR}/review.json" "${tmp_dir}/review.json"
-  fi
-
-  local log_dir
-  log_dir="${DB_DIR}/logs"
-  mkdir -p "${log_dir}"
-  local task_base
-  task_base="$(basename "${task_relpath}" .md)"
-  local log_file
-  log_file="${log_dir}/${task_base}-reviewer.log"
-  append_worker_log_separator "${log_file}"
-
-  local prompt
-  prompt="$(build_special_prompt "reviewer" "${task_relpath}")"
-
-  log_task_event "${task_base}" "starting review for ${local_branch}"
-
-  if ! run_codex_reviewer "${tmp_dir}" "${prompt}" "${log_file}"; then
-    log_warn "Reviewer command failed for ${local_branch}."
-  fi
-
-  local review_output=()
-  mapfile -t review_output < <(read_reviewer_output "${tmp_dir}")
-  cleanup_tmp_dir "${tmp_dir}"
-
-  if [[ "${#review_output[@]}" -eq 0 ]]; then
-    printf 'block\nReview output missing\n'
-    return 0
-  fi
-
   printf '%s\n' "${review_output[@]}"
 }
 
@@ -106,7 +55,7 @@ code_review() {
 #   $3: Decision string ("approve", "reject", or other).
 #   $4: Block reason (string).
 #   $5+: Review comment lines (strings).
-# Output: Logs warnings and task events via logger helpers.
+# Output: Logs warnings, task events, and removes review.json on approvals.
 # Returns: 0 on success; 1 if the task file is missing.
 apply_review_decision() {
   local task_name="$1"
@@ -173,9 +122,18 @@ apply_review_decision() {
       ;;
   esac
 
+  if [[ "${decision}" == "approve" ]]; then
+    if [[ -f "${ROOT_DIR}/review.json" ]]; then
+      rm -f "${ROOT_DIR}/review.json"
+    fi
+  fi
+
   git -C "${ROOT_DIR}" add "${STATE_DIR}" "${AUDIT_LOG}"
   if [[ -f "${PROJECT_DONE_FILE}" ]]; then
     git -C "${ROOT_DIR}" add "${PROJECT_DONE_FILE}"
+  fi
+  if git -C "${ROOT_DIR}" ls-files --error-unmatch "review.json" > /dev/null 2>&1; then
+    git -C "${ROOT_DIR}" add -u "review.json"
   fi
   git -C "${ROOT_DIR}" commit -q -m "[governator] Process task ${task_name}"
   return 0

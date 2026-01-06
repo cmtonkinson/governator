@@ -62,61 +62,6 @@ run_codex_worker_detached() {
   )
 }
 
-# run_codex_worker_blocking
-# Purpose: Run a Codex worker synchronously for special roles.
-# Args:
-#   $1: Working directory (string).
-#   $2: Prompt text (string).
-#   $3: Log file path (string).
-#   $4: Role name (string).
-# Output: Writes worker output to log file.
-# Returns: Exit code from the worker command.
-run_codex_worker_blocking() {
-  local dir="$1"
-  local prompt="$2"
-  local log_file="$3"
-  local role="$4"
-  if [[ -n "${CODEX_WORKER_CMD:-}" ]]; then
-    log_verbose "Worker command: GOV_PROMPT=${prompt} bash -c ${CODEX_WORKER_CMD}"
-    (cd "${dir}" && GOV_PROMPT="${prompt}" bash -c "${CODEX_WORKER_CMD}" >> "${log_file}" 2>&1)
-    return $?
-  fi
-
-  build_codex_command "${role}" "${prompt}"
-  log_verbose "Worker command: ${CODEX_COMMAND_LOG}"
-  (cd "${dir}" && "${CODEX_COMMAND[@]}" >> "${log_file}" 2>&1)
-}
-
-# run_codex_reviewer
-# Purpose: Run the reviewer synchronously to produce review.json output.
-# Args:
-#   $1: Working directory (string).
-#   $2: Prompt text (string).
-#   $3: Log file path (string, optional).
-# Output: Writes reviewer output to log file when provided.
-# Returns: Exit code from the reviewer command.
-run_codex_reviewer() {
-  local dir="$1"
-  local prompt="$2"
-  local log_file="${3:-}"
-  if [[ -n "${CODEX_REVIEW_CMD:-}" ]]; then
-    log_verbose "Reviewer command: GOV_PROMPT=${prompt} bash -c ${CODEX_REVIEW_CMD}"
-    if [[ -n "${log_file}" ]]; then
-      (cd "${dir}" && GOV_PROMPT="${prompt}" bash -c "${CODEX_REVIEW_CMD}" >> "${log_file}" 2>&1)
-    else
-      (cd "${dir}" && GOV_PROMPT="${prompt}" bash -c "${CODEX_REVIEW_CMD}")
-    fi
-    return 0
-  fi
-
-  build_codex_command "reviewer" "${prompt}"
-  log_verbose "Reviewer command: ${CODEX_COMMAND_LOG}"
-  if [[ -n "${log_file}" ]]; then
-    (cd "${dir}" && "${CODEX_COMMAND[@]}" >> "${log_file}" 2>&1)
-  else
-    (cd "${dir}" && "${CODEX_COMMAND[@]}")
-  fi
-}
 
 # format_prompt_files
 # Purpose: Join prompt file paths into a comma-separated string.
@@ -137,7 +82,7 @@ format_prompt_files() {
 }
 
 # build_worker_prompt
-# Purpose: Build the full prompt string for a standard worker.
+# Purpose: Build the full prompt string for a worker role.
 # Args:
 #   $1: Role name (string).
 #   $2: Task relative path (string).
@@ -148,7 +93,7 @@ build_worker_prompt() {
   local task_relpath="$2"
   local prompt_files=()
   prompt_files+=("_governator/worker-contract.md")
-  prompt_files+=("_governator/roles-worker/${role}.md")
+  prompt_files+=("${ROLES_DIR#"${ROOT_DIR}/"}/${role}.md")
   prompt_files+=("_governator/custom-prompts/_global.md")
   prompt_files+=("_governator/custom-prompts/${role}.md")
   prompt_files+=("${task_relpath}")
@@ -158,27 +103,6 @@ build_worker_prompt() {
   printf '%s' "${prompt}"
 }
 
-# build_special_prompt
-# Purpose: Build the full prompt string for a special-role worker.
-# Args:
-#   $1: Role name (string).
-#   $2: Task relative path (string).
-# Output: Prints the full prompt string to stdout.
-# Returns: 0 always.
-build_special_prompt() {
-  local role="$1"
-  local task_relpath="$2"
-  local prompt_files=()
-  prompt_files+=("_governator/worker-contract.md")
-  prompt_files+=("${SPECIAL_ROLES_DIR#"${ROOT_DIR}/"}/${role}.md")
-  prompt_files+=("_governator/custom-prompts/_global.md")
-  prompt_files+=("_governator/custom-prompts/${role}.md")
-  prompt_files+=("${task_relpath}")
-
-  local prompt
-  prompt="Read and follow the instructions in the following files, in this order: $(format_prompt_files "${prompt_files[@]}")."
-  printf '%s' "${prompt}"
-}
 
 # list_worker_branches
 # Purpose: List remote worker branch refs.
@@ -629,71 +553,19 @@ retry_count_clear() {
 }
 
 # spawn_worker_for_task
-# Purpose: Launch a standard worker for a task file and record metadata.
+# Purpose: Launch a worker for a task file and record metadata.
 # Args:
 #   $1: Task file path (string).
 #   $2: Worker role (string).
 #   $3: Audit log message (string, optional).
+#   $4: Base ref to branch from (string, optional).
 # Output: Logs task events and worker metadata.
 # Returns: 0 on completion.
 spawn_worker_for_task() {
   local task_file="$1"
   local worker="$2"
   local audit_message="$3"
-
-  local task_name
-  task_name="$(basename "${task_file}" .md)"
-
-  local tmp_dir
-  tmp_dir="$(mktemp -d "/tmp/governator-${PROJECT_NAME}-${worker}-${task_name}-XXXXXX")"
-  log_verbose "Worker tmp dir: ${tmp_dir}"
-
-  local log_dir
-  log_dir="${DB_DIR}/logs"
-  mkdir -p "${log_dir}"
-  local log_file
-  log_file="${log_dir}/${task_name}.log"
-  append_worker_log_separator "${log_file}"
-
-  local remote
-  local branch
-  remote="$(read_remote_name)"
-  branch="$(read_default_branch)"
-  git clone "$(git -C "${ROOT_DIR}" remote get-url "${remote}")" "${tmp_dir}" > /dev/null 2>&1
-  git -C "${tmp_dir}" checkout -b "worker/${worker}/${task_name}" "${remote}/${branch}" > /dev/null 2>&1
-
-  local task_relpath="${task_file#"${ROOT_DIR}/"}"
-  local prompt
-  prompt="$(build_worker_prompt "${worker}" "${task_relpath}")"
-
-  local branch_name="worker/${worker}/${task_name}"
-  local pid
-  local started_at
-  started_at="$(date +%s)"
-  pid="$(run_codex_worker_detached "${tmp_dir}" "${prompt}" "${log_file}" "${worker}")"
-  if [[ -n "${pid}" ]]; then
-    worker_process_set "${task_name}" "${worker}" "${pid}" "${tmp_dir}" "${branch_name}" "${started_at}"
-    if [[ -n "${audit_message}" ]]; then
-      log_task_event "${task_name}" "${audit_message}"
-    fi
-    log_task_event "${task_name}" "worker ${worker} started"
-  else
-    log_task_warn "${task_name}" "failed to capture worker pid"
-  fi
-}
-
-# spawn_special_worker_for_task
-# Purpose: Launch a special worker (including reviewer) for a task file.
-# Args:
-#   $1: Task file path (string).
-#   $2: Worker role (string).
-#   $3: Audit log message (string, optional).
-# Output: Logs task events and reviewer decisions as needed.
-# Returns: 0 on completion.
-spawn_special_worker_for_task() {
-  local task_file="$1"
-  local worker="$2"
-  local audit_message="$3"
+  local base_ref="${4:-}"
 
   local task_name
   task_name="$(basename "${task_file}" .md)"
@@ -718,58 +590,33 @@ spawn_special_worker_for_task() {
   remote="$(read_remote_name)"
   branch="$(read_default_branch)"
   git clone "$(git -C "${ROOT_DIR}" remote get-url "${remote}")" "${tmp_dir}" > /dev/null 2>&1
-  git -C "${tmp_dir}" checkout -b "worker/${worker}/${task_name}" "${remote}/${branch}" > /dev/null 2>&1
+  if [[ -z "${base_ref}" ]]; then
+    base_ref="${remote}/${branch}"
+  fi
+  git -C "${tmp_dir}" checkout -b "worker/${worker}/${task_name}" "${base_ref}" > /dev/null 2>&1
 
   local task_relpath="${task_file#"${ROOT_DIR}/"}"
   local prompt
-  prompt="$(build_special_prompt "${worker}" "${task_relpath}")"
+  prompt="$(build_worker_prompt "${worker}" "${task_relpath}")"
 
-  if [[ "${worker}" == "reviewer" && -f "${TEMPLATES_DIR}/review.json" ]]; then
+  if [[ "${worker}" == "reviewer" && -f "${TEMPLATES_DIR}/review.json" && ! -f "${tmp_dir}/review.json" ]]; then
     cp "${TEMPLATES_DIR}/review.json" "${tmp_dir}/review.json"
   fi
 
+  local branch_name="worker/${worker}/${task_name}"
+  local pid
   local started_at
   started_at="$(date +%s)"
-  if [[ -n "${audit_message}" ]]; then
-    log_task_event "${task_name}" "${audit_message}"
-  fi
-
-  log_task_event "${task_name}" "starting special worker ${worker}"
-  local worker_status=0
-  if [[ "${worker}" == "reviewer" ]]; then
-    if ! run_codex_reviewer "${tmp_dir}" "${prompt}" "${log_file}"; then
-      worker_status=1
+  pid="$(run_codex_worker_detached "${tmp_dir}" "${prompt}" "${log_file}" "${worker}")"
+  if [[ -n "${pid}" ]]; then
+    worker_process_set "${task_name}" "${worker}" "${pid}" "${tmp_dir}" "${branch_name}" "${started_at}"
+    if [[ -n "${audit_message}" ]]; then
+      log_task_event "${task_name}" "${audit_message}"
     fi
-  elif ! run_codex_worker_blocking "${tmp_dir}" "${prompt}" "${log_file}" "${worker}"; then
-    worker_status=1
-  fi
-
-  if [[ "${worker_status}" -eq 0 ]]; then
-    log_task_event "${task_name}" "special worker ${worker} completed"
+    log_task_event "${task_name}" "worker ${worker} started"
   else
-    log_task_warn "${task_name}" "special worker ${worker} exited with error"
+    log_task_warn "${task_name}" "failed to capture worker pid"
   fi
-
-  if [[ "${worker}" == "reviewer" ]]; then
-    local review_output=()
-    mapfile -t review_output < <(read_reviewer_output "${tmp_dir}")
-    local decision="${review_output[0]}"
-    local review_lines=("${review_output[@]:1}")
-    local block_reason="Unexpected task state during processing."
-    git_checkout_default_branch
-    apply_review_decision "${task_name}" "${worker}" "${decision}" "${block_reason}" "${review_lines[@]}"
-    git_push_default_branch
-    delete_worker_branch "worker/${worker}/${task_name}"
-    rm -f "${tmp_dir}/review.json"
-  elif [[ "${worker_status}" -eq 0 ]]; then
-    process_special_worker_branch "${task_name}" "${worker}"
-  fi
-  local finished_at
-  finished_at="$(date +%s)"
-  if [[ "${finished_at}" -ge "${started_at}" ]]; then
-    log_task_event "${task_name}" "worker elapsed ${worker}: $((finished_at - started_at))s"
-  fi
-  cleanup_tmp_dir "${tmp_dir}"
 }
 
 # check_zombie_workers

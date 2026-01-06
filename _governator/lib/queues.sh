@@ -200,7 +200,7 @@ resume_assigned_tasks() {
       continue
     fi
 
-    if ! role_exists "${worker}" && ! special_role_exists "${worker}"; then
+    if ! role_exists "${worker}"; then
       log_warn "Unknown role ${worker} for ${task_name}, blocking."
       block_task_from_assigned "${task_file}" "Unknown role ${worker} referenced in filename suffix."
       continue
@@ -209,15 +209,6 @@ resume_assigned_tasks() {
     local cap_note
     if ! cap_note="$(can_assign_task "${worker}" "${task_name}")"; then
       log_warn "${cap_note}"
-      continue
-    fi
-
-    if special_role_exists "${worker}"; then
-      log_verbose "Dispatching special role ${worker} for ${task_name}"
-      warn_if_task_template_incomplete "${task_file}" "${task_name}"
-      in_flight_add "${task_name}" "${worker}"
-      spawn_special_worker_for_task "${task_file}" "${worker}" "retrying ${worker} task"
-      in_flight_remove "${task_name}" "${worker}"
       continue
     fi
 

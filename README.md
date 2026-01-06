@@ -166,7 +166,7 @@ and a suffix matching the type of role the task should be assigned to.
 - Example: `002-use-bundler-ruby.md`
 
 Governator derives the role from the suffix after the last dash. If the suffix
-does not match a role file in `_governator/roles-worker/`, the task will be
+does not match a role file in `_governator/roles/`, the task will be
 assigned to the default `generalist` role.
 
 The `templates/task.md` file is the stub for new tasks. `next_task_id`
@@ -225,7 +225,7 @@ Each worker execution:
 - Runs non-interactively (e.g. `codex exec`)
 - Reads inputs in order:
   1. `_governator/worker-contract.md`
-  2. `_governator/roles-<type>/<role>.md`
+  2. `_governator/roles/<role>.md`
   3. `_governator/custom-prompts/_global.md`
   4. `_governator/custom-prompts/<role>.md`
   5. `_governator/<task-path>/<task>.md`
@@ -248,7 +248,10 @@ Workers never:
 ## Review Flow
 When a worker completes a task, it is pushed to the repository under a dedicated
 branch. The task is moved to `task-worked` and Governator initiates a review to
-determin whether the work done satisfies what was asked in the ticket.
+determine whether the work done satisfies what was asked in the ticket.
+
+Reviews produce a special artifact on their branch called `review.json`, which
+Governator removes when marking an approved task as done.
 
 ## Updates
 Governator can be updated at any time with `governator.sh update`. This will

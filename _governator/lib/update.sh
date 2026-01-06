@@ -114,7 +114,7 @@ is_code_file() {
 is_prompt_file() {
   local rel_path="$1"
   case "${rel_path}" in
-    _governator/templates/* | _governator/custom-prompts/* | _governator/roles-worker/* | _governator/roles-special/* | _governator/worker-contract.md)
+    _governator/templates/* | _governator/custom-prompts/* | _governator/roles/* | _governator/worker-contract.md)
       return 0
       ;;
   esac

@@ -267,7 +267,7 @@ Branch: ${branch:-n/a}"
 }
 
 # list_available_workers
-# Purpose: List available non-reviewer worker roles.
+# Purpose: List available worker roles.
 # Args: None.
 # Output: Prints role names to stdout.
 # Returns: 0 always.
@@ -275,33 +275,19 @@ list_available_workers() {
   local worker
   while IFS= read -r path; do
     worker="$(basename "${path}" .md)"
-    if [[ "${worker}" == "reviewer" ]]; then
-      continue
-    fi
     printf '%s\n' "${worker}"
-  done < <(find "${WORKER_ROLES_DIR}" -maxdepth 1 -type f -name '*.md' | sort)
+  done < <(find "${ROLES_DIR}" -maxdepth 1 -type f -name '*.md' | sort)
 }
 
 # role_exists
-# Purpose: Check if a worker role exists.
+# Purpose: Check if a role exists.
 # Args:
 #   $1: Role name (string).
 # Output: None.
 # Returns: 0 if role file exists; 1 otherwise.
 role_exists() {
   local role="$1"
-  [[ -f "${WORKER_ROLES_DIR}/${role}.md" ]]
-}
-
-# special_role_exists
-# Purpose: Check if a special role exists.
-# Args:
-#   $1: Role name (string).
-# Output: None.
-# Returns: 0 if role file exists; 1 otherwise.
-special_role_exists() {
-  local role="$1"
-  [[ -f "${SPECIAL_ROLES_DIR}/${role}.md" ]]
+  [[ -f "${ROLES_DIR}/${role}.md" ]]
 }
 
 # append_section

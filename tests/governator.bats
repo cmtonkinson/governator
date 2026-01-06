@@ -241,9 +241,14 @@ EOF
   commit_all "Prepare worked task"
 
   create_worker_branch "010-review-ruby" "ruby"
-  export CODEX_REVIEW_CMD='cat > review.json <<'"'"'EOF'"'"'
+  repo_git checkout -b "worker/reviewer/010-review-ruby" "origin/worker/ruby/010-review-ruby" >/dev/null
+  cat > "${REPO_DIR}/review.json" <<'EOF'
 {"result":"approve","comments":["looks good"]}
-EOF'
+EOF
+  repo_git add "review.json"
+  repo_git commit -m "Review 010-review-ruby" >/dev/null
+  repo_git push -u origin "worker/reviewer/010-review-ruby" >/dev/null
+  repo_git checkout main >/dev/null
 
   run bash "${REPO_DIR}/_governator/governator.sh" process-branches
   [ "$status" -eq 0 ]
@@ -319,11 +324,11 @@ EOF
   [ "${lines[1]}" = "needs work" ]
 }
 
-@test "list-workers excludes reviewer and includes known roles" {
+@test "list-workers includes reviewer and includes known roles" {
   run bash "${REPO_DIR}/_governator/governator.sh" list-workers
   local workers_output="${output}"
   run grep -F "reviewer" <<< "${workers_output}"
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 0 ]
   run grep -F "ruby" <<< "${workers_output}"
   [ "$status" -eq 0 ]
 }

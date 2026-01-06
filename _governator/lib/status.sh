@@ -100,6 +100,34 @@ print_blocked_tasks_summary() {
   print_task_list "Blocked tasks" "${STATE_DIR}/task-blocked" format_blocked_task
 }
 
+# print_pending_reviewer_branches
+# Purpose: Print tasks awaiting a reviewer branch.
+# Args: None.
+# Output: Writes list to stdout.
+# Returns: 0 on completion.
+print_pending_reviewer_branches() {
+  printf 'Reviews awaiting reviewer branch:\n'
+  local remote
+  remote="$(read_remote_name)"
+  local printed=0
+  local task_file
+  while IFS= read -r task_file; do
+    if [[ "${task_file}" == *"/.keep" ]]; then
+      continue
+    fi
+    local task_name
+    task_name="$(basename "${task_file}" .md)"
+    local reviewer_ref="refs/remotes/${remote}/worker/reviewer/${task_name}"
+    if ! git -C "${ROOT_DIR}" show-ref --verify --quiet "${reviewer_ref}"; then
+      printf '  - %s\n' "${task_name}"
+      printed=1
+    fi
+  done < <(list_task_files_in_dir "${STATE_DIR}/task-worked")
+  if [[ "${printed}" -eq 0 ]]; then
+    printf '  (none)\n'
+  fi
+}
+
 # print_pending_branches
 # Purpose: Print the list of pending worker branches.
 # Args: None.
@@ -173,6 +201,8 @@ print_activity_snapshot() {
   printf '\n'
   print_stage_task_list "Pending reviews" "${STATE_DIR}/task-worked"
   printf '\n'
+  print_pending_reviewer_branches
+  printf '\n'
   print_blocked_tasks_summary
   printf '\n'
   print_pending_branches
@@ -204,6 +234,8 @@ status_dashboard() {
   print_inflight_summary
   printf '\n'
   print_stage_task_list "Pending reviews" "${STATE_DIR}/task-worked"
+  printf '\n'
+  print_pending_reviewer_branches
   printf '\n'
   print_blocked_tasks_summary
   printf '\n'
