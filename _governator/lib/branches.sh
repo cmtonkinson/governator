@@ -126,6 +126,9 @@ process_worker_branch() {
     fi
   else
     if [[ "${task_dir}" == "task-worked" ]]; then
+      in_flight_remove "${task_name}" "${worker_name}"
+      cleanup_worker_tmp_dirs "${worker_name}" "${task_name}"
+
       local review_branch="worker/reviewer/${task_name}"
       if ! git -C "${ROOT_DIR}" show-ref --verify --quiet "refs/remotes/${remote}/${review_branch}"; then
         local cap_note
@@ -136,8 +139,6 @@ process_worker_branch() {
           spawn_worker_for_task "${task_relpath}" "reviewer" "starting review for ${task_name}" "${remote}/${local_branch}"
         fi
       fi
-      in_flight_remove "${task_name}" "${worker_name}"
-      cleanup_worker_tmp_dirs "${worker_name}" "${task_name}"
       return 0
     fi
   fi
