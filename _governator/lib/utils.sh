@@ -1,5 +1,11 @@
 # shellcheck shell=bash
 
+# trim_whitespace
+# Purpose: Strip leading and trailing whitespace from a string.
+# Args:
+#   $1: Input string.
+# Output: Prints the trimmed string to stdout.
+# Returns: 0 always.
 trim_whitespace() {
   local value="$1"
   value="${value#"${value%%[![:space:]]*}"}"
@@ -7,6 +13,12 @@ trim_whitespace() {
   printf '%s' "${value}"
 }
 
+# format_duration
+# Purpose: Convert seconds into a human-readable duration string.
+# Args:
+#   $1: Duration in seconds (integer).
+# Output: Prints formatted duration (e.g., 1h02m03s).
+# Returns: 0 always.
 format_duration() {
   local seconds="$1"
   if [[ -z "${seconds}" || "${seconds}" -lt 0 ]]; then
@@ -25,7 +37,13 @@ format_duration() {
   fi
 }
 
-# Join arguments by a delimiter.
+# join_by
+# Purpose: Join arguments with a delimiter.
+# Args:
+#   $1: Delimiter string.
+#   $2+: Items to join.
+# Output: Prints the joined string to stdout.
+# Returns: 0 always.
 join_by() {
   local delimiter="$1"
   shift
@@ -41,6 +59,12 @@ join_by() {
   done
 }
 
+# escape_log_value
+# Purpose: Escape backslashes and quotes for safe logging.
+# Args:
+#   $1: Input string.
+# Output: Prints the escaped string to stdout.
+# Returns: 0 always.
 escape_log_value() {
   local value="$1"
   value="${value//\\/\\\\}"
@@ -48,7 +72,12 @@ escape_log_value() {
   printf '%s' "${value}"
 }
 
-# Read a file mtime in epoch seconds (BSD/GNU stat compatible).
+# file_mtime_epoch
+# Purpose: Read file modification time in epoch seconds.
+# Args:
+#   $1: File path (string).
+# Output: Prints epoch seconds to stdout.
+# Returns: 0 on success; 1 on failure.
 file_mtime_epoch() {
   local path="$1"
   if stat -f %m "${path}" > /dev/null 2>&1; then
@@ -58,7 +87,12 @@ file_mtime_epoch() {
   stat -c %Y "${path}" 2> /dev/null || return 1
 }
 
-# Normalize tmp paths so /tmp and /private/tmp compare consistently.
+# normalize_tmp_path
+# Purpose: Normalize /tmp paths to /private/tmp when applicable.
+# Args:
+#   $1: Path string.
+# Output: Prints normalized path to stdout.
+# Returns: 0 always.
 normalize_tmp_path() {
   local path="$1"
   if [[ -d "/private/tmp" && "${path}" == /tmp/* ]]; then

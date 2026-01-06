@@ -1,5 +1,10 @@
 # shellcheck shell=bash
 
+# bootstrap_template_path
+# Purpose: Resolve the bootstrap task template based on project mode.
+# Args: None.
+# Output: Prints template path to stdout.
+# Returns: 0 always.
 bootstrap_template_path() {
   local mode
   if ! mode="$(read_project_mode)"; then
@@ -13,6 +18,11 @@ bootstrap_template_path() {
   printf '%s\n' "${BOOTSTRAP_NEW_TEMPLATE}"
 }
 
+# bootstrap_required_artifacts
+# Purpose: List required bootstrap artifacts based on project mode.
+# Args: None.
+# Output: Prints artifact filenames to stdout, one per line.
+# Returns: 0 always.
 bootstrap_required_artifacts() {
   local mode
   if ! mode="$(read_project_mode)"; then
@@ -26,6 +36,11 @@ bootstrap_required_artifacts() {
   printf '%s\n' "${BOOTSTRAP_NEW_REQUIRED_ARTIFACTS[@]}"
 }
 
+# bootstrap_optional_artifacts
+# Purpose: List optional bootstrap artifacts based on project mode.
+# Args: None.
+# Output: Prints artifact filenames to stdout, one per line.
+# Returns: 0 always.
 bootstrap_optional_artifacts() {
   local mode
   if ! mode="$(read_project_mode)"; then
@@ -39,6 +54,11 @@ bootstrap_optional_artifacts() {
   printf '%s\n' "${BOOTSTRAP_NEW_OPTIONAL_ARTIFACTS[@]}"
 }
 
+# bootstrap_task_path
+# Purpose: Locate the bootstrap task file path.
+# Args: None.
+# Output: Prints task file path to stdout.
+# Returns: 0 if found; 1 if missing.
 bootstrap_task_path() {
   local path
   while IFS= read -r path; do
@@ -50,6 +70,11 @@ bootstrap_task_path() {
   return 1
 }
 
+# bootstrap_task_dir
+# Purpose: Resolve the task directory containing the bootstrap task.
+# Args: None.
+# Output: Prints directory name to stdout.
+# Returns: 0 if found; 1 otherwise.
 bootstrap_task_dir() {
   local task_file
   if ! task_file="$(bootstrap_task_path)"; then
@@ -58,6 +83,11 @@ bootstrap_task_dir() {
   basename "$(dirname "${task_file}")"
 }
 
+# ensure_bootstrap_task_exists
+# Purpose: Create the bootstrap task if it is missing.
+# Args: None.
+# Output: Logs task creation and commits changes.
+# Returns: 0 on success; 1 on failure.
 ensure_bootstrap_task_exists() {
   if bootstrap_task_path > /dev/null 2>&1; then
     return 0
@@ -77,6 +107,11 @@ ensure_bootstrap_task_exists() {
   git_push_default_branch
 }
 
+# done_check_due
+# Purpose: Determine whether the done-check cooldown has elapsed.
+# Args: None.
+# Output: None.
+# Returns: 0 if due; 1 otherwise.
 done_check_due() {
   local last_run
   last_run="$(read_done_check_last_run)"
@@ -93,6 +128,11 @@ done_check_due() {
   return 1
 }
 
+# done_check_needed
+# Purpose: Determine whether a done-check should run based on GOVERNATOR.md hash.
+# Args: None.
+# Output: None.
+# Returns: 0 if needed; 1 otherwise.
 done_check_needed() {
   local gov_sha
   gov_sha="$(governator_doc_sha)"
@@ -107,6 +147,11 @@ done_check_needed() {
   return 1
 }
 
+# create_done_check_task
+# Purpose: Create the reviewer done-check task when needed.
+# Args: None.
+# Output: Logs creation and commits changes.
+# Returns: 0 on success; 1 on failure.
 create_done_check_task() {
   if task_exists "${DONE_CHECK_REVIEW_TASK}" || task_exists "${DONE_CHECK_PLANNER_TASK}"; then
     return 0
@@ -129,6 +174,13 @@ create_done_check_task() {
   git_push_default_branch
 }
 
+# move_done_check_to_planner
+# Purpose: Move reviewer done-check output into a planner follow-up task.
+# Args:
+#   $1: Task file path (string).
+#   $2: Task name (string).
+# Output: Logs task transitions.
+# Returns: 0 on success; 1 on failure.
 move_done_check_to_planner() {
   local task_file="$1"
   local task_name="$2"
@@ -143,11 +195,24 @@ move_done_check_to_planner() {
   log_task_event "${DONE_CHECK_PLANNER_TASK}" "created planner follow-up"
 }
 
+# artifact_present
+# Purpose: Check whether a bootstrap artifact exists and is non-empty.
+# Args:
+#   $1: Artifact filename (string).
+# Output: None.
+# Returns: 0 if present and non-empty; 1 otherwise.
 artifact_present() {
   local file="$1"
   [[ -f "${BOOTSTRAP_DOCS_DIR}/${file}" && -s "${BOOTSTRAP_DOCS_DIR}/${file}" ]]
 }
 
+# artifact_skipped_in_task
+# Purpose: Determine whether an artifact is explicitly skipped in a task file.
+# Args:
+#   $1: Task file path (string).
+#   $2: Artifact filename (string).
+# Output: None.
+# Returns: 0 if skipped; 1 otherwise.
 artifact_skipped_in_task() {
   local task_file="$1"
   local artifact="$2"
@@ -158,6 +223,11 @@ artifact_skipped_in_task() {
   grep -Eiq "(skip|omit|n/a|not needed).*${base}|${base}.*(skip|omit|n/a|not needed)" "${task_file}"
 }
 
+# bootstrap_required_artifacts_ok
+# Purpose: Verify all required bootstrap artifacts exist.
+# Args: None.
+# Output: None.
+# Returns: 0 if all required artifacts exist; 1 otherwise.
 bootstrap_required_artifacts_ok() {
   local artifacts=()
   mapfile -t artifacts < <(bootstrap_required_artifacts)
@@ -170,6 +240,11 @@ bootstrap_required_artifacts_ok() {
   return 0
 }
 
+# bootstrap_optional_artifacts_ok
+# Purpose: Verify optional bootstrap artifacts are present or explicitly skipped.
+# Args: None.
+# Output: None.
+# Returns: 0 if requirements are met; 1 otherwise.
 bootstrap_optional_artifacts_ok() {
   local task_file
   if ! task_file="$(bootstrap_task_path)"; then
@@ -189,6 +264,11 @@ bootstrap_optional_artifacts_ok() {
   return 0
 }
 
+# bootstrap_adrs_ok
+# Purpose: Verify ADR expectations are met or explicitly waived.
+# Args: None.
+# Output: None.
+# Returns: 0 if ADR requirement is satisfied; 1 otherwise.
 bootstrap_adrs_ok() {
   local mode
   if mode="$(read_project_mode)"; then
@@ -210,6 +290,11 @@ bootstrap_adrs_ok() {
   return 1
 }
 
+# has_non_bootstrap_tasks
+# Purpose: Detect task files that are not the bootstrap task.
+# Args: None.
+# Output: Prints the first non-bootstrap task path found.
+# Returns: 0 if a non-bootstrap task exists; 1 otherwise.
 has_non_bootstrap_tasks() {
   local path
   while IFS= read -r path; do
@@ -227,6 +312,11 @@ has_non_bootstrap_tasks() {
   return 1
 }
 
+# bootstrap_requirements_met
+# Purpose: Check whether all bootstrap completion requirements are met.
+# Args: None.
+# Output: None.
+# Returns: 0 if requirements are met; 1 otherwise.
 bootstrap_requirements_met() {
   if ! bootstrap_task_path > /dev/null 2>&1; then
     return 1
@@ -243,6 +333,11 @@ bootstrap_requirements_met() {
   return 0
 }
 
+# architecture_bootstrap_complete
+# Purpose: Determine whether the bootstrap task is completed and valid.
+# Args: None.
+# Output: None.
+# Returns: 0 if complete; 1 otherwise.
 architecture_bootstrap_complete() {
   local task_dir
   if ! task_dir="$(bootstrap_task_dir)"; then
@@ -257,6 +352,11 @@ architecture_bootstrap_complete() {
   return 0
 }
 
+# complete_bootstrap_task_if_ready
+# Purpose: Auto-complete the bootstrap task when requirements are met.
+# Args: None.
+# Output: Logs task transition and commits changes.
+# Returns: 0 on completion; 1 if not ready.
 complete_bootstrap_task_if_ready() {
   if ! bootstrap_requirements_met; then
     return 1
@@ -283,6 +383,12 @@ complete_bootstrap_task_if_ready() {
   return 0
 }
 
+# assign_bootstrap_task
+# Purpose: Assign the bootstrap task to the architect role.
+# Args:
+#   $1: Task file path (string).
+# Output: Logs assignment and spawns special worker.
+# Returns: 0 on completion.
 assign_bootstrap_task() {
   local task_file="$1"
   local worker="${BOOTSTRAP_ROLE}"

@@ -119,6 +119,11 @@ source "${LIB_DIR}/internal.sh"
 # shellcheck source=_governator/lib/update.sh
 source "${LIB_DIR}/update.sh"
 
+# ensure_gitignore_entries
+# Purpose: Ensure .gitignore contains governator-specific entries.
+# Args: None.
+# Output: Writes to .gitignore when missing entries.
+# Returns: 0 on completion.
 ensure_gitignore_entries() {
   if [[ ! -f "${GITIGNORE_PATH}" ]]; then
     printf '# Governator\n' > "${GITIGNORE_PATH}"
@@ -131,6 +136,11 @@ ensure_gitignore_entries() {
   done
 }
 
+# init_governator
+# Purpose: Initialize Governator config, defaults, and manifest.
+# Args: None.
+# Output: Prompts for project mode, remote, branch; logs initialization.
+# Returns: 0 on success; exits 1 on invalid state.
 init_governator() {
   ensure_db_dir
   ensure_gitignore_entries
@@ -181,6 +191,12 @@ init_governator() {
   fi
 }
 
+# abort_task
+# Purpose: Abort a task by killing its worker and blocking the task.
+# Args:
+#   $1: Task prefix (string).
+# Output: Logs task state changes and cleanup actions.
+# Returns: 0 on completion; exits 1 if task is not found.
 abort_task() {
   local prefix="$1"
   if [[ -z "${prefix:-}" ]]; then
@@ -252,6 +268,11 @@ Branch: ${branch:-n/a}"
 }
 
 # Script entrypoint.
+# main
+# Purpose: Run the standard governator loop (sync, process, assign).
+# Args: None.
+# Output: Logs run lifecycle and task activity.
+# Returns: 0 on completion.
 main() {
   ensure_clean_git
   ensure_dependencies

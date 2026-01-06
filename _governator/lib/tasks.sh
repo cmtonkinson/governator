@@ -1,5 +1,11 @@
 # shellcheck shell=bash
 
+# list_task_files_in_dir
+# Purpose: List task markdown files within a directory.
+# Args:
+#   $1: Directory path (string).
+# Output: Prints matching file paths to stdout.
+# Returns: 0 always.
 list_task_files_in_dir() {
   local dir="$1"
   if [[ ! -d "${dir}" ]]; then
@@ -16,6 +22,12 @@ list_task_files_in_dir() {
   done < <(find "${dir}" -maxdepth 1 -type f -name '*.md' 2> /dev/null | sort)
 }
 
+# count_task_files
+# Purpose: Count task markdown files within a directory.
+# Args:
+#   $1: Directory path (string).
+# Output: Prints the count to stdout.
+# Returns: 0 always.
 count_task_files() {
   local dir="$1"
   local count=0
@@ -26,6 +38,12 @@ count_task_files() {
   printf '%s\n' "${count}"
 }
 
+# task_label
+# Purpose: Build a display label for a task file.
+# Args:
+#   $1: Task file path (string).
+# Output: Prints label to stdout.
+# Returns: 0 always.
 task_label() {
   local file="$1"
   local name
@@ -38,6 +56,12 @@ task_label() {
   fi
 }
 
+# extract_block_reason
+# Purpose: Extract the block reason from a task file.
+# Args:
+#   $1: Task file path (string).
+# Output: Prints the extracted reason or fallback text.
+# Returns: 0 always.
 extract_block_reason() {
   local file="$1"
   local reason
@@ -71,12 +95,23 @@ extract_block_reason() {
   printf '%s\n' "${reason}"
 }
 
-# Find a task file in any task-* directory by base name.
+# find_task_files
+# Purpose: Find task files across task-* directories by base name pattern.
+# Args:
+#   $1: Task base name pattern (string).
+# Output: Prints matching file paths to stdout.
+# Returns: 0 always.
 find_task_files() {
   local pattern="$1"
   find "${STATE_DIR}" -maxdepth 2 -type f -path "${STATE_DIR}/task-*/${pattern}.md" 2> /dev/null | sort
 }
 
+# task_exists
+# Purpose: Check whether a task exists anywhere in task-* directories.
+# Args:
+#   $1: Task name (string).
+# Output: None.
+# Returns: 0 if task exists; 1 otherwise.
 task_exists() {
   local task_name="$1"
   if find_task_files "${task_name}" | grep -q .; then
@@ -85,6 +120,12 @@ task_exists() {
   return 1
 }
 
+# task_file_for_name
+# Purpose: Resolve a task name to its file path.
+# Args:
+#   $1: Task name (string).
+# Output: Prints the first matching file path to stdout.
+# Returns: 0 if found; 1 if not found.
 task_file_for_name() {
   local task_name="$1"
   local matches=()
@@ -101,6 +142,13 @@ task_file_for_name() {
   printf '%s\n' "${matches[0]}"
 }
 
+# task_dir_for_branch
+# Purpose: Determine the task directory for a task within a branch.
+# Args:
+#   $1: Branch name (string).
+#   $2: Task name (string).
+# Output: Prints the task directory name to stdout.
+# Returns: 0 if found; 1 if missing.
 task_dir_for_branch() {
   local branch="$1"
   local task_name="$2"
@@ -115,6 +163,12 @@ task_dir_for_branch() {
   basename "$(dirname "${path}")"
 }
 
+# task_file_for_prefix
+# Purpose: Resolve a unique task file matching a prefix.
+# Args:
+#   $1: Task name prefix (string).
+# Output: Prints the matching file path to stdout.
+# Returns: 0 if unique match; 1 otherwise.
 task_file_for_prefix() {
   local prefix="$1"
   if [[ -z "${prefix}" ]]; then
@@ -136,7 +190,11 @@ task_file_for_prefix() {
   printf '%s\n' "${matches[0]}"
 }
 
-# Enumerate non-reviewer worker roles.
+# list_available_workers
+# Purpose: List available non-reviewer worker roles.
+# Args: None.
+# Output: Prints role names to stdout.
+# Returns: 0 always.
 list_available_workers() {
   local worker
   while IFS= read -r path; do
@@ -148,16 +206,37 @@ list_available_workers() {
   done < <(find "${WORKER_ROLES_DIR}" -maxdepth 1 -type f -name '*.md' | sort)
 }
 
+# role_exists
+# Purpose: Check if a worker role exists.
+# Args:
+#   $1: Role name (string).
+# Output: None.
+# Returns: 0 if role file exists; 1 otherwise.
 role_exists() {
   local role="$1"
   [[ -f "${WORKER_ROLES_DIR}/${role}.md" ]]
 }
 
+# special_role_exists
+# Purpose: Check if a special role exists.
+# Args:
+#   $1: Role name (string).
+# Output: None.
+# Returns: 0 if role file exists; 1 otherwise.
 special_role_exists() {
   local role="$1"
   [[ -f "${SPECIAL_ROLES_DIR}/${role}.md" ]]
 }
 
+# append_section
+# Purpose: Append a timestamped section to a task file.
+# Args:
+#   $1: File path (string).
+#   $2: Section title (string).
+#   $3: Author label (string).
+#   $4: Body text (string).
+# Output: Writes to the file.
+# Returns: 0 on success.
 append_section() {
   local file="$1"
   local title="$2"
@@ -173,12 +252,27 @@ append_section() {
   } >> "${file}"
 }
 
+# annotate_assignment
+# Purpose: Append an assignment annotation to a task file.
+# Args:
+#   $1: Task file path (string).
+#   $2: Worker name (string).
+# Output: Writes to the task file.
+# Returns: 0 on success.
 annotate_assignment() {
   local task_file="$1"
   local worker="$2"
   append_section "${task_file}" "## Assignment" "governator" "Assigned to ${worker}."
 }
 
+# annotate_review
+# Purpose: Append a review decision and comments to a task file.
+# Args:
+#   $1: Task file path (string).
+#   $2: Decision string (string).
+#   $3+: Review comments (strings).
+# Output: Writes to the task file.
+# Returns: 0 on success.
 annotate_review() {
   local task_file="$1"
   local decision="$2"
@@ -196,17 +290,37 @@ annotate_review() {
   append_section "${task_file}" "## Review Result" "reviewer" "${body}"
 }
 
+# annotate_feedback
+# Purpose: Append feedback annotation to a task file.
+# Args:
+#   $1: Task file path (string).
+# Output: Writes to the task file.
+# Returns: 0 on success.
 annotate_feedback() {
   local task_file="$1"
   append_section "${task_file}" "## Feedback" "governator" "Moved back to task-assigned for follow-up."
 }
 
+# annotate_blocked
+# Purpose: Append a block reason to a task file.
+# Args:
+#   $1: Task file path (string).
+#   $2: Block reason (string).
+# Output: Writes to the task file.
+# Returns: 0 on success.
 annotate_blocked() {
   local task_file="$1"
   local reason="$2"
   append_section "${task_file}" "## Governator Block" "governator" "${reason}"
 }
 
+# block_task_from_backlog
+# Purpose: Move a backlog task to blocked and record the reason.
+# Args:
+#   $1: Task file path (string).
+#   $2: Block reason (string).
+# Output: Logs and commits the state change.
+# Returns: 0 on success.
 block_task_from_backlog() {
   local task_file="$1"
   local reason="$2"
@@ -221,6 +335,13 @@ block_task_from_backlog() {
   git_push_default_branch
 }
 
+# block_task_from_assigned
+# Purpose: Move an assigned task to blocked and record the reason.
+# Args:
+#   $1: Task file path (string).
+#   $2: Block reason (string).
+# Output: Logs and commits the state change.
+# Returns: 0 on success.
 block_task_from_assigned() {
   local task_file="$1"
   local reason="$2"
@@ -235,13 +356,26 @@ block_task_from_assigned() {
   git_push_default_branch
 }
 
+# annotate_abort
+# Purpose: Append an abort annotation to a task file.
+# Args:
+#   $1: Task file path (string).
+#   $2: Abort metadata (string).
+# Output: Writes to the task file.
+# Returns: 0 on success.
 annotate_abort() {
   local task_file="$1"
   local abort_metadata="$2"
   append_section "${task_file}" "## Abort" "governator" "${abort_metadata}"
 }
 
-# Record a merge failure for reviewer visibility.
+# annotate_merge_failure
+# Purpose: Append a merge failure annotation for reviewer visibility.
+# Args:
+#   $1: Task file path (string).
+#   $2: Branch name (string).
+# Output: Writes to the task file.
+# Returns: 0 on success.
 annotate_merge_failure() {
   local task_file="$1"
   local branch="$2"
@@ -250,7 +384,15 @@ annotate_merge_failure() {
   append_section "${task_file}" "## Merge Failure" "governator" "Unable to fast-forward merge ${branch} into ${base_branch}."
 }
 
-# Move a task file to a new queue and record an audit entry.
+# move_task_file
+# Purpose: Move a task file to a new queue and record an audit entry.
+# Args:
+#   $1: Task file path (string).
+#   $2: Destination directory (string).
+#   $3: Task name (string).
+#   $4: Audit message (string).
+# Output: Logs the task event.
+# Returns: 0 on success.
 move_task_file() {
   local task_file="$1"
   local dest_dir="$2"
@@ -260,6 +402,16 @@ move_task_file() {
   log_task_event "${task_name}" "${audit_message}"
 }
 
+# move_task_file_renamed
+# Purpose: Move a task file to a new queue with a new name and audit entry.
+# Args:
+#   $1: Task file path (string).
+#   $2: Destination directory (string).
+#   $3: Task name (string).
+#   $4: New base name (string, without extension).
+#   $5: Audit message (string).
+# Output: Logs the task event.
+# Returns: 0 on success.
 move_task_file_renamed() {
   local task_file="$1"
   local dest_dir="$2"
@@ -270,6 +422,13 @@ move_task_file_renamed() {
   log_task_event "${task_name}" "${audit_message}"
 }
 
+# warn_if_task_template_incomplete
+# Purpose: Warn when a task file is missing required template sections.
+# Args:
+#   $1: Task file path (string).
+#   $2: Task name (string).
+# Output: Logs warning when sections are missing.
+# Returns: 0 always.
 warn_if_task_template_incomplete() {
   local task_file="$1"
   local task_name="$2"
@@ -297,6 +456,12 @@ warn_if_task_template_incomplete() {
   fi
 }
 
+# parse_task_metadata
+# Purpose: Parse task filename into task name, short name, and role.
+# Args:
+#   $1: Task file path (string).
+# Output: Prints task_name, short_name, and role, one per line.
+# Returns: 0 if role suffix is present; 1 otherwise.
 parse_task_metadata() {
   local task_file="$1"
   local task_name
@@ -310,7 +475,12 @@ parse_task_metadata() {
   printf '%s\n' "${task_name}" "${short_name}" "${role}"
 }
 
-# Extract the required worker role from the task filename suffix.
+# extract_worker_from_task
+# Purpose: Extract the worker role suffix from a task filename.
+# Args:
+#   $1: Task file path (string).
+# Output: Prints role name to stdout.
+# Returns: 0 if role extracted; 1 otherwise.
 extract_worker_from_task() {
   local task_file="$1"
   local metadata_text
@@ -322,7 +492,11 @@ extract_worker_from_task() {
   printf '%s' "${metadata[2]}"
 }
 
-# Read the next task id from disk, defaulting to 1.
+# read_next_task_id
+# Purpose: Read the next task id from disk, with a default fallback.
+# Args: None.
+# Output: Prints the next task id to stdout.
+# Returns: 0 always.
 read_next_task_id() {
   ensure_db_dir
   if [[ ! -f "${NEXT_TASK_FILE}" ]]; then
@@ -339,20 +513,34 @@ read_next_task_id() {
   printf '%s\n' "${value}"
 }
 
-# Persist the next task id.
+# write_next_task_id
+# Purpose: Persist the next task id to disk.
+# Args:
+#   $1: Task id value (string or integer).
+# Output: None.
+# Returns: 0 on success.
 write_next_task_id() {
   local value="$1"
   ensure_db_dir
   printf '%s\n' "${value}" > "${NEXT_TASK_FILE}"
 }
 
-# Format a numeric task id as zero-padded 3 digits.
+# format_task_id
+# Purpose: Format a numeric task id as zero-padded 3 digits.
+# Args:
+#   $1: Task id value (string or integer).
+# Output: Prints the formatted id to stdout.
+# Returns: 0 always.
 format_task_id() {
   local value="$1"
   printf '%03d' "${value}"
 }
 
-# Allocate the next task id and increment the stored value.
+# allocate_task_id
+# Purpose: Allocate the current task id and increment the stored value.
+# Args: None.
+# Output: Prints the allocated id to stdout.
+# Returns: 0 always.
 allocate_task_id() {
   local current
   current="$(read_next_task_id)"
@@ -366,7 +554,14 @@ allocate_task_id() {
   printf '%s\n' "${current}"
 }
 
-# Create a new task file using the template and allocated id.
+# create_task_file
+# Purpose: Create a new task file using the template and allocated id.
+# Args:
+#   $1: Short task name (string).
+#   $2: Role suffix (string).
+#   $3: Target directory path (string).
+# Output: Prints the new task file path to stdout.
+# Returns: 0 on success; 1 if the template is missing.
 create_task_file() {
   local short_name="$1"
   local role="$2"

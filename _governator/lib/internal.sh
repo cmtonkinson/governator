@@ -77,6 +77,13 @@
 #   Appends a line to the audit log with the provided task name and message.
 #############################################################################
 
+# run_locked_action
+# Purpose: Run an internal action under lock and commit audit log if dirty.
+# Args:
+#   $1: Context string for logging (string).
+#   $2+: Command and args to execute.
+# Output: Logs lock status and task events.
+# Returns: 0 on completion; propagates command exit status.
 run_locked_action() {
   local context="$1"
   shift
@@ -88,6 +95,12 @@ run_locked_action() {
   commit_audit_log_if_dirty
 }
 
+# parse_run_args
+# Purpose: Parse run subcommand flags.
+# Args:
+#   $@: Arguments passed to the run command.
+# Output: Sets GOV_QUIET and GOV_VERBOSE globals.
+# Returns: 0 on success; exits 1 on unknown options.
 parse_run_args() {
   local arg
   while [[ "$#" -gt 0 ]]; do
@@ -112,21 +125,41 @@ parse_run_args() {
   done
 }
 
+# process_branches_action
+# Purpose: Sync the default branch and process worker branches.
+# Args: None.
+# Output: Logs branch processing activity.
+# Returns: 0 on completion.
 process_branches_action() {
   sync_default_branch
   process_worker_branches
 }
 
+# assign_backlog_action
+# Purpose: Sync the default branch and assign backlog tasks.
+# Args: None.
+# Output: Logs assignment activity.
+# Returns: 0 on completion.
 assign_backlog_action() {
   sync_default_branch
   assign_pending_tasks
 }
 
+# check_zombies_action
+# Purpose: Sync the default branch and run zombie detection.
+# Args: None.
+# Output: Logs zombie handling activity.
+# Returns: 0 on completion.
 check_zombies_action() {
   sync_default_branch
   check_zombie_workers
 }
 
+# print_help
+# Purpose: Print top-level CLI usage information.
+# Args: None.
+# Output: Writes help text to stdout.
+# Returns: 0 always.
 print_help() {
   cat << 'EOF'
 Usage: governator.sh <command>
@@ -148,6 +181,13 @@ Note: You must run `governator.sh init` before using any other command.
 EOF
 }
 
+# dispatch_subcommand
+# Purpose: Dispatch CLI subcommands to their handlers.
+# Args:
+#   $1: Subcommand name (string).
+#   $2+: Subcommand arguments.
+# Output: Writes help text and command output to stdout/stderr.
+# Returns: 0 on success; exits 1 on unknown subcommand.
 dispatch_subcommand() {
   local cmd="${1:-}"
   if [[ -z "${cmd}" ]]; then

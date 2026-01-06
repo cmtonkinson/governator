@@ -1,6 +1,10 @@
 # shellcheck shell=bash
 
-# Avoid processing while the repo has local edits.
+# ensure_clean_git
+# Purpose: Exit when local git changes are detected (excluding allowed files).
+# Args: None.
+# Output: Logs warning on dirty working tree.
+# Returns: 0 when clean; exits 0 when dirty.
 ensure_clean_git() {
   local status
   status="$(git -C "${ROOT_DIR}" status --porcelain 2> /dev/null || true)"
@@ -20,14 +24,22 @@ ensure_clean_git() {
   fi
 }
 
-# Checkout the default branch quietly.
+# git_checkout_default_branch
+# Purpose: Checkout the configured default branch.
+# Args: None.
+# Output: None.
+# Returns: 0 on success.
 git_checkout_default_branch() {
   local branch
   branch="$(read_default_branch)"
   git -C "${ROOT_DIR}" checkout "${branch}" > /dev/null 2>&1
 }
 
-# Pull the default branch from the default remote.
+# git_pull_default_branch
+# Purpose: Pull the default branch from the configured remote.
+# Args: None.
+# Output: None.
+# Returns: 0 on success.
 git_pull_default_branch() {
   local branch
   local remote
@@ -36,7 +48,11 @@ git_pull_default_branch() {
   git -C "${ROOT_DIR}" pull -q "${remote}" "${branch}" > /dev/null
 }
 
-# Push the default branch to the default remote.
+# git_push_default_branch
+# Purpose: Push the default branch to the configured remote.
+# Args: None.
+# Output: None.
+# Returns: 0 on success.
 git_push_default_branch() {
   local branch
   local remote
@@ -45,20 +61,33 @@ git_push_default_branch() {
   git -C "${ROOT_DIR}" push -q "${remote}" "${branch}" > /dev/null
 }
 
-# Sync local default branch with the default remote.
+# sync_default_branch
+# Purpose: Checkout and pull the default branch from the remote.
+# Args: None.
+# Output: None.
+# Returns: 0 on success.
 sync_default_branch() {
   git_checkout_default_branch
   git_pull_default_branch
 }
 
-# Fetch and prune remote refs.
+# git_fetch_remote
+# Purpose: Fetch and prune remote refs.
+# Args: None.
+# Output: None.
+# Returns: 0 on success.
 git_fetch_remote() {
   local remote
   remote="$(read_remote_name)"
   git -C "${ROOT_DIR}" fetch -q "${remote}" --prune > /dev/null
 }
 
-# Delete a worker branch locally and on the default remote (best-effort).
+# delete_worker_branch
+# Purpose: Delete a worker branch locally and remotely (best effort).
+# Args:
+#   $1: Branch name (string).
+# Output: Logs warnings if remote deletion fails.
+# Returns: 0 on completion.
 delete_worker_branch() {
   local branch="$1"
   local remote

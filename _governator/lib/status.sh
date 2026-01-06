@@ -1,5 +1,10 @@
 # shellcheck shell=bash
 
+# print_task_queue_summary
+# Purpose: Print queue counts for all task states.
+# Args: None.
+# Output: Writes queue counts to stdout.
+# Returns: 0 on completion.
 print_task_queue_summary() {
   local entries=(
     "task-backlog:Backlog"
@@ -20,16 +25,37 @@ print_task_queue_summary() {
   done
 }
 
+# format_task_label
+# Purpose: Format a task label for status output.
+# Args:
+#   $1: Task file path (string).
+# Output: Prints formatted label to stdout.
+# Returns: 0 always.
 format_task_label() {
   local path="$1"
   task_label "${path}"
 }
 
+# format_blocked_task
+# Purpose: Format a blocked task with its block reason.
+# Args:
+#   $1: Task file path (string).
+# Output: Prints formatted blocked task label to stdout.
+# Returns: 0 always.
 format_blocked_task() {
   local path="$1"
   printf '%s (%s)' "$(task_label "${path}")" "$(extract_block_reason "${path}")"
 }
 
+# print_task_list
+# Purpose: Print a labeled list of tasks from a directory.
+# Args:
+#   $1: Title label (string).
+#   $2: Directory path (string).
+#   $3: Formatter function name (string).
+#   $4: Max items to print (integer, optional).
+# Output: Writes list to stdout.
+# Returns: 0 on completion.
 print_task_list() {
   local title="$1"
   local dir="$2"
@@ -50,6 +76,14 @@ print_task_list() {
   fi
 }
 
+# print_stage_task_list
+# Purpose: Print a task list for a specific stage with a default limit.
+# Args:
+#   $1: Title label (string).
+#   $2: Directory path (string).
+#   $3: Max items to print (integer, optional).
+# Output: Writes list to stdout.
+# Returns: 0 on completion.
 print_stage_task_list() {
   local title="$1"
   local dir="$2"
@@ -57,10 +91,20 @@ print_stage_task_list() {
   print_task_list "${title}" "${dir}" format_task_label "${limit}"
 }
 
+# print_blocked_tasks_summary
+# Purpose: Print the list of blocked tasks with reasons.
+# Args: None.
+# Output: Writes list to stdout.
+# Returns: 0 on completion.
 print_blocked_tasks_summary() {
   print_task_list "Blocked tasks" "${STATE_DIR}/task-blocked" format_blocked_task
 }
 
+# print_pending_branches
+# Purpose: Print the list of pending worker branches.
+# Args: None.
+# Output: Writes branch list to stdout.
+# Returns: 0 on completion.
 print_pending_branches() {
   printf 'Pending worker branches:\n'
   local remote
@@ -82,6 +126,11 @@ print_pending_branches() {
   fi
 }
 
+# print_inflight_summary
+# Purpose: Print current in-flight workers with metadata.
+# Args: None.
+# Output: Writes in-flight list to stdout.
+# Returns: 0 on completion.
 print_inflight_summary() {
   local total
   total="$(count_in_flight_total)"
@@ -114,6 +163,11 @@ print_inflight_summary() {
   fi
 }
 
+# print_activity_snapshot
+# Purpose: Print a snapshot of active work and queues.
+# Args: None.
+# Output: Writes snapshot to stdout.
+# Returns: 0 on completion.
 print_activity_snapshot() {
   print_inflight_summary
   printf '\n'
@@ -124,6 +178,11 @@ print_activity_snapshot() {
   print_pending_branches
 }
 
+# status_dashboard
+# Purpose: Print the full status dashboard including queues and workers.
+# Args: None.
+# Output: Writes status dashboard to stdout.
+# Returns: 0 on completion.
 status_dashboard() {
   local locked_note=''
   if system_locked; then
@@ -157,6 +216,12 @@ status_dashboard() {
   return 0
 }
 
+# handle_locked_state
+# Purpose: Print lock notice and snapshot when governator is locked.
+# Args:
+#   $1: Context string (string).
+# Output: Writes lock notice and snapshot to stdout.
+# Returns: 0 if locked; 1 if not locked.
 handle_locked_state() {
   local context="$1"
   if system_locked; then

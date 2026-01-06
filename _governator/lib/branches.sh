@@ -1,6 +1,11 @@
 # shellcheck shell=bash
 
-# Check whether a branch is recorded as a failed merge.
+# is_failed_merge_branch
+# Purpose: Determine whether a worker branch is recorded as a failed merge.
+# Args:
+#   $1: Branch name (string).
+# Output: None.
+# Returns: 0 if branch is listed in FAILED_MERGES_LOG; 1 otherwise.
 is_failed_merge_branch() {
   local branch="$1"
   if [[ ! -f "${FAILED_MERGES_LOG}" ]]; then
@@ -17,6 +22,14 @@ is_failed_merge_branch() {
   return 1
 }
 
+# worker_elapsed_seconds
+# Purpose: Compute elapsed seconds between worker start and branch commit time.
+# Args:
+#   $1: Task name (string).
+#   $2: Worker name (string).
+#   $3: Local branch name (string).
+# Output: Prints elapsed seconds to stdout.
+# Returns: 0 if elapsed time is computed; 1 if missing data or invalid timestamps.
 worker_elapsed_seconds() {
   local task_name="$1"
   local worker="$2"
@@ -40,7 +53,13 @@ worker_elapsed_seconds() {
   printf '%s\n' "$((finished_at - started_at))"
 }
 
-# Merge a pushed special-worker branch into main (if present).
+# process_special_worker_branch
+# Purpose: Handle a special worker branch and apply the same merge/review flow.
+# Args:
+#   $1: Task name (string).
+#   $2: Worker name (string).
+# Output: Logs warnings and task events as needed.
+# Returns: 0 on success; 1 when expected branch is missing.
 process_special_worker_branch() {
   local task_name="$1"
   local worker="$2"
@@ -69,7 +88,12 @@ process_special_worker_branch() {
   return 0
 }
 
-# Process a single worker branch: review, move task, merge, cleanup.
+# process_worker_branch
+# Purpose: Review and merge a worker branch, update task state, and clean up.
+# Args:
+#   $1: Remote branch ref (string).
+# Output: Logs state transitions, merge issues, and audit events.
+# Returns: 0 on completion; exits on fatal git errors.
 process_worker_branch() {
   local remote_branch="$1"
   local remote
@@ -185,7 +209,11 @@ process_worker_branch() {
   cleanup_worker_tmp_dirs "${worker_name}" "${task_name}"
 }
 
-# Iterate all worker branches, skipping those logged as failed merges.
+# process_worker_branches
+# Purpose: Process all remote worker branches while skipping known failed merges.
+# Args: None.
+# Output: Logs scanning and per-branch processing messages.
+# Returns: 0 on completion.
 process_worker_branches() {
   touch_logs
   git_fetch_remote

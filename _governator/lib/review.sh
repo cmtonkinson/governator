@@ -1,6 +1,11 @@
 # shellcheck shell=bash
 
-# Parse review.json for decision and comments.
+# parse_review_json
+# Purpose: Extract the decision and comments from a review.json file.
+# Args:
+#   $1: Path to review.json (string).
+# Output: Writes decision on first line, followed by zero or more comment lines.
+# Returns: 0 always; emits "block" on missing or invalid JSON.
 parse_review_json() {
   local file="$1"
   if [[ ! -f "${file}" ]]; then
@@ -19,6 +24,12 @@ parse_review_json() {
   jq -r '.comments // [] | if type == "array" then .[] else . end' "${file}"
 }
 
+# read_reviewer_output
+# Purpose: Read and normalize reviewer output from a temp directory.
+# Args:
+#   $1: Temp directory containing review.json (string).
+# Output: Prints decision and comments to stdout, one per line.
+# Returns: 0 always; falls back to "block" when output is missing.
 read_reviewer_output() {
   local tmp_dir="$1"
   log_verbose_file "Reviewer output file" "${tmp_dir}/review.json"
@@ -30,7 +41,14 @@ read_reviewer_output() {
   printf '%s\n' "${review_output[@]}"
 }
 
-# Run reviewer flow in a clean clone and return parsed review output.
+# code_review
+# Purpose: Run the reviewer in a clean clone and return parsed output.
+# Args:
+#   $1: Remote branch ref to review (string).
+#   $2: Local branch name used for checkout (string).
+#   $3: Task relative path used in prompts (string).
+# Output: Writes decision followed by comments, one per line.
+# Returns: 0 on completion; emits "block" if reviewer output is missing.
 code_review() {
   local remote_branch="$1"
   local local_branch="$2"
@@ -80,7 +98,16 @@ code_review() {
   printf '%s\n' "${review_output[@]}"
 }
 
-# Apply a reviewer decision to the task file and commit the state update.
+# apply_review_decision
+# Purpose: Apply reviewer decision to task state, annotate, and commit changes.
+# Args:
+#   $1: Task name (string).
+#   $2: Worker name (string).
+#   $3: Decision string ("approve", "reject", or other).
+#   $4: Block reason (string).
+#   $5+: Review comment lines (strings).
+# Output: Logs warnings and task events via logger helpers.
+# Returns: 0 on success; 1 if the task file is missing.
 apply_review_decision() {
   local task_name="$1"
   local worker_name="$2"

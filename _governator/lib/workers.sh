@@ -1,5 +1,12 @@
 # shellcheck shell=bash
 
+# build_codex_command
+# Purpose: Assemble the Codex CLI command array and log string for a worker.
+# Args:
+#   $1: Role name (string).
+#   $2: Prompt text (string).
+# Output: Sets CODEX_COMMAND (array) and CODEX_COMMAND_LOG (string).
+# Returns: 0 always.
 build_codex_command() {
   local role="$1"
   local prompt="$2"
@@ -21,7 +28,15 @@ build_codex_command() {
   CODEX_COMMAND_LOG="codex --full-auto --search -c sandbox_workspace_write.network_access=true -c model_reasoning_effort=\"${reasoning}\" exec --sandbox=workspace-write \"${escaped_prompt}\""
 }
 
-# Start the worker without blocking this script.
+# run_codex_worker_detached
+# Purpose: Launch a Codex worker in the background and return its PID.
+# Args:
+#   $1: Working directory (string).
+#   $2: Prompt text (string).
+#   $3: Log file path (string).
+#   $4: Role name (string).
+# Output: Prints the spawned PID to stdout.
+# Returns: 0 on success; propagates errors from child command.
 run_codex_worker_detached() {
   local dir="$1"
   local prompt="$2"
@@ -47,7 +62,15 @@ run_codex_worker_detached() {
   )
 }
 
-# Run the worker synchronously (blocking) for special roles.
+# run_codex_worker_blocking
+# Purpose: Run a Codex worker synchronously for special roles.
+# Args:
+#   $1: Working directory (string).
+#   $2: Prompt text (string).
+#   $3: Log file path (string).
+#   $4: Role name (string).
+# Output: Writes worker output to log file.
+# Returns: Exit code from the worker command.
 run_codex_worker_blocking() {
   local dir="$1"
   local prompt="$2"
@@ -64,7 +87,14 @@ run_codex_worker_blocking() {
   (cd "${dir}" && "${CODEX_COMMAND[@]}" >> "${log_file}" 2>&1)
 }
 
-# Run the reviewer synchronously so a review.json is produced.
+# run_codex_reviewer
+# Purpose: Run the reviewer synchronously to produce review.json output.
+# Args:
+#   $1: Working directory (string).
+#   $2: Prompt text (string).
+#   $3: Log file path (string, optional).
+# Output: Writes reviewer output to log file when provided.
+# Returns: Exit code from the reviewer command.
 run_codex_reviewer() {
   local dir="$1"
   local prompt="$2"
@@ -88,6 +118,12 @@ run_codex_reviewer() {
   fi
 }
 
+# format_prompt_files
+# Purpose: Join prompt file paths into a comma-separated string.
+# Args:
+#   $@: Prompt file paths (strings).
+# Output: Prints the formatted list to stdout.
+# Returns: 0 always.
 format_prompt_files() {
   local result=""
   local item
@@ -100,6 +136,13 @@ format_prompt_files() {
   printf '%s' "${result}"
 }
 
+# build_worker_prompt
+# Purpose: Build the full prompt string for a standard worker.
+# Args:
+#   $1: Role name (string).
+#   $2: Task relative path (string).
+# Output: Prints the full prompt string to stdout.
+# Returns: 0 always.
 build_worker_prompt() {
   local role="$1"
   local task_relpath="$2"
@@ -115,6 +158,13 @@ build_worker_prompt() {
   printf '%s' "${prompt}"
 }
 
+# build_special_prompt
+# Purpose: Build the full prompt string for a special-role worker.
+# Args:
+#   $1: Role name (string).
+#   $2: Task relative path (string).
+# Output: Prints the full prompt string to stdout.
+# Returns: 0 always.
 build_special_prompt() {
   local role="$1"
   local task_relpath="$2"
@@ -130,14 +180,22 @@ build_special_prompt() {
   printf '%s' "${prompt}"
 }
 
-# List remote worker branches.
+# list_worker_branches
+# Purpose: List remote worker branch refs.
+# Args: None.
+# Output: Prints branch refs to stdout, one per line.
+# Returns: 0 always.
 list_worker_branches() {
   local remote
   remote="$(read_remote_name)"
   git -C "${ROOT_DIR}" for-each-ref --format='%(refname:short)' "refs/remotes/${remote}/worker/*/*" || true
 }
 
-# Count in-flight tasks (all roles).
+# in_flight_entries
+# Purpose: Read in-flight log entries as task|worker pairs.
+# Args: None.
+# Output: Prints "task|worker" lines to stdout.
+# Returns: 0 always.
 in_flight_entries() {
   if [[ ! -f "${IN_FLIGHT_LOG}" ]]; then
     return 0
@@ -145,6 +203,11 @@ in_flight_entries() {
   awk -F ' -> ' 'NF == 2 { print $1 "|" $2 }' "${IN_FLIGHT_LOG}"
 }
 
+# count_in_flight_total
+# Purpose: Count total in-flight tasks across all roles.
+# Args: None.
+# Output: Prints count to stdout.
+# Returns: 0 always.
 count_in_flight_total() {
   local count=0
   local task
@@ -155,7 +218,12 @@ count_in_flight_total() {
   printf '%s\n' "${count}"
 }
 
-# Count in-flight tasks for a specific role.
+# count_in_flight_role
+# Purpose: Count in-flight tasks for a specific role.
+# Args:
+#   $1: Role name (string).
+# Output: Prints count to stdout.
+# Returns: 0 always.
 count_in_flight_role() {
   local role="$1"
   local count=0
@@ -169,14 +237,26 @@ count_in_flight_role() {
   printf '%s\n' "${count}"
 }
 
-# Add an in-flight record.
+# in_flight_add
+# Purpose: Append a task/worker entry to the in-flight log.
+# Args:
+#   $1: Task name (string).
+#   $2: Worker name (string).
+# Output: None.
+# Returns: 0 on success.
 in_flight_add() {
   local task_name="$1"
   local worker_name="$2"
   printf '%s -> %s\n' "${task_name}" "${worker_name}" >> "${IN_FLIGHT_LOG}"
 }
 
-# Remove an in-flight record when a task completes or is blocked.
+# in_flight_remove
+# Purpose: Remove a task/worker entry from the in-flight log.
+# Args:
+#   $1: Task name (string).
+#   $2: Worker name (string, optional).
+# Output: None.
+# Returns: 0 on success.
 in_flight_remove() {
   local task_name="$1"
   local worker_name="$2"
@@ -193,7 +273,12 @@ in_flight_remove() {
   retry_count_clear "${task_name}"
 }
 
-# Check whether a task is already in flight.
+# in_flight_has_task
+# Purpose: Check whether a task is already marked in-flight.
+# Args:
+#   $1: Task name (string).
+# Output: None.
+# Returns: 0 if task is in-flight; 1 otherwise.
 in_flight_has_task() {
   local task_name="$1"
   local task
@@ -206,7 +291,12 @@ in_flight_has_task() {
   return 1
 }
 
-# Check whether a worker is already in flight.
+# in_flight_has_worker
+# Purpose: Check whether a worker already has an in-flight task.
+# Args:
+#   $1: Worker name (string).
+# Output: None.
+# Returns: 0 if worker has in-flight task; 1 otherwise.
 in_flight_has_worker() {
   local worker_name="$1"
   local task
@@ -219,6 +309,12 @@ in_flight_has_worker() {
   return 1
 }
 
+# cleanup_tmp_dir
+# Purpose: Remove a worker temporary directory if it exists.
+# Args:
+#   $1: Directory path (string).
+# Output: None.
+# Returns: 0 on completion.
 cleanup_tmp_dir() {
   local dir="$1"
   if [[ -n "${dir}" && -d "${dir}" ]]; then
@@ -226,6 +322,13 @@ cleanup_tmp_dir() {
   fi
 }
 
+# cleanup_worker_tmp_dirs
+# Purpose: Remove worker temp dirs from known tmp roots.
+# Args:
+#   $1: Worker name (string).
+#   $2: Task name (string).
+# Output: None.
+# Returns: 0 on completion.
 cleanup_worker_tmp_dirs() {
   local worker="$1"
   local task_name="$2"
@@ -243,7 +346,13 @@ cleanup_worker_tmp_dirs() {
   done
 }
 
-# Filter worker process log entries by task and worker.
+# filter_worker_process_log
+# Purpose: Create a filtered copy of the worker process log excluding a task/worker.
+# Args:
+#   $1: Task name (string).
+#   $2: Worker name (string).
+# Output: Prints the path to a temp file containing filtered log content.
+# Returns: 0 on success.
 filter_worker_process_log() {
   local task_name="$1"
   local worker="$2"
@@ -261,7 +370,12 @@ filter_worker_process_log() {
   printf '%s\n' "${tmp_file}"
 }
 
-# Filter retry count entries by task.
+# filter_retry_counts_log
+# Purpose: Create a filtered copy of retry counts excluding a task.
+# Args:
+#   $1: Task name (string).
+# Output: Prints the path to a temp file containing filtered log content.
+# Returns: 0 on success.
 filter_retry_counts_log() {
   local task_name="$1"
   local tmp_file
@@ -278,7 +392,13 @@ filter_retry_counts_log() {
   printf '%s\n' "${tmp_file}"
 }
 
-# Filter in-flight entries by task and optional worker.
+# filter_in_flight_log
+# Purpose: Create a filtered copy of in-flight entries excluding a task/worker.
+# Args:
+#   $1: Task name (string).
+#   $2: Worker name (string, optional).
+# Output: Prints the path to a temp file containing filtered log content.
+# Returns: 0 on success.
 filter_in_flight_log() {
   local task_name="$1"
   local worker_name="${2:-}"
@@ -306,7 +426,17 @@ filter_in_flight_log() {
   printf '%s\n' "${tmp_file}"
 }
 
-# Record the worker process that owns a task.
+# worker_process_set
+# Purpose: Record the worker process metadata for a task.
+# Args:
+#   $1: Task name (string).
+#   $2: Worker name (string).
+#   $3: PID (string or integer).
+#   $4: Temp dir path (string).
+#   $5: Branch name (string).
+#   $6: Start timestamp (string or integer).
+# Output: None.
+# Returns: 0 on success.
 worker_process_set() {
   local task_name="$1"
   local worker="$2"
@@ -321,7 +451,13 @@ worker_process_set() {
   mv "${tmp_file}" "${WORKER_PROCESSES_LOG}"
 }
 
-# Remove a worker process record.
+# worker_process_clear
+# Purpose: Remove a worker process record from the log.
+# Args:
+#   $1: Task name (string).
+#   $2: Worker name (string).
+# Output: None.
+# Returns: 0 on success.
 worker_process_clear() {
   local task_name="$1"
   local worker="$2"
@@ -335,7 +471,13 @@ worker_process_clear() {
   mv "${tmp_file}" "${WORKER_PROCESSES_LOG}"
 }
 
-# Lookup a worker process record.
+# worker_process_get
+# Purpose: Lookup worker process metadata for a task and worker.
+# Args:
+#   $1: Task name (string).
+#   $2: Worker name (string).
+# Output: Prints PID, temp dir, branch, and start timestamp (one per line).
+# Returns: 0 if found; 1 if missing.
 worker_process_get() {
   local task_name="$1"
   local worker="$2"
@@ -359,7 +501,12 @@ worker_process_get() {
   ' "${WORKER_PROCESSES_LOG}"
 }
 
-# Remove stale worker tmp dirs that are not tracked as active.
+# cleanup_stale_worker_dirs
+# Purpose: Remove stale worker temp directories not tracked as active.
+# Args:
+#   $1: Optional "--dry-run" to list candidates without deleting.
+# Output: Prints stale directories when running in dry-run mode.
+# Returns: 0 on completion.
 cleanup_stale_worker_dirs() {
   local tmp_root="/tmp"
   if [[ -d "/private/tmp" ]]; then
@@ -413,7 +560,12 @@ cleanup_stale_worker_dirs() {
   done < <(find "${tmp_root}" -maxdepth 1 -type d -name "governator-${PROJECT_NAME}-*" 2> /dev/null)
 }
 
-# Read the retry count for a task (defaults to 0).
+# retry_count_get
+# Purpose: Read the retry count for a task.
+# Args:
+#   $1: Task name (string).
+# Output: Prints the retry count to stdout.
+# Returns: 0 always; defaults to 0 if missing/invalid.
 retry_count_get() {
   local task_name="$1"
   if [[ ! -f "${RETRY_COUNTS_LOG}" ]]; then
@@ -442,7 +594,13 @@ retry_count_get() {
   printf '%s\n' "${count}"
 }
 
-# Write the retry count for a task.
+# retry_count_set
+# Purpose: Write the retry count for a task.
+# Args:
+#   $1: Task name (string).
+#   $2: Retry count (string or integer).
+# Output: None.
+# Returns: 0 on success.
 retry_count_set() {
   local task_name="$1"
   local count="$2"
@@ -453,7 +611,12 @@ retry_count_set() {
   mv "${tmp_file}" "${RETRY_COUNTS_LOG}"
 }
 
-# Clear the retry count for a task.
+# retry_count_clear
+# Purpose: Remove the retry count entry for a task.
+# Args:
+#   $1: Task name (string).
+# Output: None.
+# Returns: 0 on success.
 retry_count_clear() {
   local task_name="$1"
   if [[ ! -f "${RETRY_COUNTS_LOG}" ]]; then
@@ -465,7 +628,14 @@ retry_count_clear() {
   mv "${tmp_file}" "${RETRY_COUNTS_LOG}"
 }
 
-# Spawn a worker for a task file with shared setup.
+# spawn_worker_for_task
+# Purpose: Launch a standard worker for a task file and record metadata.
+# Args:
+#   $1: Task file path (string).
+#   $2: Worker role (string).
+#   $3: Audit log message (string, optional).
+# Output: Logs task events and worker metadata.
+# Returns: 0 on completion.
 spawn_worker_for_task() {
   local task_file="$1"
   local worker="$2"
@@ -512,6 +682,14 @@ spawn_worker_for_task() {
   fi
 }
 
+# spawn_special_worker_for_task
+# Purpose: Launch a special worker (including reviewer) for a task file.
+# Args:
+#   $1: Task file path (string).
+#   $2: Worker role (string).
+#   $3: Audit log message (string, optional).
+# Output: Logs task events and reviewer decisions as needed.
+# Returns: 0 on completion.
 spawn_special_worker_for_task() {
   local task_file="$1"
   local worker="$2"
@@ -594,7 +772,11 @@ spawn_special_worker_for_task() {
   cleanup_tmp_dir "${tmp_dir}"
 }
 
-# Handle missing branches with dead workers.
+# check_zombie_workers
+# Purpose: Detect in-flight workers missing branches and retry or block tasks.
+# Args: None.
+# Output: Logs warnings and task transitions.
+# Returns: 0 on completion.
 check_zombie_workers() {
   touch_logs
 

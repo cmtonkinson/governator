@@ -2,6 +2,12 @@
 
 UPDATE_TMP_ROOT=""
 
+# manifest_sha_for_path
+# Purpose: Read a manifest SHA entry for a relative path.
+# Args:
+#   $1: Relative path under repository root (string).
+# Output: Prints the SHA string or empty string.
+# Returns: 0 always.
 manifest_sha_for_path() {
   local rel_path="$1"
   if [[ ! -f "${MANIFEST_FILE}" ]]; then
@@ -11,6 +17,12 @@ manifest_sha_for_path() {
   jq -r --arg path "${rel_path}" '.files[$path] // ""' "${MANIFEST_FILE}"
 }
 
+# list_manifest_paths
+# Purpose: List manifest-eligible files under a base directory.
+# Args:
+#   $1: Base directory path (string).
+# Output: Prints relative paths prefixed with _governator/.
+# Returns: 0 always.
 list_manifest_paths() {
   local base_dir="$1"
   find "${base_dir}" \
@@ -26,6 +38,14 @@ list_manifest_paths() {
     done
 }
 
+# write_manifest
+# Purpose: Write a manifest JSON for tracked _governator files.
+# Args:
+#   $1: Base root path (string).
+#   $2: Base directory path (string).
+#   $3: Output file path (string).
+# Output: Writes JSON manifest file.
+# Returns: 0 on success.
 write_manifest() {
   local base_root="$1"
   local base_dir="$2"
@@ -55,6 +75,11 @@ write_manifest() {
   mv "${tmp_file}" "${out_file}"
 }
 
+# ensure_manifest_exists
+# Purpose: Ensure a manifest exists, creating one if missing.
+# Args: None.
+# Output: Logs warning and writes manifest when missing.
+# Returns: 0 on completion.
 ensure_manifest_exists() {
   if [[ -f "${MANIFEST_FILE}" ]]; then
     return 0
@@ -63,6 +88,12 @@ ensure_manifest_exists() {
   write_manifest "${ROOT_DIR}" "${STATE_DIR}" "${MANIFEST_FILE}"
 }
 
+# is_code_file
+# Purpose: Determine whether a path is treated as code (always updated).
+# Args:
+#   $1: Relative path (string).
+# Output: None.
+# Returns: 0 if code file; 1 otherwise.
 is_code_file() {
   local rel_path="$1"
   if [[ "${rel_path}" == "_governator/governator.sh" ]]; then
@@ -74,6 +105,12 @@ is_code_file() {
   return 1
 }
 
+# is_prompt_file
+# Purpose: Determine whether a path is treated as a prompt/template file.
+# Args:
+#   $1: Relative path (string).
+# Output: None.
+# Returns: 0 if prompt file; 1 otherwise.
 is_prompt_file() {
   local rel_path="$1"
   case "${rel_path}" in
@@ -84,6 +121,13 @@ is_prompt_file() {
   return 1
 }
 
+# confirm_template_action
+# Purpose: Decide whether to apply a prompt/template update.
+# Args:
+#   $1: Relative path (string).
+#   $2: Prompt question (string).
+# Output: Logs warnings in non-interactive mode.
+# Returns: 0 if update should proceed; 1 otherwise.
 confirm_template_action() {
   local rel_path="$1"
   local prompt="$2"
@@ -109,12 +153,29 @@ confirm_template_action() {
   esac
 }
 
+# record_update
+# Purpose: Record an update action for reporting.
+# Args:
+#   $1: Action verb (string: added/updated/removed).
+#   $2: Relative path (string).
+# Output: Appends to UPDATED_FILES array.
+# Returns: 0 always.
 record_update() {
   local action="$1"
   local rel_path="$2"
   UPDATED_FILES+=("${action} ${rel_path}")
 }
 
+# update_code_file
+# Purpose: Update a code file unconditionally when upstream differs.
+# Args:
+#   $1: Relative path (string).
+#   $2: Upstream file path (string).
+#   $3: Local file path (string).
+#   $4: Upstream SHA (string).
+#   $5: Variable name to set for update flag (string).
+# Output: Copies file and records update when changed.
+# Returns: 0 on completion.
 update_code_file() {
   local rel_path="$1"
   local upstream_path="$2"
@@ -134,6 +195,16 @@ update_code_file() {
   eval "${updated_ref}=1"
 }
 
+# update_prompt_file
+# Purpose: Update a prompt/template file respecting manifest and flags.
+# Args:
+#   $1: Relative path (string).
+#   $2: Upstream file path (string).
+#   $3: Local file path (string).
+#   $4: Upstream SHA (string).
+#   $5: Variable name to set for update flag (string).
+# Output: Copies file and records update when changed.
+# Returns: 0 on completion.
 update_prompt_file() {
   local rel_path="$1"
   local upstream_path="$2"
@@ -174,6 +245,13 @@ update_prompt_file() {
   fi
 }
 
+# remove_code_file
+# Purpose: Remove a code file that no longer exists upstream.
+# Args:
+#   $1: Local file path (string).
+#   $2: Variable name to set for update flag (string).
+# Output: Deletes file and records update.
+# Returns: 0 on completion.
 remove_code_file() {
   local local_path="$1"
   local updated_ref="$2"
@@ -184,6 +262,14 @@ remove_code_file() {
   fi
 }
 
+# remove_prompt_file
+# Purpose: Remove a prompt/template file based on manifest and flags.
+# Args:
+#   $1: Relative path (string).
+#   $2: Local file path (string).
+#   $3: Variable name to set for update flag (string).
+# Output: Deletes file and records update when changed.
+# Returns: 0 on completion.
 remove_prompt_file() {
   local rel_path="$1"
   local local_path="$2"
@@ -211,6 +297,13 @@ remove_prompt_file() {
   fi
 }
 
+# update_governator
+# Purpose: Update Governator code and prompt templates from upstream tarball.
+# Args:
+#   --keep-local: Keep local prompt changes without prompting.
+#   --force-remote: Overwrite local prompt changes without prompting.
+# Output: Prints update summary and logs audit entry.
+# Returns: 0 on success; exits on fatal errors.
 update_governator() {
   UPDATE_KEEP_LOCAL=0
   UPDATE_FORCE_REMOTE=0

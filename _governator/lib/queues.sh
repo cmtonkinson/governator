@@ -1,6 +1,12 @@
 # shellcheck shell=bash
 
-# Move task to assigned, commit, push, then spawn a worker.
+# assign_task
+# Purpose: Move a backlog task to assigned, commit it, and spawn a worker.
+# Args:
+#   $1: Task file path (string).
+#   $2: Worker role (string).
+# Output: Logs assignment and spawns worker process.
+# Returns: 0 on success; exits on git or spawn failures.
 assign_task() {
   local task_file="$1"
   local worker="$2"
@@ -22,7 +28,13 @@ assign_task() {
   spawn_worker_for_task "${assigned_file}" "${worker}" ""
 }
 
-# Check caps for a worker/task pair; prints reason on failure.
+# can_assign_task
+# Purpose: Check global and per-role caps for a task assignment.
+# Args:
+#   $1: Worker role (string).
+#   $2: Task name (string).
+# Output: Prints a human-readable skip reason on failure.
+# Returns: 0 if assignment is allowed; 1 otherwise.
 can_assign_task() {
   local worker="$1"
   local task_name="$2"
@@ -48,7 +60,11 @@ can_assign_task() {
   return 0
 }
 
-# Assign tasks in backlog based on role prefix/suffix in filename.
+# assign_pending_tasks
+# Purpose: Assign backlog tasks according to role suffix and caps.
+# Args: None.
+# Output: Logs task assignment decisions and blocking reasons.
+# Returns: 0 on completion.
 assign_pending_tasks() {
   touch_logs
   require_project_mode
@@ -150,7 +166,11 @@ assign_pending_tasks() {
   done < <(list_task_files_in_dir "${STATE_DIR}/task-backlog")
 }
 
-# Re-run tasks sitting in task-assigned when not already in flight.
+# resume_assigned_tasks
+# Purpose: Retry assigned tasks that are not currently in-flight.
+# Args: None.
+# Output: Logs retry decisions and dispatches workers.
+# Returns: 0 on completion.
 resume_assigned_tasks() {
   touch_logs
   require_project_mode

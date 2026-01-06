@@ -1,6 +1,10 @@
 # shellcheck shell=bash
 
-# Ensure required commands exist before running.
+# ensure_dependencies
+# Purpose: Verify runtime toolchain dependencies for normal execution.
+# Args: None.
+# Output: Logs missing dependencies via log_error.
+# Returns: 0 if all dependencies are present; exits 1 if any are missing.
 ensure_dependencies() {
   local missing=()
   local dep
@@ -18,6 +22,11 @@ ensure_dependencies() {
   fi
 }
 
+# ensure_update_dependencies
+# Purpose: Verify toolchain dependencies required specifically for update workflows.
+# Args: None.
+# Output: Logs missing dependencies via log_error.
+# Returns: 0 if all dependencies are present; exits 1 if any are missing.
 ensure_update_dependencies() {
   if ! command -v curl > /dev/null 2>&1; then
     log_error "Missing dependency: curl"
@@ -33,6 +42,11 @@ ensure_update_dependencies() {
   fi
 }
 
+# require_governator_doc
+# Purpose: Ensure GOVERNATOR.md exists at the repository root.
+# Args: None.
+# Output: Logs error when missing.
+# Returns: 0 if present; exits 1 if missing.
 require_governator_doc() {
   if [[ ! -f "${ROOT_DIR}/GOVERNATOR.md" ]]; then
     log_error "GOVERNATOR.md not found at project root; aborting."
@@ -40,6 +54,11 @@ require_governator_doc() {
   fi
 }
 
+# ensure_ready_with_lock
+# Purpose: Apply all safety checks for commands that require the lock.
+# Args: None.
+# Output: Errors are logged by called helpers.
+# Returns: 0 if environment is ready; exits on failure.
 ensure_ready_with_lock() {
   ensure_clean_git
   ensure_lock
@@ -48,6 +67,11 @@ ensure_ready_with_lock() {
   require_governator_doc
 }
 
+# ensure_ready_no_lock
+# Purpose: Apply safety checks for commands that do not require a lock.
+# Args: None.
+# Output: Errors are logged by called helpers.
+# Returns: 0 if environment is ready; exits on failure.
 ensure_ready_no_lock() {
   ensure_clean_git
   ensure_dependencies

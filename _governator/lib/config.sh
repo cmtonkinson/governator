@@ -1,6 +1,12 @@
 # shellcheck shell=bash
 
-# Read a numeric value from a file or return a default.
+# read_numeric_file
+# Purpose: Read a numeric value from a file with fallback handling.
+# Args:
+#   $1: Path to file (string).
+#   $2: Fallback value (string or integer).
+# Output: Prints the numeric value or fallback to stdout.
+# Returns: 0 always.
 read_numeric_file() {
   local file="$1"
   local fallback="$2"
@@ -18,7 +24,13 @@ read_numeric_file() {
   printf '%s\n' "${value}"
 }
 
-# Read a single-line config value with fallback (whitespace trimmed).
+# read_config_value
+# Purpose: Read a single-line config value with fallback and trimming.
+# Args:
+#   $1: Path to file (string).
+#   $2: Fallback value (string).
+# Output: Prints the trimmed value or fallback to stdout.
+# Returns: 0 always.
 read_config_value() {
   local file="$1"
   local fallback="$2"
@@ -35,6 +47,11 @@ read_config_value() {
   printf '%s\n' "${value}"
 }
 
+# read_project_mode
+# Purpose: Read and validate the project mode ("new" or "existing").
+# Args: None.
+# Output: Prints the project mode to stdout.
+# Returns: 0 if valid mode exists; 1 otherwise.
 read_project_mode() {
   if [[ ! -f "${PROJECT_MODE_FILE}" ]]; then
     return 1
@@ -47,6 +64,11 @@ read_project_mode() {
   printf '%s\n' "${value}"
 }
 
+# require_project_mode
+# Purpose: Enforce that project mode is initialized before running commands.
+# Args: None.
+# Output: Logs an error when initialization is missing.
+# Returns: 0 when initialized; 1 otherwise.
 require_project_mode() {
   if ! read_project_mode > /dev/null 2>&1; then
     log_error "Governator has not been initialized yet. Please run \`governator.sh init\` to configure your project."
@@ -55,38 +77,76 @@ require_project_mode() {
   return 0
 }
 
+# read_remote_name
+# Purpose: Read the configured git remote name.
+# Args: None.
+# Output: Prints the remote name to stdout.
+# Returns: 0 always.
 read_remote_name() {
   read_config_value "${REMOTE_NAME_FILE}" "${DEFAULT_REMOTE_NAME}"
 }
 
+# read_default_branch
+# Purpose: Read the configured default branch name.
+# Args: None.
+# Output: Prints the branch name to stdout.
+# Returns: 0 always.
 read_default_branch() {
   read_config_value "${DEFAULT_BRANCH_FILE}" "${DEFAULT_BRANCH_NAME}"
 }
 
-# Read the global concurrency cap (defaults to 1).
+# read_global_cap
+# Purpose: Read the global worker concurrency cap.
+# Args: None.
+# Output: Prints the cap value to stdout.
+# Returns: 0 always.
 read_global_cap() {
   read_numeric_file "${GLOBAL_CAP_FILE}" "${DEFAULT_GLOBAL_CAP}"
 }
 
-# Read the worker timeout in seconds (defaults to 900).
+# read_worker_timeout_seconds
+# Purpose: Read the worker timeout value in seconds.
+# Args: None.
+# Output: Prints the timeout to stdout.
+# Returns: 0 always.
 read_worker_timeout_seconds() {
   read_numeric_file "${WORKER_TIMEOUT_FILE}" "${DEFAULT_WORKER_TIMEOUT_SECONDS}"
 }
 
-# Read the done-check cooldown in seconds (defaults to 3600).
+# read_done_check_cooldown_seconds
+# Purpose: Read the done-check cooldown in seconds.
+# Args: None.
+# Output: Prints the cooldown value to stdout.
+# Returns: 0 always.
 read_done_check_cooldown_seconds() {
   read_numeric_file "${DONE_CHECK_COOLDOWN_FILE}" "3600"
 }
 
+# read_done_check_last_run
+# Purpose: Read the last done-check run timestamp.
+# Args: None.
+# Output: Prints the timestamp to stdout.
+# Returns: 0 always.
 read_done_check_last_run() {
   read_numeric_file "${DONE_CHECK_LAST_RUN_FILE}" "0"
 }
 
+# write_done_check_last_run
+# Purpose: Persist the last done-check run timestamp.
+# Args:
+#   $1: Unix timestamp (string or integer).
+# Output: None.
+# Returns: 0 on success.
 write_done_check_last_run() {
   local timestamp="$1"
   printf '%s\n' "${timestamp}" > "${DONE_CHECK_LAST_RUN_FILE}"
 }
 
+# read_project_done_sha
+# Purpose: Read the stored GOVERNATOR.md hash for done checks.
+# Args: None.
+# Output: Prints the SHA or empty string to stdout.
+# Returns: 0 always.
 read_project_done_sha() {
   if [[ ! -f "${PROJECT_DONE_FILE}" ]]; then
     printf '%s\n' ""
@@ -95,16 +155,32 @@ read_project_done_sha() {
   trim_whitespace "$(cat "${PROJECT_DONE_FILE}")"
 }
 
+# write_project_done_sha
+# Purpose: Write the stored GOVERNATOR.md hash for done checks.
+# Args:
+#   $1: Git hash string (string, may be empty).
+# Output: None.
+# Returns: 0 on success.
 write_project_done_sha() {
   local sha="$1"
   printf '%s\n' "${sha}" > "${PROJECT_DONE_FILE}"
 }
 
+# governator_doc_sha
+# Purpose: Compute the Git hash of GOVERNATOR.md.
+# Args: None.
+# Output: Prints the hash to stdout; prints nothing on failure.
+# Returns: 0 always.
 governator_doc_sha() {
   git -C "${ROOT_DIR}" hash-object "${ROOT_DIR}/GOVERNATOR.md" 2> /dev/null || true
 }
 
-# Read the reasoning effort for a role (defaults to "medium").
+# read_reasoning_effort
+# Purpose: Read the reasoning effort setting for a worker role.
+# Args:
+#   $1: Role name (string).
+# Output: Prints the effort value (low|medium|high) to stdout.
+# Returns: 0 always; falls back to default on missing/invalid data.
 read_reasoning_effort() {
   local role="$1"
   local fallback="medium"
@@ -149,7 +225,12 @@ read_reasoning_effort() {
   printf '%s\n' "${value}"
 }
 
-# Read per-worker cap from worker_caps (defaults to 1).
+# read_worker_cap
+# Purpose: Read the per-role worker concurrency cap.
+# Args:
+#   $1: Role name (string).
+# Output: Prints the cap value to stdout.
+# Returns: 0 always; falls back to default on missing/invalid data.
 read_worker_cap() {
   local role="$1"
   if [[ ! -f "${WORKER_CAPS_FILE}" ]]; then
@@ -184,7 +265,11 @@ read_worker_cap() {
   printf '%s\n' "${cap}"
 }
 
-# Ensure the simple DB directory exists.
+# ensure_db_dir
+# Purpose: Create the state DB directory and initialize default files.
+# Args: None.
+# Output: Writes default config files as needed.
+# Returns: 0 on success.
 ensure_db_dir() {
   if [[ ! -d "${DB_DIR}" ]]; then
     mkdir -p "${DB_DIR}"
@@ -207,7 +292,11 @@ ensure_db_dir() {
   fi
 }
 
-# Ensure state logs exist so reads do not fail.
+# touch_logs
+# Purpose: Ensure log files exist to avoid read failures.
+# Args: None.
+# Output: None.
+# Returns: 0 on success.
 touch_logs() {
   touch "${FAILED_MERGES_LOG}" "${IN_FLIGHT_LOG}"
 }
