@@ -77,6 +77,78 @@ require_project_mode() {
   return 0
 }
 
+# ensure_gitignore_entries
+# Purpose: Ensure .gitignore contains governator-specific entries.
+# Args: None.
+# Output: Writes to .gitignore when missing entries.
+# Returns: 0 on completion.
+ensure_gitignore_entries() {
+  if [[ ! -f "${GITIGNORE_PATH}" ]]; then
+    printf '# Governator\n' > "${GITIGNORE_PATH}"
+  fi
+  local entry
+  for entry in "${GITIGNORE_ENTRIES[@]}"; do
+    if ! grep -Fqx -- "${entry}" "${GITIGNORE_PATH}" 2> /dev/null; then
+      printf '%s\n' "${entry}" >> "${GITIGNORE_PATH}"
+    fi
+  done
+}
+
+# init_governator
+# Purpose: Initialize Governator config, defaults, and manifest.
+# Args: None.
+# Output: Prompts for project mode, remote, branch; logs initialization.
+# Returns: 0 on success; exits 1 on invalid state.
+init_governator() {
+  ensure_db_dir
+  ensure_gitignore_entries
+  if read_project_mode > /dev/null 2>&1; then
+    log_error "Governator is already initialized. Re-run init after clearing ${PROJECT_MODE_FILE}."
+    exit 1
+  fi
+
+  local project_mode=""
+  while true; do
+    read -r -p "Is this a new or existing project? (new/existing): " project_mode
+    project_mode="$(trim_whitespace "${project_mode}")"
+    project_mode="$(printf '%s' "${project_mode}" | tr '[:upper:]' '[:lower:]')"
+    if [[ "${project_mode}" == "new" || "${project_mode}" == "existing" ]]; then
+      break
+    fi
+    printf 'Please enter "new" or "existing".\n'
+  done
+
+  local remote_name
+  read -r -p "Default remote [${DEFAULT_REMOTE_NAME}]: " remote_name
+  remote_name="$(trim_whitespace "${remote_name}")"
+  if [[ -z "${remote_name}" ]]; then
+    remote_name="${DEFAULT_REMOTE_NAME}"
+  fi
+
+  local default_branch
+  read -r -p "Default branch [${DEFAULT_BRANCH_NAME}]: " default_branch
+  default_branch="$(trim_whitespace "${default_branch}")"
+  if [[ -z "${default_branch}" ]]; then
+    default_branch="${DEFAULT_BRANCH_NAME}"
+  fi
+
+  printf '%s\n' "${project_mode}" > "${PROJECT_MODE_FILE}"
+  printf '%s\n' "${remote_name}" > "${REMOTE_NAME_FILE}"
+  printf '%s\n' "${default_branch}" > "${DEFAULT_BRANCH_FILE}"
+
+  write_manifest "${ROOT_DIR}" "${STATE_DIR}" "${MANIFEST_FILE}"
+
+  printf 'Governator initialized:\n'
+  printf '  project mode: %s\n' "${project_mode}"
+  printf '  default remote: %s\n' "${remote_name}"
+  printf '  default branch: %s\n' "${default_branch}"
+
+  git -C "${ROOT_DIR}" add -A
+  if [[ -n "$(git -C "${ROOT_DIR}" status --porcelain 2> /dev/null)" ]]; then
+    git -C "${ROOT_DIR}" commit -q -m "[governator] Initialize configuration"
+  fi
+}
+
 # read_remote_name
 # Purpose: Read the configured git remote name.
 # Args: None.

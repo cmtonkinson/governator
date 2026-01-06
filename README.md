@@ -137,79 +137,11 @@ There is no conversational back-and-forth.
 7. Profit?
 
 ## Directory Structure
-The `_governator/` directory is the heart of the system. It contains the source
+`_governator/` directory is the heart of the system. It contains the source
 code, prompts, templates, and full task "database."
 
-```
-_governator/
-├── governator.sh
-├── lib/
-│   ├── internal.sh
-│   ├── branches.sh
-│   ├── bootstrap.sh
-│   ├── config.sh
-│   ├── core.sh
-│   ├── git.sh
-│   ├── locks.sh
-│   ├── logging.sh
-│   ├── queues.sh
-│   ├── review.sh
-│   ├── status.sh
-│   ├── tasks.sh
-│   ├── utils.sh
-├── worker-contract.md
-├── custom-prompts/
-│   ├── _global.md
-│   ├── admin.md
-│   ├── architect.md
-│   ├── data_engineer.md
-│   ├── planner.md
-│   ├── reviewer.md
-│   ├── ruby.md
-│   ├── security_engineer.md
-│   ├── sre.md
-│   └── test_engineer.md
-├── roles-worker/
-│   ├── admin.md
-│   ├── data_engineer.md
-│   ├── planner.md
-│   ├── ruby.md
-│   ├── security_engineer.md
-│   ├── sre.md
-│   └── test_engineer.md
-├── roles-special/
-│   ├── architect.md
-│   └── reviewer.md
-├── templates/
-│   ├── review.json
-│   └── task.md
-├── task-backlog/
-├── task-assigned/
-├── task-worked/
-├── task-done/
-├── task-blocked/
-├── task-feedback/
-└── task-proposed/
-```
-
-The `.governator/` directory is the system configuration/state "database."
+`.governator/` directory is the system configuration/state "database."
 Customizable configuration and internal state are stored here.
-
-```
-.governator/
-├── default_branch
-├── done_check_cooldown_seconds
-├── project_mode
-├── next_task_id
-├── manifest.json
-├── reasoning_effort
-├── last_done_check
-├── remote_name
-├── project_done
-├── worker_timeout_seconds
-├── global_worker_cap
-└── worker_caps
-```
 
 ### Key Concepts
 - **Worker Contract** defines global, non-negotiable execution rules for all

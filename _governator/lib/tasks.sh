@@ -190,6 +190,82 @@ task_file_for_prefix() {
   printf '%s\n' "${matches[0]}"
 }
 
+# abort_task
+# Purpose: Abort a task by killing its worker and blocking the task.
+# Args:
+#   $1: Task prefix (string).
+# Output: Logs task state changes and cleanup actions.
+# Returns: 0 on completion; exits 1 if task is not found.
+abort_task() {
+  local prefix="$1"
+  if [[ -z "${prefix:-}" ]]; then
+    log_error "Usage: abort <task-prefix>"
+    exit 1
+  fi
+
+  local task_file
+  if ! task_file="$(task_file_for_prefix "${prefix}")"; then
+    log_error "No task matches prefix ${prefix}"
+    exit 1
+  fi
+
+  local task_name
+  task_name="$(basename "${task_file}" .md)"
+  local worker
+  if ! worker="$(extract_worker_from_task "${task_file}" 2> /dev/null)"; then
+    worker=""
+  fi
+
+  local worker_info=()
+  local pid=""
+  local tmp_dir=""
+  local branch=""
+  if mapfile -t worker_info < <(worker_process_get "${task_name}" "${worker}" 2> /dev/null); then
+    pid="${worker_info[0]:-}"
+    tmp_dir="${worker_info[1]:-}"
+    branch="${worker_info[2]:-}"
+  fi
+  local expected_branch="worker/${worker}/${task_name}"
+  if [[ -z "${branch}" ]]; then
+    branch="${expected_branch}"
+  fi
+
+  if [[ -n "${pid}" ]]; then
+    if kill -0 "${pid}" > /dev/null 2>&1; then
+      kill -9 "${pid}" > /dev/null 2>&1 || true
+    fi
+  fi
+
+  if [[ -n "${tmp_dir}" && -d "${tmp_dir}" ]]; then
+    cleanup_tmp_dir "${tmp_dir}"
+  fi
+  cleanup_worker_tmp_dirs "${worker}" "${task_name}"
+
+  delete_worker_branch "${branch}"
+
+  in_flight_remove "${task_name}" "${worker}"
+
+  local blocked_dest="${STATE_DIR}/task-blocked/${task_name}.md"
+  sync_default_branch
+  if [[ "${task_file}" != "${blocked_dest}" ]]; then
+    move_task_file "${task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "aborted by operator"
+  else
+    log_task_event "${task_name}" "aborted by operator"
+  fi
+
+  local abort_meta
+  abort_meta="Aborted by operator.
+Worker: ${worker:-n/a}
+PID: ${pid:-n/a}
+Branch: ${branch:-n/a}"
+  annotate_abort "${blocked_dest}" "${abort_meta}"
+  annotate_blocked "${blocked_dest}" "Aborted by operator command."
+
+  git -C "${ROOT_DIR}" add "${STATE_DIR}"
+  git -C "${ROOT_DIR}" commit -q -m "[governator] Abort task ${task_name}"
+  git_push_default_branch
+}
+
 # list_available_workers
 # Purpose: List available non-reviewer worker roles.
 # Args: None.

@@ -3,18 +3,15 @@ set -euo pipefail
 IFS=$'\n\t'
 
 #############################################################################
-# The Governator
 #############################################################################
 #
-# Single-file implementation of the orchestrator. The script enforces a lock,
-# requires a clean git state, processes worker branches, and assigns backlog
-# tasks. It is intentionally explicit about filesystem and git transitions.
+# The Governator
 #
+# "Come with me if you want to ship"
+#
+#############################################################################
 #############################################################################
 
-#############################################################################
-# Configuration
-#############################################################################
 # shellcheck disable=SC2034
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STATE_DIR="${ROOT_DIR}/_governator"
@@ -118,154 +115,6 @@ source "${LIB_DIR}/status.sh"
 source "${LIB_DIR}/internal.sh"
 # shellcheck source=_governator/lib/update.sh
 source "${LIB_DIR}/update.sh"
-
-# ensure_gitignore_entries
-# Purpose: Ensure .gitignore contains governator-specific entries.
-# Args: None.
-# Output: Writes to .gitignore when missing entries.
-# Returns: 0 on completion.
-ensure_gitignore_entries() {
-  if [[ ! -f "${GITIGNORE_PATH}" ]]; then
-    printf '# Governator\n' > "${GITIGNORE_PATH}"
-  fi
-  local entry
-  for entry in "${GITIGNORE_ENTRIES[@]}"; do
-    if ! grep -Fqx -- "${entry}" "${GITIGNORE_PATH}" 2> /dev/null; then
-      printf '%s\n' "${entry}" >> "${GITIGNORE_PATH}"
-    fi
-  done
-}
-
-# init_governator
-# Purpose: Initialize Governator config, defaults, and manifest.
-# Args: None.
-# Output: Prompts for project mode, remote, branch; logs initialization.
-# Returns: 0 on success; exits 1 on invalid state.
-init_governator() {
-  ensure_db_dir
-  ensure_gitignore_entries
-  if read_project_mode > /dev/null 2>&1; then
-    log_error "Governator is already initialized. Re-run init after clearing ${PROJECT_MODE_FILE}."
-    exit 1
-  fi
-
-  local project_mode=""
-  while true; do
-    read -r -p "Is this a new or existing project? (new/existing): " project_mode
-    project_mode="$(trim_whitespace "${project_mode}")"
-    project_mode="$(printf '%s' "${project_mode}" | tr '[:upper:]' '[:lower:]')"
-    if [[ "${project_mode}" == "new" || "${project_mode}" == "existing" ]]; then
-      break
-    fi
-    printf 'Please enter "new" or "existing".\n'
-  done
-
-  local remote_name
-  read -r -p "Default remote [${DEFAULT_REMOTE_NAME}]: " remote_name
-  remote_name="$(trim_whitespace "${remote_name}")"
-  if [[ -z "${remote_name}" ]]; then
-    remote_name="${DEFAULT_REMOTE_NAME}"
-  fi
-
-  local default_branch
-  read -r -p "Default branch [${DEFAULT_BRANCH_NAME}]: " default_branch
-  default_branch="$(trim_whitespace "${default_branch}")"
-  if [[ -z "${default_branch}" ]]; then
-    default_branch="${DEFAULT_BRANCH_NAME}"
-  fi
-
-  printf '%s\n' "${project_mode}" > "${PROJECT_MODE_FILE}"
-  printf '%s\n' "${remote_name}" > "${REMOTE_NAME_FILE}"
-  printf '%s\n' "${default_branch}" > "${DEFAULT_BRANCH_FILE}"
-
-  write_manifest "${ROOT_DIR}" "${STATE_DIR}" "${MANIFEST_FILE}"
-
-  printf 'Governator initialized:\n'
-  printf '  project mode: %s\n' "${project_mode}"
-  printf '  default remote: %s\n' "${remote_name}"
-  printf '  default branch: %s\n' "${default_branch}"
-
-  git -C "${ROOT_DIR}" add -A
-  if [[ -n "$(git -C "${ROOT_DIR}" status --porcelain 2> /dev/null)" ]]; then
-    git -C "${ROOT_DIR}" commit -q -m "[governator] Initialize configuration"
-  fi
-}
-
-# abort_task
-# Purpose: Abort a task by killing its worker and blocking the task.
-# Args:
-#   $1: Task prefix (string).
-# Output: Logs task state changes and cleanup actions.
-# Returns: 0 on completion; exits 1 if task is not found.
-abort_task() {
-  local prefix="$1"
-  if [[ -z "${prefix:-}" ]]; then
-    log_error "Usage: abort <task-prefix>"
-    exit 1
-  fi
-
-  local task_file
-  if ! task_file="$(task_file_for_prefix "${prefix}")"; then
-    log_error "No task matches prefix ${prefix}"
-    exit 1
-  fi
-
-  local task_name
-  task_name="$(basename "${task_file}" .md)"
-  local worker
-  if ! worker="$(extract_worker_from_task "${task_file}" 2> /dev/null)"; then
-    worker=""
-  fi
-
-  local worker_info=()
-  local pid=""
-  local tmp_dir=""
-  local branch=""
-  if mapfile -t worker_info < <(worker_process_get "${task_name}" "${worker}" 2> /dev/null); then
-    pid="${worker_info[0]:-}"
-    tmp_dir="${worker_info[1]:-}"
-    branch="${worker_info[2]:-}"
-  fi
-  local expected_branch="worker/${worker}/${task_name}"
-  if [[ -z "${branch}" ]]; then
-    branch="${expected_branch}"
-  fi
-
-  if [[ -n "${pid}" ]]; then
-    if kill -0 "${pid}" > /dev/null 2>&1; then
-      kill -9 "${pid}" > /dev/null 2>&1 || true
-    fi
-  fi
-
-  if [[ -n "${tmp_dir}" && -d "${tmp_dir}" ]]; then
-    cleanup_tmp_dir "${tmp_dir}"
-  fi
-  cleanup_worker_tmp_dirs "${worker}" "${task_name}"
-
-  delete_worker_branch "${branch}"
-
-  in_flight_remove "${task_name}" "${worker}"
-
-  local blocked_dest="${STATE_DIR}/task-blocked/${task_name}.md"
-  sync_default_branch
-  if [[ "${task_file}" != "${blocked_dest}" ]]; then
-    move_task_file "${task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "aborted by operator"
-  else
-    log_task_event "${task_name}" "aborted by operator"
-  fi
-
-  local abort_meta
-  abort_meta="Aborted by operator.
-Worker: ${worker:-n/a}
-PID: ${pid:-n/a}
-Branch: ${branch:-n/a}"
-  annotate_abort "${blocked_dest}" "${abort_meta}"
-  annotate_blocked "${blocked_dest}" "Aborted by operator command."
-
-  git -C "${ROOT_DIR}" add "${STATE_DIR}"
-  git -C "${ROOT_DIR}" commit -q -m "[governator] Abort task ${task_name}"
-  git_push_default_branch
-}
 
 # Script entrypoint.
 # main
