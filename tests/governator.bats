@@ -276,6 +276,22 @@ EOF
   [ "$status" -eq 0 ]
 }
 
+@test "process-branches skips reviewer spawn when reviewer already in-flight" {
+  write_task "task-worked" "015-review-ruby"
+  echo "015-review-ruby -> reviewer" >> "${REPO_DIR}/.governator/in-flight.log"
+  commit_all "Prepare reviewer in-flight"
+
+  create_worker_branch "015-review-ruby" "ruby"
+
+  run bash -c "bash \"${REPO_DIR}/_governator/governator.sh\" process-branches 2>&1"
+  [ "$status" -eq 0 ]
+
+  run grep -F "Global worker cap reached" <<< "${output}"
+  [ "$status" -ne 0 ]
+  run grep -F "015-review-ruby -> reviewer" "${REPO_DIR}/.governator/in-flight.log"
+  [ "$status" -eq 0 ]
+}
+
 @test "process_worker_branch clears in-flight entry when branch is missing" {
   write_task "task-assigned" "011-missing-ruby"
   echo "011-missing-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"

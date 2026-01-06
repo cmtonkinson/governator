@@ -130,6 +130,10 @@ process_worker_branch() {
       cleanup_worker_tmp_dirs "${worker_name}" "${task_name}"
 
       local review_branch="worker/reviewer/${task_name}"
+      if in_flight_has_task_worker "${task_name}" "reviewer"; then
+        log_verbose "Reviewer already in-flight for ${task_name}; skipping spawn"
+        return 0
+      fi
       if ! git -C "${ROOT_DIR}" show-ref --verify --quiet "refs/remotes/${remote}/${review_branch}"; then
         local cap_note
         if ! cap_note="$(can_assign_task "reviewer" "${task_name}")"; then

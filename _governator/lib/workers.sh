@@ -233,6 +233,26 @@ in_flight_has_worker() {
   return 1
 }
 
+# in_flight_has_task_worker
+# Purpose: Check whether a specific task/worker pair is in-flight.
+# Args:
+#   $1: Task name (string).
+#   $2: Worker name (string).
+# Output: None.
+# Returns: 0 if the task/worker pair is in-flight; 1 otherwise.
+in_flight_has_task_worker() {
+  local task_name="$1"
+  local worker_name="$2"
+  local task
+  local worker
+  while IFS='|' read -r task worker; do
+    if [[ "${task}" == "${task_name}" && "${worker}" == "${worker_name}" ]]; then
+      return 0
+    fi
+  done < <(in_flight_entries)
+  return 1
+}
+
 # cleanup_tmp_dir
 # Purpose: Remove a worker temporary directory if it exists.
 # Args:
