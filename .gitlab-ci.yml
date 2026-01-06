@@ -12,13 +12,7 @@ lint-and-test:
     - apt-get install -y --no-install-recommends git curl ca-certificates wget shellcheck shfmt jq
     - git clone https://github.com/bats-core/bats-core.git /tmp/bats-core
     - /tmp/bats-core/install.sh /usr/local
-    - pip install --no-cache-dir shell-gpt
   script:
     - |
-      if [[ -z "${SGPT_API_KEY:-}" ]]; then
-        echo "SGPT_API_KEY is required for sgpt-backed tests"
-        exit 1
-      fi
-      export SGPT_MODEL="${SGPT_MODEL:-gpt-4o-mini}"
       cd "$CI_PROJECT_DIR"
       ./scripts/all-tests.sh
