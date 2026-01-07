@@ -1,3 +1,8 @@
 # Role-based reasoning effort for Codex workers.
 # Use "default" to set the fallback for all roles.
-default: low
+default: medium
+
+architect: high
+planner: high
+
+test_engineer: low
