@@ -5,16 +5,20 @@ The agentic anti-swarm (read: just a state machine)
 
 ![Governator](img/governator_512.png)
 
-More specificially, it's a file-backed, git-driven, auditable, deterministic,
-waterfall orchestration framework for converting operator intent into working
-software. Goals, requirements, constraints, and assumptions are defined in
-`GOVERNATOR.md`. Then Governator deploys agentic workers to assess the gap
-between the stated vision and the current repo, decomposes that gap into
+More specificially, Governator is a file-backed, git-driven, auditable,
+deterministic, waterfall orchestration framework for converting operator intent
+into working software. Goals, requirements, constraints, and assumptions are
+defined in `GOVERNATOR.md`. Then Governator deploys agentic workers to assess
+the gap between the stated vision and the current repo, decomposes that gap into
 individually executable discrete tasks, and oversees planning, dispatch and
-quality control.
+quality Control.
 
 There is no shared memory, no long-lived agent state, and no hidden context. All
 state, intent, decisions, and artifacts live on disk and in git.
+
+Governator can be used in a completely blank repository to get something from 0
+to 1, or in an existing project to improve, extend, and refine. Whatever you
+want.
 
 ---
 
