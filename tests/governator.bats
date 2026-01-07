@@ -144,6 +144,7 @@ setup() {
   cp -R "${BATS_TEST_DIRNAME}/../_governator" "${REPO_DIR}/_governator"
   cp -R "${BATS_TEST_DIRNAME}/../.governator" "${REPO_DIR}/.governator"
   cp "${BATS_TEST_DIRNAME}/../GOVERNATOR.md" "${REPO_DIR}/GOVERNATOR.md"
+  cp "${REPO_DIR}/_governator/templates/config.json" "${REPO_DIR}/.governator/config.json"
 
   repo_git init -b main >/dev/null
   repo_git config user.email "test@example.com"
@@ -311,6 +312,41 @@ EOF
   [ "$status" -eq 0 ]
   run grep -F "010-review-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
   [ "$status" -ne 0 ]
+}
+
+@test "apply_review_decision removes review.json on reject" {
+  write_task "task-worked" "020-review-ruby"
+  commit_all "Prepare worked task"
+
+  cat > "${REPO_DIR}/review.json" <<'EOF'
+{"result":"reject","comments":["needs changes"]}
+EOF
+  commit_paths "Add review json" "review.json"
+
+  run bash -c "
+    set -euo pipefail
+    ROOT_DIR=\"${REPO_DIR}\"
+    STATE_DIR=\"${REPO_DIR}/_governator\"
+    DB_DIR=\"${REPO_DIR}/.governator\"
+    AUDIT_LOG=\"${REPO_DIR}/.governator/audit.log\"
+    CONFIG_FILE=\"${REPO_DIR}/.governator/config.json\"
+    DEFAULT_REMOTE_NAME=\"origin\"
+    DEFAULT_BRANCH_NAME=\"main\"
+    COMPLETION_CHECK_REVIEW_TASK=\"000-completion-check-reviewer\"
+    GOV_QUIET=1
+    GOV_VERBOSE=0
+    source \"${REPO_DIR}/_governator/lib/utils.sh\"
+    source \"${REPO_DIR}/_governator/lib/logging.sh\"
+    source \"${REPO_DIR}/_governator/lib/config.sh\"
+    source \"${REPO_DIR}/_governator/lib/git.sh\"
+    source \"${REPO_DIR}/_governator/lib/tasks.sh\"
+    source \"${REPO_DIR}/_governator/lib/review.sh\"
+    apply_review_decision \"020-review-ruby\" \"reviewer\" \"reject\" \"reject reason\" \"needs changes\"
+  "
+  [ "$status" -eq 0 ]
+
+  [ ! -f "${REPO_DIR}/review.json" ]
+  [ -f "${REPO_DIR}/_governator/task-assigned/020-review-ruby.md" ]
 }
 
 @test "process-branches can spawn reviewer when global cap is reached by the worker" {

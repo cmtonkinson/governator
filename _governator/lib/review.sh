@@ -71,7 +71,7 @@ read_review_output_from_branch() {
 #   $3: Decision string ("approve", "reject", or other).
 #   $4: Block reason (string).
 #   $5+: Review comment lines (strings).
-# Output: Logs warnings, task events, and removes review.json on approvals.
+# Output: Logs warnings, task events, and removes review.json from the repo root.
 # Returns: 0 on success; 1 if the task file is missing.
 apply_review_decision() {
   local task_name="$1"
@@ -134,10 +134,8 @@ apply_review_decision() {
       ;;
   esac
 
-  if [[ "${decision}" == "approve" ]]; then
-    if [[ -f "${ROOT_DIR}/review.json" ]]; then
-      rm -f "${ROOT_DIR}/review.json"
-    fi
+  if [[ -f "${ROOT_DIR}/review.json" ]]; then
+    rm -f "${ROOT_DIR}/review.json"
   fi
 
   git -C "${ROOT_DIR}" add "${STATE_DIR}" "${AUDIT_LOG}"

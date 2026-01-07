@@ -282,10 +282,8 @@ When a worker completes a task, it is pushed to the repository under a dedicated
 branch. The task is moved to `task-worked` and Governator initiates a review to
 determine whether the work done satisfies what was asked in the ticket.
 
-Reviews produce a special artifact on their branch called `review.json`, which
-Governator removes when marking an approved task as done.
-If the reviewer exits before committing but `review.json` exists, Governator
-attempts to commit and push the reviewer branch during zombie checks.
+_Note: Reviews produce a special artifact on their branch called `review.json`,
+which Governator removes after processing a review decision._
 
 ## Updates
 Governator can be updated at any time with `governator.sh update`. This will
