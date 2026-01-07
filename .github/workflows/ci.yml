@@ -25,6 +25,6 @@ jobs:
             shfmt \
             jq
           git clone https://github.com/bats-core/bats-core.git /tmp/bats-core
-          /tmp/bats-core/install.sh /usr/local
+          sudo /tmp/bats-core/install.sh /usr/local
       - name: Run test suite
         run: ./scripts/all-tests.sh
