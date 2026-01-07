@@ -246,31 +246,31 @@ read_worker_timeout_seconds() {
   read_numeric_file "${WORKER_TIMEOUT_FILE}" "${DEFAULT_WORKER_TIMEOUT_SECONDS}"
 }
 
-# read_done_check_cooldown_seconds
-# Purpose: Read the done-check cooldown in seconds.
+# read_completion_check_cooldown_seconds
+# Purpose: Read the completion-check cooldown in seconds.
 # Args: None.
 # Output: Prints the cooldown value to stdout.
 # Returns: 0 always.
-read_done_check_cooldown_seconds() {
+read_completion_check_cooldown_seconds() {
   read_numeric_file "${DONE_CHECK_COOLDOWN_FILE}" "3600"
 }
 
-# read_done_check_last_run
-# Purpose: Read the last done-check run timestamp.
+# read_completion_check_last_run
+# Purpose: Read the last completion-check run timestamp.
 # Args: None.
 # Output: Prints the timestamp to stdout.
 # Returns: 0 always.
-read_done_check_last_run() {
+read_completion_check_last_run() {
   read_numeric_file "${DONE_CHECK_LAST_RUN_FILE}" "0"
 }
 
-# write_done_check_last_run
-# Purpose: Persist the last done-check run timestamp.
+# write_completion_check_last_run
+# Purpose: Persist the last completion-check run timestamp.
 # Args:
 #   $1: Unix timestamp (string or integer).
 # Output: None.
 # Returns: 0 on success.
-write_done_check_last_run() {
+write_completion_check_last_run() {
   local timestamp="$1"
   printf '%s\n' "${timestamp}" > "${DONE_CHECK_LAST_RUN_FILE}"
 }
@@ -306,7 +306,7 @@ write_last_update_at() {
 }
 
 # read_project_done_sha
-# Purpose: Read the stored GOVERNATOR.md hash for done checks.
+# Purpose: Read the stored GOVERNATOR.md hash for completion checks.
 # Args: None.
 # Output: Prints the SHA or empty string to stdout.
 # Returns: 0 always.
@@ -319,7 +319,7 @@ read_project_done_sha() {
 }
 
 # write_project_done_sha
-# Purpose: Write the stored GOVERNATOR.md hash for done checks.
+# Purpose: Write the stored GOVERNATOR.md hash for completion checks.
 # Args:
 #   $1: Git hash string (string, may be empty).
 # Output: None.

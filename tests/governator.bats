@@ -895,7 +895,7 @@ EOF
 
 @test "archive_done_system_tasks archives done 000 tasks with timestamp" {
   complete_bootstrap
-  write_task "task-done" "000-done-check-reviewer"
+  write_task "task-done" "000-completion-check-reviewer"
   write_task "task-done" "023-keep-ruby"
   commit_all "Prepare done system tasks"
 
@@ -921,16 +921,16 @@ EOF
   [ "$status" -eq 0 ]
 
   [ ! -f "${REPO_DIR}/_governator/task-done/000-architecture-bootstrap-architect.md" ]
-  [ ! -f "${REPO_DIR}/_governator/task-done/000-done-check-reviewer.md" ]
+  [ ! -f "${REPO_DIR}/_governator/task-done/000-completion-check-reviewer.md" ]
   [ -f "${REPO_DIR}/_governator/task-done/023-keep-ruby.md" ]
 
   run find "${REPO_DIR}/_governator/task-archive" -maxdepth 1 -name '000-architecture-bootstrap-architect-*.md' -print
   [ "$status" -eq 0 ]
   [[ "${output}" =~ 000-architecture-bootstrap-architect-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{2}-[0-9]{2}-[0-9]{2}\.md ]]
 
-  run find "${REPO_DIR}/_governator/task-archive" -maxdepth 1 -name '000-done-check-reviewer-*.md' -print
+  run find "${REPO_DIR}/_governator/task-archive" -maxdepth 1 -name '000-completion-check-reviewer-*.md' -print
   [ "$status" -eq 0 ]
-  [[ "${output}" =~ 000-done-check-reviewer-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{2}-[0-9]{2}-[0-9]{2}\.md ]]
+  [[ "${output}" =~ 000-completion-check-reviewer-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{2}-[0-9]{2}-[0-9]{2}\.md ]]
 }
 
 @test "archive_done_system_tasks leaves non-000 tasks in task-done" {

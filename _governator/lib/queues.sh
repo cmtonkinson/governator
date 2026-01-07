@@ -103,27 +103,27 @@ assign_pending_tasks() {
 
   if [[ "${queues_empty}" -eq 1 ]]; then
     log_verbose "All queues empty"
-    if done_check_needed; then
-      if done_check_due; then
-        create_done_check_task || true
+    if completion_check_needed; then
+      if completion_check_due; then
+        create_completion_check_task || true
       else
         local last_run
-        last_run="$(read_done_check_last_run)"
+        last_run="$(read_completion_check_last_run)"
         local cooldown
-        cooldown="$(read_done_check_cooldown_seconds)"
+        cooldown="$(read_completion_check_cooldown_seconds)"
         local now
         now="$(date +%s)"
         local remaining=$((cooldown - (now - last_run)))
         if [[ "${remaining}" -lt 0 ]]; then
           remaining=0
         fi
-        log_verbose "Done check cooldown active (${remaining}s remaining)"
+        log_verbose "Completion check cooldown active (${remaining}s remaining)"
       fi
     else
-      log_verbose "Done check not needed (project_done matches GOVERNATOR.md)"
+      log_verbose "Completion check not needed (project_done matches GOVERNATOR.md)"
     fi
   else
-    log_verbose "Tasks pending; skipping done check"
+    log_verbose "Tasks pending; skipping completion check"
   fi
 
   local task_file

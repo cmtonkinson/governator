@@ -1,7 +1,7 @@
-# Task 000: Done Check Follow-up (Planner)
+# Task 000: Gap Analysis (Planner)
 
 ## Objective
-Translate the done-check review feedback into actionable and concrete tasks in
+Translate the completion-check review feedback into actionable and concrete tasks in
 order to complete the project (as per `GOVERNATOR.md`).
 
 ## Input

@@ -101,7 +101,7 @@ apply_review_decision() {
         log_task_event "${task_name}" "review decision: ${decision}"
         case "${decision}" in
           approve)
-            if [[ "${task_name}" == "${DONE_CHECK_REVIEW_TASK}" ]]; then
+            if [[ "${task_name}" == "${COMPLETION_CHECK_REVIEW_TASK}" ]]; then
               write_project_done_sha "$(governator_doc_sha)"
               move_task_file "${main_task_file}" "${STATE_DIR}/task-done" "${task_name}" "moved to task-done"
             else
@@ -109,17 +109,17 @@ apply_review_decision() {
             fi
             ;;
           reject)
-            if [[ "${task_name}" == "${DONE_CHECK_REVIEW_TASK}" ]]; then
+            if [[ "${task_name}" == "${COMPLETION_CHECK_REVIEW_TASK}" ]]; then
               write_project_done_sha ""
-              move_done_check_to_planner "${main_task_file}" "${task_name}"
+              move_completion_check_to_gap_analysis "${main_task_file}" "${task_name}"
             else
               move_task_file "${main_task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "moved to task-assigned"
             fi
             ;;
           *)
-            if [[ "${task_name}" == "${DONE_CHECK_REVIEW_TASK}" ]]; then
+            if [[ "${task_name}" == "${COMPLETION_CHECK_REVIEW_TASK}" ]]; then
               write_project_done_sha ""
-              move_done_check_to_planner "${main_task_file}" "${task_name}"
+              move_completion_check_to_gap_analysis "${main_task_file}" "${task_name}"
             else
               move_task_file "${main_task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
             fi

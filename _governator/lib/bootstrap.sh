@@ -117,16 +117,16 @@ ensure_bootstrap_task_exists() {
   git_push_default_branch
 }
 
-# done_check_due
-# Purpose: Determine whether the done-check cooldown has elapsed.
+# completion_check_due
+# Purpose: Determine whether the completion-check cooldown has elapsed.
 # Args: None.
 # Output: None.
 # Returns: 0 if due; 1 otherwise.
-done_check_due() {
+completion_check_due() {
   local last_run
-  last_run="$(read_done_check_last_run)"
+  last_run="$(read_completion_check_last_run)"
   local cooldown
-  cooldown="$(read_done_check_cooldown_seconds)"
+  cooldown="$(read_completion_check_cooldown_seconds)"
   local now
   now="$(date +%s)"
   if [[ "${last_run}" -eq 0 ]]; then
@@ -138,12 +138,12 @@ done_check_due() {
   return 1
 }
 
-# done_check_needed
-# Purpose: Determine whether a done-check should run based on GOVERNATOR.md hash.
+# completion_check_needed
+# Purpose: Determine whether a completion-check should run based on GOVERNATOR.md hash.
 # Args: None.
 # Output: None.
 # Returns: 0 if needed; 1 otherwise.
-done_check_needed() {
+completion_check_needed() {
   local gov_sha
   gov_sha="$(governator_doc_sha)"
   if [[ -z "${gov_sha}" ]]; then
@@ -157,52 +157,52 @@ done_check_needed() {
   return 1
 }
 
-# create_done_check_task
-# Purpose: Create the reviewer done-check task when needed.
+# create_completion_check_task
+# Purpose: Create the reviewer completion-check task when needed.
 # Args: None.
 # Output: Logs creation and commits changes.
 # Returns: 0 on success; 1 on failure.
-create_done_check_task() {
-  if task_exists "${DONE_CHECK_REVIEW_TASK}" || task_exists "${DONE_CHECK_PLANNER_TASK}"; then
+create_completion_check_task() {
+  if task_exists "${COMPLETION_CHECK_REVIEW_TASK}" || task_exists "${GAP_ANALYSIS_PLANNER_TASK}"; then
     return 0
   fi
 
-  if [[ ! -f "${DONE_CHECK_REVIEW_TEMPLATE}" ]]; then
-    log_error "Missing done-check template at ${DONE_CHECK_REVIEW_TEMPLATE}."
+  if [[ ! -f "${COMPLETION_CHECK_REVIEW_TEMPLATE}" ]]; then
+    log_error "Missing completion-check template at ${COMPLETION_CHECK_REVIEW_TEMPLATE}."
     return 1
   fi
 
-  local dest="${STATE_DIR}/task-assigned/${DONE_CHECK_REVIEW_TASK}.md"
-  cp "${DONE_CHECK_REVIEW_TEMPLATE}" "${dest}"
-  annotate_assignment "${dest}" "${DONE_CHECK_REVIEW_ROLE}"
-  log_task_event "${DONE_CHECK_REVIEW_TASK}" "created done check task"
+  local dest="${STATE_DIR}/task-assigned/${COMPLETION_CHECK_REVIEW_TASK}.md"
+  cp "${COMPLETION_CHECK_REVIEW_TEMPLATE}" "${dest}"
+  annotate_assignment "${dest}" "${COMPLETION_CHECK_REVIEW_ROLE}"
+  log_task_event "${COMPLETION_CHECK_REVIEW_TASK}" "created completion check task"
 
-  write_done_check_last_run "$(date +%s)"
+  write_completion_check_last_run "$(date +%s)"
 
   git -C "${ROOT_DIR}" add "${dest}" "${AUDIT_LOG}" "${DONE_CHECK_LAST_RUN_FILE}"
-  git -C "${ROOT_DIR}" commit -q -m "[governator] Create done check task"
+  git -C "${ROOT_DIR}" commit -q -m "[governator] Create completion check task"
   git_push_default_branch
 }
 
-# move_done_check_to_planner
-# Purpose: Move reviewer done-check output into a planner follow-up task.
+# move_completion_check_to_gap_analysis
+# Purpose: Move reviewer completion-check output into a gap-analysis follow-up task.
 # Args:
 #   $1: Task file path (string).
 #   $2: Task name (string).
 # Output: Logs task transitions.
 # Returns: 0 on success; 1 on failure.
-move_done_check_to_planner() {
+move_completion_check_to_gap_analysis() {
   local task_file="$1"
   local task_name="$2"
-  local dest="${STATE_DIR}/task-assigned/${DONE_CHECK_PLANNER_TASK}.md"
-  if [[ ! -f "${DONE_CHECK_PLANNER_TEMPLATE}" ]]; then
-    log_error "Missing done-check template at ${DONE_CHECK_PLANNER_TEMPLATE}."
+  local dest="${STATE_DIR}/task-assigned/${GAP_ANALYSIS_PLANNER_TASK}.md"
+  if [[ ! -f "${GAP_ANALYSIS_PLANNER_TEMPLATE}" ]]; then
+    log_error "Missing gap-analysis template at ${GAP_ANALYSIS_PLANNER_TEMPLATE}."
     return 1
   fi
-  cp "${DONE_CHECK_PLANNER_TEMPLATE}" "${dest}"
+  cp "${GAP_ANALYSIS_PLANNER_TEMPLATE}" "${dest}"
   append_section "${dest}" "## Reviewer Notes" "reviewer" "$(cat "${task_file}")"
   move_task_file "${task_file}" "${STATE_DIR}/task-done" "${task_name}" "moved to task-done"
-  log_task_event "${DONE_CHECK_PLANNER_TASK}" "created planner follow-up"
+  log_task_event "${GAP_ANALYSIS_PLANNER_TASK}" "created gap-analysis follow-up"
 }
 
 # artifact_present
