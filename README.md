@@ -361,6 +361,8 @@ Dependencies for development testing live in `scripts/common.sh` and include:
 - [shellcheck](https://github.com/koalaman/shellcheck) for shell linting
 - [shfmt](https://github.com/patrickvane/shfmt) for formatting checks
 - [bats](https://github.com/bats-core/bats-core) for test execution
+- _(optional)_ [parallel](https://www.gnu.org/software/parallel/) for faster
+  test runs
 
 Governator also exposes "hidden" subcommands (for targeted testing and ops
 drills). They are intentionally undocumented; check `_governator/governator.sh`
