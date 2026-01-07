@@ -145,6 +145,7 @@ main() {
   process_worker_branches
   resume_assigned_tasks
   assign_pending_tasks
+  archive_done_system_tasks
   commit_audit_log_if_dirty
   git_checkout_default_branch
   log_verbose "Run complete (branch: $(read_default_branch))"

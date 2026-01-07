@@ -217,6 +217,9 @@ A task moves through directories as its state changes:
 6. `task-proposed/`
    - Optional follow-up work suggested by workers
    - Governator decides whether to accept or discard
+7. `task-archive/`
+   - Archived `000-` system tasks from `task-done/`, timestamp-suffixed to keep
+     history
 
 All state transitions are explicit and reviewable.
 

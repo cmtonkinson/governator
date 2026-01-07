@@ -135,7 +135,8 @@ blocked_tasks_needing_unblock() {
 # Returns: 0 always.
 find_task_files() {
   local pattern="$1"
-  find "${STATE_DIR}" -maxdepth 2 -type f -path "${STATE_DIR}/task-*/${pattern}.md" 2> /dev/null | sort
+  find "${STATE_DIR}" -maxdepth 2 -type f -path "${STATE_DIR}/task-*/${pattern}.md" \
+    ! -path "${STATE_DIR}/task-archive/*" 2> /dev/null | sort
 }
 
 # task_exists
@@ -172,6 +173,52 @@ task_file_for_name() {
     log_warn "Multiple task files found for ${task_name}, using ${matches[0]}"
   fi
   printf '%s\n' "${matches[0]}"
+}
+
+# ensure_task_archive_dir
+# Purpose: Ensure the task archive directory and keep file exist.
+# Args: None.
+# Output: None.
+# Returns: 0 on completion.
+ensure_task_archive_dir() {
+  local archive_dir="${STATE_DIR}/task-archive"
+  if [[ ! -d "${archive_dir}" ]]; then
+    mkdir -p "${archive_dir}"
+  fi
+  if [[ ! -f "${archive_dir}/.keep" ]]; then
+    touch "${archive_dir}/.keep"
+  fi
+}
+
+# archive_done_system_tasks
+# Purpose: Move done 000- tasks into the archive with a timestamp suffix.
+# Args: None.
+# Output: Logs task events and commits when moves occur.
+# Returns: 0 on completion; 1 if git commit fails.
+archive_done_system_tasks() {
+  ensure_task_archive_dir
+
+  local archive_dir="${STATE_DIR}/task-archive"
+  local done_dir="${STATE_DIR}/task-done"
+  local moved=0
+  local task_file
+  while IFS= read -r task_file; do
+    local task_name
+    task_name="$(basename "${task_file}" .md)"
+    if [[ "${task_name}" != 000-* ]]; then
+      continue
+    fi
+    local timestamp
+    timestamp="$(date +%Y-%m-%d-%H-%M-%S)"
+    local archived_name="${task_name}-${timestamp}"
+    move_task_file_renamed "${task_file}" "${archive_dir}" "${task_name}" "${archived_name}" "archived to task-archive"
+    moved=1
+  done < <(list_task_files_in_dir "${done_dir}")
+
+  if [[ "${moved}" -eq 1 ]]; then
+    git -C "${ROOT_DIR}" add "${STATE_DIR}" "${AUDIT_LOG}"
+    git -C "${ROOT_DIR}" commit -q -m "[governator] Archive system tasks"
+  fi
 }
 
 # task_dir_for_branch
