@@ -306,24 +306,23 @@ print_inflight_summary() {
   local now
   now="$(date +%s)"
   local printed=0
+  printf '  %-8s %-10s %-12s %s\n' "PID" "AGE" "ROLE" "TASK"
   local task
   local worker
   while IFS='|' read -r task worker; do
-    local branch="n/a"
     local pid="n/a"
     local age="n/a"
     local info=()
     mapfile -t info < <(worker_process_get "${task}" "${worker}" 2> /dev/null)
     if [[ "${#info[@]}" -gt 0 ]]; then
       pid="${info[0]:-n/a}"
-      branch="${info[2]:-n/a}"
       local started="${info[3]:-}"
       if [[ "${started}" =~ ^[0-9]+$ ]]; then
         local elapsed=$((now - started))
         age="$(format_duration "${elapsed}")"
       fi
     fi
-    printf '  %-28s %-12s %-28s PID:%-6s age:%s\n' "${task}" "${worker}" "${branch}" "${pid}" "${age}"
+    printf '  %-8s %-10s %-12s %s\n' "${pid}" "${age}" "${worker}" "${task}"
     printed=$((printed + 1))
   done < <(in_flight_entries)
   if [[ "${printed}" -eq 0 ]]; then

@@ -385,8 +385,8 @@ unblock_task() {
 
   sync_default_branch
   local assigned_file="${STATE_DIR}/task-assigned/${task_name}.md"
+  annotate_unblocked "${task_file}" "${note}"
   move_task_file "${task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "moved to task-assigned"
-  annotate_unblocked "${assigned_file}" "${note}"
 
   in_flight_remove "${task_name}" ""
   if [[ -n "${worker}" ]]; then
