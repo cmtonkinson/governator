@@ -166,6 +166,25 @@ record_update() {
   UPDATED_FILES+=("${action} ${rel_path}")
 }
 
+# replace_file_atomically
+# Purpose: Replace a file via a temporary copy to avoid partial writes.
+# Args:
+#   $1: Source file path (string).
+#   $2: Destination file path (string).
+# Output: None.
+# Returns: 0 on completion.
+replace_file_atomically() {
+  local source_path="$1"
+  local dest_path="$2"
+  local dest_dir
+  dest_dir="$(dirname "${dest_path}")"
+  mkdir -p "${dest_dir}"
+  local tmp_file
+  tmp_file="$(mktemp "${dest_dir}/.governator-update.XXXXXX")"
+  cp "${source_path}" "${tmp_file}"
+  mv "${tmp_file}" "${dest_path}"
+}
+
 # update_code_file
 # Purpose: Update a code file unconditionally when upstream differs.
 # Args:
@@ -189,8 +208,7 @@ update_code_file() {
   if [[ "${local_sha}" == "${upstream_sha}" ]]; then
     return 0
   fi
-  mkdir -p "$(dirname "${local_path}")"
-  cp "${upstream_path}" "${local_path}"
+  replace_file_atomically "${upstream_path}" "${local_path}"
   record_update "updated" "${rel_path}"
   eval "${updated_ref}=1"
 }
@@ -213,8 +231,7 @@ update_prompt_file() {
   local updated_ref="$5"
 
   if [[ ! -f "${local_path}" ]]; then
-    mkdir -p "$(dirname "${local_path}")"
-    cp "${upstream_path}" "${local_path}"
+    replace_file_atomically "${upstream_path}" "${local_path}"
     record_update "added" "${rel_path}"
     eval "${updated_ref}=1"
     return 0
@@ -230,16 +247,14 @@ update_prompt_file() {
   manifest_sha="$(manifest_sha_for_path "${rel_path}")"
 
   if [[ -n "${manifest_sha}" && "${manifest_sha}" == "${local_sha}" ]]; then
-    mkdir -p "$(dirname "${local_path}")"
-    cp "${upstream_path}" "${local_path}"
+    replace_file_atomically "${upstream_path}" "${local_path}"
     record_update "updated" "${rel_path}"
     eval "${updated_ref}=1"
     return 0
   fi
 
   if confirm_template_action "${rel_path}" "Update local template to upstream version"; then
-    mkdir -p "$(dirname "${local_path}")"
-    cp "${upstream_path}" "${local_path}"
+    replace_file_atomically "${upstream_path}" "${local_path}"
     record_update "updated" "${rel_path}"
     eval "${updated_ref}=1"
   fi
