@@ -91,6 +91,8 @@ assign_pending_tasks() {
     return 0
   fi
 
+  ensure_unblock_planner_task || true
+
   local queues_empty=1
   if [[ "$(count_task_files "${STATE_DIR}/task-backlog")" -gt 0 ]] ||
     [[ "$(count_task_files "${STATE_DIR}/task-assigned")" -gt 0 ]] ||
@@ -163,6 +165,58 @@ assign_pending_tasks() {
     assign_task "${task_file}" "${worker}"
     in_flight_add "${task_name}" "${worker}"
   done < <(list_task_files_in_dir "${STATE_DIR}/task-backlog")
+}
+
+# ensure_unblock_planner_task
+# Purpose: Create a planner task to analyze blocked work when needed.
+# Args: None.
+# Output: Logs task creation and commits changes.
+# Returns: 0 on completion; 1 on failure to copy the template.
+ensure_unblock_planner_task() {
+  local pending=()
+  local task_file
+  while IFS= read -r task_file; do
+    pending+=("${task_file}")
+  done < <(blocked_tasks_needing_unblock)
+
+  if [[ "${#pending[@]}" -eq 0 ]]; then
+    return 0
+  fi
+  if task_exists "${UNBLOCK_PLANNER_TASK}"; then
+    return 0
+  fi
+  if [[ ! -f "${UNBLOCK_PLANNER_TEMPLATE}" ]]; then
+    log_error "Missing unblock planner template at ${UNBLOCK_PLANNER_TEMPLATE}."
+    return 1
+  fi
+  if ! role_exists "${UNBLOCK_PLANNER_ROLE}"; then
+    log_warn "Unknown role ${UNBLOCK_PLANNER_ROLE} for unblock planner task."
+    return 0
+  fi
+
+  local dest="${STATE_DIR}/task-assigned/${UNBLOCK_PLANNER_TASK}.md"
+  cp "${UNBLOCK_PLANNER_TEMPLATE}" "${dest}"
+  annotate_assignment "${dest}" "${UNBLOCK_PLANNER_ROLE}"
+
+  local body=""
+  local entry
+  for entry in "${pending[@]}"; do
+    local task_name
+    task_name="$(basename "${entry}" .md)"
+    local reason
+    reason="$(extract_block_reason "${entry}")"
+    body+="- ${task_name}: ${reason}"$'\n'
+  done
+  if [[ -n "${body}" ]]; then
+    body="${body%$'\n'}"
+    append_section "${dest}" "## Blocked Tasks" "governator" "${body}"
+  fi
+
+  log_task_event "${UNBLOCK_PLANNER_TASK}" "created unblock planner task"
+  git -C "${ROOT_DIR}" add "${dest}" "${AUDIT_LOG}"
+  git -C "${ROOT_DIR}" commit -q -m "[governator] Create unblock planner task"
+  git_push_default_branch
+  return 0
 }
 
 # resume_assigned_tasks

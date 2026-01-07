@@ -95,6 +95,38 @@ extract_block_reason() {
   printf '%s\n' "${reason}"
 }
 
+# blocked_task_has_unblock_marker
+# Purpose: Check if a blocked task already has an unblock note or analysis.
+# Args:
+#   $1: Task file path (string).
+# Output: None.
+# Returns: 0 if the task has an unblock marker; 1 otherwise.
+blocked_task_has_unblock_marker() {
+  local file="$1"
+  if grep -Fq "## Unblock Note" "${file}" 2> /dev/null; then
+    return 0
+  fi
+  if grep -Fq "## Unblock Analysis" "${file}" 2> /dev/null; then
+    return 0
+  fi
+  return 1
+}
+
+# blocked_tasks_needing_unblock
+# Purpose: List blocked tasks that have not been analyzed or unblocked yet.
+# Args: None.
+# Output: Prints matching task file paths to stdout.
+# Returns: 0 on completion.
+blocked_tasks_needing_unblock() {
+  local task_file
+  while IFS= read -r task_file; do
+    if blocked_task_has_unblock_marker "${task_file}"; then
+      continue
+    fi
+    printf '%s\n' "${task_file}"
+  done < <(list_task_files_in_dir "${STATE_DIR}/task-blocked")
+}
+
 # find_task_files
 # Purpose: Find task files across task-* directories by base name pattern.
 # Args:

@@ -620,6 +620,36 @@ EOF
   [ "$status" -eq 0 ]
 }
 
+@test "assign-backlog creates unblock planner task for blocked tasks" {
+  complete_bootstrap
+  write_task "task-blocked" "040-blocked-ruby"
+  commit_all "Add blocked task"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" assign-backlog
+  [ "$status" -eq 0 ]
+
+  [ -f "${REPO_DIR}/_governator/task-assigned/000-unblock-planner.md" ]
+  run grep -F "040-blocked-ruby" "${REPO_DIR}/_governator/task-assigned/000-unblock-planner.md"
+  [ "$status" -eq 0 ]
+}
+
+@test "assign-backlog skips unblock planner task after analysis" {
+  complete_bootstrap
+  write_task "task-blocked" "041-blocked-ruby"
+  cat >> "${REPO_DIR}/_governator/task-blocked/041-blocked-ruby.md" <<'EOF'
+
+## Unblock Analysis
+
+2026-01-01T00:00:00Z [planner]: Needs clarification.
+EOF
+  commit_all "Add analyzed blocked task"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" assign-backlog
+  [ "$status" -eq 0 ]
+
+  [ ! -f "${REPO_DIR}/_governator/task-assigned/000-unblock-planner.md" ]
+}
+
 @test "status summarizes milestone and epic progress" {
   cat > "${REPO_DIR}/_governator/task-done/030-done-ruby.md" <<'EOF'
 ---

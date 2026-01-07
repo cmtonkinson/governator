@@ -211,6 +211,7 @@ A task moves through directories as its state changes:
 4. `task-blocked/`
    - Worker cannot proceed safely
    - Includes a worker-written blocking reason
+   - Governator may schedule a planner analysis task to clarify or unblock
 5. `task-done/`
    - Task accepted and merged into `main`
 6. `task-proposed/`
@@ -338,6 +339,17 @@ planning and review; execution is mechanical.
 
 If a task is ambiguous, it should block. If a decision is architectural,
 it should be explicit. If work cannot be reviewed, it should not be merged.
+
+## Examples
+"Does this thing actually work?" Shockingly, yes.
+- A toy implementation of the [ls command in
+  C](https://gitlab.com/cmtonkinson/governator-example-ls)
+- A [bitcoin trading
+  bot](https://gitlab.com/cmtonkinson/governator-example-arbitrage)
+  proof-of-concept
+
+The trading bot provides a good example of a `GOVERNATOR.md` file, while the ls
+clone shows what the system is capable of producing with even minimal guidance.
 
 ## Hacking
 Use `scripts/all-tests.sh` to run the full suite.
