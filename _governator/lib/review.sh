@@ -1,7 +1,8 @@
 # shellcheck shell=bash
 
 # parse_review_json
-# Purpose: Extract the decision and comments from a review.json file.
+# Purpose: Extract the decision and comments from a review.json file, normalizing
+#   known approval/rejection variants.
 # Args:
 #   $1: Path to review.json (string).
 # Output: Writes decision on first line, followed by zero or more comment lines.
@@ -20,7 +21,22 @@ parse_review_json() {
 
   local result
   result="$(jq -r '.result // ""' "${file}")"
-  printf '%s\n' "${result}"
+  local normalized
+  normalized="$(printf '%s' "${result}" | tr '[:upper:]' '[:lower:]')"
+  case "${normalized}" in
+    accept | accepted | approve | approved | pass)
+      printf '%s\n' "approve"
+      ;;
+    reject | rejected | deny | denied | fail)
+      printf '%s\n' "reject"
+      ;;
+    block | blocked)
+      printf '%s\n' "block"
+      ;;
+    *)
+      printf '%s\n' "${normalized}"
+      ;;
+  esac
   jq -r '.comments // [] | if type == "array" then .[] else . end' "${file}"
 }
 

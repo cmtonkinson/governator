@@ -266,6 +266,60 @@ Branch: ${branch:-n/a}"
   git_push_default_branch
 }
 
+# unblock_task
+# Purpose: Move a blocked task back to assigned with an operator note.
+# Args:
+#   $1: Task prefix (string).
+#   $2+: Unblock note (string).
+# Output: Logs state changes and appends the note to the task file.
+# Returns: 0 on completion; exits 1 if task is not found or not blocked.
+unblock_task() {
+  local prefix="$1"
+  shift || true
+  if [[ -z "${prefix:-}" || -z "${1:-}" ]]; then
+    log_error "Usage: unblock <task-prefix> <note>"
+    exit 1
+  fi
+  local note="$*"
+
+  local task_file
+  if ! task_file="$(task_file_for_prefix "${prefix}")"; then
+    log_error "No task matches prefix ${prefix}"
+    exit 1
+  fi
+
+  local task_name
+  task_name="$(basename "${task_file}" .md)"
+  local task_dir
+  task_dir="$(basename "$(dirname "${task_file}")")"
+  if [[ "${task_dir}" != "task-blocked" ]]; then
+    log_error "Task ${task_name} is not blocked; cannot unblock."
+    exit 1
+  fi
+
+  local worker=""
+  if worker="$(extract_worker_from_task "${task_file}" 2> /dev/null)"; then
+    :
+  else
+    worker=""
+  fi
+
+  sync_default_branch
+  local assigned_file="${STATE_DIR}/task-assigned/${task_name}.md"
+  move_task_file "${task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "moved to task-assigned"
+  annotate_unblocked "${assigned_file}" "${note}"
+
+  in_flight_remove "${task_name}" ""
+  if [[ -n "${worker}" ]]; then
+    worker_process_clear "${task_name}" "${worker}"
+    cleanup_worker_tmp_dirs "${worker}" "${task_name}"
+  fi
+
+  git -C "${ROOT_DIR}" add "${STATE_DIR}"
+  git -C "${ROOT_DIR}" commit -q -m "[governator] Unblock task ${task_name}"
+  git_push_default_branch
+}
+
 # list_available_workers
 # Purpose: List available worker roles.
 # Args: None.
@@ -363,6 +417,19 @@ annotate_blocked() {
   local task_file="$1"
   local reason="$2"
   append_section "${task_file}" "## Governator Block" "governator" "${reason}"
+}
+
+# annotate_unblocked
+# Purpose: Append an unblock note to a task file.
+# Args:
+#   $1: Task file path (string).
+#   $2: Unblock note (string).
+# Output: Writes to the task file.
+# Returns: 0 on success.
+annotate_unblocked() {
+  local task_file="$1"
+  local note="$2"
+  append_section "${task_file}" "## Unblock Note" "governator" "${note}"
 }
 
 # block_task_from_backlog

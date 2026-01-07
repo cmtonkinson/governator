@@ -169,6 +169,7 @@ Public commands:
   status   Show queue counts, in-flight workers, and blocked tasks.
   lock     Prevent new activity from starting and show a work snapshot.
   unlock   Resume activity after a lock.
+  unblock  Move a blocked task back to assigned with a note.
 
 Options:
   -h, --help   Show this help message.
@@ -254,6 +255,16 @@ dispatch_subcommand() {
         exit 1
       fi
       abort_task "${1}"
+      ;;
+    unblock)
+      ensure_ready_no_lock
+      if [[ -z "${1:-}" || -z "${2:-}" ]]; then
+        log_error "Usage: unblock <task-prefix> <note>"
+        exit 1
+      fi
+      local prefix="${1}"
+      shift
+      unblock_task "${prefix}" "$@"
       ;;
     process-branches)
       run_locked_action "processing worker branches" process_branches_action

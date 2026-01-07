@@ -422,6 +422,35 @@ EOF
   [ "${lines[2]}" = "b" ]
 }
 
+@test "parse-review normalizes approval, rejection, and block variants" {
+  cat > "${REPO_DIR}/review.json" <<'EOF'
+{"result":"Accepted","comments":[]}
+EOF
+  commit_paths "Add approval variant" "review.json"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" parse-review "${REPO_DIR}/review.json"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "approve" ]
+
+  cat > "${REPO_DIR}/review.json" <<'EOF'
+{"result":"Denied","comments":[]}
+EOF
+  commit_paths "Add rejection variant" "review.json"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" parse-review "${REPO_DIR}/review.json"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "reject" ]
+
+  cat > "${REPO_DIR}/review.json" <<'EOF'
+{"result":"Blocked","comments":[]}
+EOF
+  commit_paths "Add block variant" "review.json"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" parse-review "${REPO_DIR}/review.json"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "block" ]
+}
+
 @test "parse-review coerces non-list comments" {
   cat > "${REPO_DIR}/review.json" <<'EOF'
 {"result":"reject","comments":"needs work"}
@@ -805,4 +834,19 @@ EOF
   [ "$status" -ne 0 ]
 
   [ ! -f "${ORIGIN_DIR}/refs/heads/worker/ruby/019-abort-ruby" ]
+}
+
+@test "unblock moves blocked task to assigned with note" {
+  write_task "task-blocked" "022-unblock-ruby"
+  commit_all "Add blocked task"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" unblock "022" "Needs another pass"
+  [ "$status" -eq 0 ]
+
+  [ -f "${REPO_DIR}/_governator/task-assigned/022-unblock-ruby.md" ]
+  [ ! -f "${REPO_DIR}/_governator/task-blocked/022-unblock-ruby.md" ]
+  run grep -F "Unblock Note" "${REPO_DIR}/_governator/task-assigned/022-unblock-ruby.md"
+  [ "$status" -eq 0 ]
+  run grep -F "Needs another pass" "${REPO_DIR}/_governator/task-assigned/022-unblock-ruby.md"
+  [ "$status" -eq 0 ]
 }
