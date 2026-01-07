@@ -120,3 +120,8 @@ You MUST update/complete the `review.json` file at the project root using strict
 JSON only. This file has been seeded with an example template. No other formats
 are accepted. No additional markup, commentary, formatting, or explanations are
 allowed.
+
+_Note:_ The only acceptable values for the key `result` in the JSON are:
+- "approve"
+- "reject"
+- "block"

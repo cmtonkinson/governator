@@ -47,14 +47,15 @@ You must not:
 - Modify any other branch or tag.
 - Push partial or exploratory work.
 
-The seven rules of writing git commit messages:
-1. Separate subject from body with a blank line
-2. Limit the subject line to 50 characters
-3. Capitalize the subject line
-4. Do not end the subject line with a period
-5. Use the imperative mood in the subject line
-6. Wrap the body at 72 characters
-7. Use the body to explain what and why vs. how
+The eight rules of writing git commit messages:
+1. You MUST prefix your git commit message with the string "[governator] "
+2. Separate subject from body with a blank line
+3. Limit the subject line to 50 characters
+4. Capitalize the subject line
+5. Do not end the subject line with a period
+6. Use the imperative mood in the subject line
+7. Wrap the body at 72 characters
+8. Use the body to explain what and why vs. how
 
 ## 5. Blocking Conditions
 You must block the task if you cannot proceed safely and correctly. Blocking
@@ -75,7 +76,7 @@ Do not make speculative changes when blocked.
 
 ## 6. Completing the Task
 When you believe the task is complete:
-1. Append a section titled `## Worker Summary` to the task file.
+1. Append a section titled `## Change Summary` to the task file.
 - Describe what was changed.
 - Note any assumptions made.
 - Mention potential follow-up concerns without creating tasks for them.
