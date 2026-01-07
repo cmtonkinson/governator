@@ -350,9 +350,9 @@ it should be explicit. If work cannot be reviewed, it should not be merged.
 ## Examples
 "Does this thing actually work?" Shockingly, yes.
 - A toy implementation of the [ls command in
-  C](https://gitlab.com/cmtonkinson/governator-example-ls)
+  C](https://github.com/cmtonkinson/governator-example-ls)
 - A [bitcoin trading
-  bot](https://gitlab.com/cmtonkinson/governator-example-arbitrage)
+  bot](https://github.com/cmtonkinson/governator-example-arbitrage)
   proof-of-concept
 
 The trading bot provides a good example of a `GOVERNATOR.md` file, while the ls
