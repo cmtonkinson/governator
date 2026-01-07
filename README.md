@@ -1,7 +1,7 @@
 # Governator
 The agentic anti-swarm (read: just a state machine)
 
-[![pipeline status](https://gitlab.com/cmtonkinson/governator/badges/main/pipeline.svg)](https://gitlab.com/cmtonkinson/governator/pipelines)
+[![CI](https://github.com/cmtonkinson/governator/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cmtonkinson/governator/actions/workflows/ci.yml)
 
 ![Governator](img/governator_512.png)
 
@@ -29,7 +29,7 @@ state, intent, decisions, and artifacts live on disk and in git.
 From your project root, run:
 
 ```bash
-curl -fsSL https://gitlab.com/cmtonkinson/governator/-/archive/main/governator-main.tar.gz \
+curl -fsSL https://github.com/cmtonkinson/governator/archive/refs/heads/main.tar.gz \
   | tar -xz --strip-components=1 -f - governator-main/_governator
 ```
 
@@ -367,7 +367,3 @@ Dependencies for development testing live in `scripts/common.sh` and include:
 Governator also exposes "hidden" subcommands (for targeted testing and ops
 drills). They are intentionally undocumented; check `_governator/governator.sh`
 for the full list and behavior.
-
-### GitLab CI
-
-The included `.gitlab-ci.yml` job runs `./scripts/all-tests.sh`.

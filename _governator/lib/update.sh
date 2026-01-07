@@ -364,7 +364,7 @@ update_governator() {
   }
   trap cleanup EXIT
 
-  local tar_url="https://gitlab.com/cmtonkinson/governator/-/archive/main/governator-main.tar.gz"
+  local tar_url="https://github.com/cmtonkinson/governator/archive/refs/heads/main.tar.gz"
   if ! curl -fsSL "${tar_url}" | tar -xz -C "${UPDATE_TMP_ROOT}" --strip-components=1 -f - governator-main/_governator; then
     log_error "Failed to download ${tar_url}"
     exit 1

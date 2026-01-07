@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            git \
+            curl \
+            ca-certificates \
+            wget \
+            shellcheck \
+            shfmt \
+            jq
+          git clone https://github.com/bats-core/bats-core.git /tmp/bats-core
+          /tmp/bats-core/install.sh /usr/local
+      - name: Run test suite
+        run: ./scripts/all-tests.sh
