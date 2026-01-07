@@ -67,6 +67,16 @@ bootstrap_task_path() {
       return 0
     fi
   done < <(find_task_files "${BOOTSTRAP_TASK_NAME}" || true)
+
+  local archived
+  archived="$(
+    find "${STATE_DIR}/task-archive" -maxdepth 1 -type f \
+      -name "${BOOTSTRAP_TASK_NAME}-*.md" 2> /dev/null | sort | tail -n 1
+  )"
+  if [[ -n "${archived}" ]]; then
+    printf '%s\n' "${archived}"
+    return 0
+  fi
   return 1
 }
 
@@ -343,7 +353,7 @@ architecture_bootstrap_complete() {
   if ! task_dir="$(bootstrap_task_dir)"; then
     return 1
   fi
-  if [[ "${task_dir}" != "task-done" ]]; then
+  if [[ "${task_dir}" != "task-done" && "${task_dir}" != "task-archive" ]]; then
     return 1
   fi
   if ! bootstrap_requirements_met; then
@@ -373,7 +383,7 @@ complete_bootstrap_task_if_ready() {
   fi
   local task_dir
   task_dir="$(basename "$(dirname "${task_file}")")"
-  if [[ "${task_dir}" == "task-done" ]]; then
+  if [[ "${task_dir}" == "task-done" || "${task_dir}" == "task-archive" ]]; then
     return 0
   fi
   move_task_file "${task_file}" "${STATE_DIR}/task-done" "${BOOTSTRAP_TASK_NAME}" "moved to task-done"

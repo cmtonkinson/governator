@@ -964,3 +964,37 @@ EOF
   [ "$status" -eq 0 ]
   [ -z "${output}" ]
 }
+
+@test "bootstrap treats archived bootstrap task as complete" {
+  complete_bootstrap
+
+  run bash -c "
+    set -euo pipefail
+    ROOT_DIR=\"${REPO_DIR}\"
+    STATE_DIR=\"${REPO_DIR}/_governator\"
+    DB_DIR=\"${REPO_DIR}/.governator\"
+    AUDIT_LOG=\"${REPO_DIR}/.governator/audit.log\"
+    PROJECT_MODE_FILE=\"${REPO_DIR}/.governator/project_mode\"
+    DEFAULT_BRANCH_FILE=\"${REPO_DIR}/.governator/default_branch\"
+    REMOTE_NAME_FILE=\"${REPO_DIR}/.governator/remote_name\"
+    DEFAULT_REMOTE_NAME=\"origin\"
+    DEFAULT_BRANCH_NAME=\"main\"
+    BOOTSTRAP_TASK_NAME=\"000-architecture-bootstrap-architect\"
+    BOOTSTRAP_DOCS_DIR=\"${REPO_DIR}/_governator/docs\"
+    BOOTSTRAP_NEW_REQUIRED_ARTIFACTS=(\"asr.md\" \"arc42.md\")
+    BOOTSTRAP_NEW_OPTIONAL_ARTIFACTS=(\"personas.md\" \"wardley.md\")
+    BOOTSTRAP_EXISTING_REQUIRED_ARTIFACTS=(\"existing-system-discovery.md\")
+    BOOTSTRAP_EXISTING_OPTIONAL_ARTIFACTS=()
+    GOV_QUIET=1
+    GOV_VERBOSE=0
+    source \"${REPO_DIR}/_governator/lib/utils.sh\"
+    source \"${REPO_DIR}/_governator/lib/logging.sh\"
+    source \"${REPO_DIR}/_governator/lib/config.sh\"
+    source \"${REPO_DIR}/_governator/lib/git.sh\"
+    source \"${REPO_DIR}/_governator/lib/tasks.sh\"
+    source \"${REPO_DIR}/_governator/lib/bootstrap.sh\"
+    archive_done_system_tasks
+    architecture_bootstrap_complete
+  "
+  [ "$status" -eq 0 ]
+}
