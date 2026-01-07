@@ -608,6 +608,18 @@ EOF
   [ "$status" -ne 0 ]
 }
 
+@test "status reports project done when checks are up to date" {
+  done_sha="$(repo_git hash-object "${REPO_DIR}/GOVERNATOR.md")"
+  printf '%s\n' "${done_sha}" > "${REPO_DIR}/.governator/project_done"
+  commit_paths "Set project done" ".governator/project_done"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" status
+  local status_output="${output}"
+  [ "$status" -eq 0 ]
+  run grep -F "Project status: DONE" <<< "${status_output}"
+  [ "$status" -eq 0 ]
+}
+
 @test "status summarizes milestone and epic progress" {
   cat > "${REPO_DIR}/_governator/task-done/030-done-ruby.md" <<'EOF'
 ---

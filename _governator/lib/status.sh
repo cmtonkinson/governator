@@ -24,6 +24,41 @@ print_task_queue_summary() {
   done
 }
 
+# print_project_status
+# Purpose: Print a project-level completion status summary.
+# Args: None.
+# Output: Writes the project status line to stdout.
+# Returns: 0 on completion.
+print_project_status() {
+  local backlog_count
+  backlog_count="$(count_task_files "${STATE_DIR}/task-backlog")"
+  local assigned_count
+  assigned_count="$(count_task_files "${STATE_DIR}/task-assigned")"
+  local worked_count
+  worked_count="$(count_task_files "${STATE_DIR}/task-worked")"
+  local blocked_count
+  blocked_count="$(count_task_files "${STATE_DIR}/task-blocked")"
+  local pending_total=$((backlog_count + assigned_count + worked_count + blocked_count))
+
+  local done_check_due=1
+  if done_check_needed; then
+    done_check_due=1
+  else
+    done_check_due=0
+  fi
+
+  local done_label="due"
+  if [[ "${done_check_due}" -eq 0 ]]; then
+    done_label="up-to-date"
+  fi
+
+  if [[ "${pending_total}" -eq 0 && "${done_check_due}" -eq 0 ]]; then
+    printf 'Project status: DONE (done check %s; pending tasks %s)\n' "${done_label}" "${pending_total}"
+  else
+    printf 'Project status: IN PROGRESS (done check %s; pending tasks %s)\n' "${done_label}" "${pending_total}"
+  fi
+}
+
 # format_task_label
 # Purpose: Format a task label for status output.
 # Args:
@@ -302,6 +337,8 @@ print_inflight_summary() {
 # Output: Writes snapshot to stdout.
 # Returns: 0 on completion.
 print_activity_snapshot() {
+  print_project_status
+  printf '\n'
   print_inflight_summary
   printf '\n'
   print_milestone_epic_summary
@@ -336,6 +373,8 @@ status_dashboard() {
   else
     log_warn 'Failed to fetch remote refs for status'
   fi
+  print_project_status
+  printf '\n'
   print_task_queue_summary
   printf '\n'
   print_inflight_summary
