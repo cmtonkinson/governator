@@ -24,27 +24,162 @@ read_numeric_file() {
   printf '%s\n' "${value}"
 }
 
-# read_config_value
-# Purpose: Read a single-line config value with fallback and trimming.
+# config_json_read_value
+# Purpose: Read a scalar value from the config.json file with fallback.
 # Args:
-#   $1: Path to file (string).
-#   $2: Fallback value (string).
-# Output: Prints the trimmed value or fallback to stdout.
+#   $1: Dot-delimited key path (string).
+#   $2: Fallback value (string or integer).
+# Output: Prints the value or fallback to stdout.
 # Returns: 0 always.
-read_config_value() {
-  local file="$1"
+config_json_read_value() {
+  local key_path="$1"
   local fallback="$2"
-  if [[ ! -f "${file}" ]]; then
+  if [[ ! -f "${CONFIG_FILE}" ]]; then
     printf '%s\n' "${fallback}"
     return 0
   fi
   local value
-  value="$(tr -d '[:space:]' < "${file}")"
-  if [[ -z "${value}" ]]; then
+  if ! value="$(
+    jq -r --arg path "${key_path}" --arg fallback "${fallback}" \
+      'getpath($path | split(".")) // $fallback
+       | if (type == "string" or type == "number") then . else $fallback end' \
+      "${CONFIG_FILE}" 2> /dev/null
+  )"; then
     printf '%s\n' "${fallback}"
     return 0
   fi
   printf '%s\n' "${value}"
+}
+
+# config_json_read_map_value
+# Purpose: Read a map entry from config.json with a per-map default.
+# Args:
+#   $1: Map key (string).
+#   $2: Entry key (string).
+#   $3: Default key within the map (string).
+#   $4: Fallback value (string or integer).
+# Output: Prints the entry value, map default, or fallback to stdout.
+# Returns: 0 always.
+config_json_read_map_value() {
+  local map_key="$1"
+  local entry_key="$2"
+  local default_key="$3"
+  local fallback="$4"
+  if [[ ! -f "${CONFIG_FILE}" ]]; then
+    printf '%s\n' "${fallback}"
+    return 0
+  fi
+  local value
+  if ! value="$(
+    jq -r --arg map "${map_key}" --arg entry "${entry_key}" \
+      --arg def "${default_key}" --arg fallback "${fallback}" \
+      '(.[$map] // {}) as $m
+       | ($m[$entry] // $m[$def] // $fallback)
+       | if (type == "string" or type == "number") then . else $fallback end' \
+      "${CONFIG_FILE}" 2> /dev/null
+  )"; then
+    printf '%s\n' "${fallback}"
+    return 0
+  fi
+  printf '%s\n' "${value}"
+}
+
+# config_json_write_value
+# Purpose: Write a scalar value into config.json at the given dot path.
+# Args:
+#   $1: Dot-delimited key path (string).
+#   $2: Value to write (string).
+#   $3: Value type ("string" or "number").
+# Output: None.
+# Returns: 0 on success.
+config_json_write_value() {
+  local key_path="$1"
+  local value="$2"
+  local value_type="${3:-string}"
+  local tmp_file
+  tmp_file="$(mktemp "${DB_DIR}/config.XXXXXX")"
+  local safe_value="${value}"
+  local jq_args=()
+  local jq_value_expr
+  if [[ "${value_type}" == "number" ]]; then
+    if [[ ! "${safe_value}" =~ ^-?[0-9]+$ ]]; then
+      safe_value=0
+    fi
+    jq_args=(--argjson value "${safe_value}")
+    jq_value_expr='$value'
+  else
+    jq_args=(--arg value "${safe_value}")
+    jq_value_expr='$value'
+  fi
+
+  if [[ -f "${CONFIG_FILE}" ]] && jq -e . "${CONFIG_FILE}" > /dev/null 2>&1; then
+    jq -S --arg path "${key_path}" "${jq_args[@]}" \
+      "setpath(\$path | split(\".\"); ${jq_value_expr})" \
+      "${CONFIG_FILE}" > "${tmp_file}"
+  else
+    jq -S -n --arg path "${key_path}" "${jq_args[@]}" \
+      "setpath(\$path | split(\".\"); ${jq_value_expr})" \
+      > "${tmp_file}"
+  fi
+  mv "${tmp_file}" "${CONFIG_FILE}"
+}
+
+# config_json_write_map_value
+# Purpose: Write a map entry into config.json.
+# Args:
+#   $1: Map key (string).
+#   $2: Entry key (string).
+#   $3: Value to write (string).
+#   $4: Value type ("string" or "number").
+# Output: None.
+# Returns: 0 on success.
+config_json_write_map_value() {
+  local map_key="$1"
+  local entry_key="$2"
+  local value="$3"
+  local value_type="${4:-string}"
+  local tmp_file
+  tmp_file="$(mktemp "${DB_DIR}/config.XXXXXX")"
+  local safe_value="${value}"
+  local jq_args=()
+  local jq_value_expr
+  if [[ "${value_type}" == "number" ]]; then
+    if [[ ! "${safe_value}" =~ ^-?[0-9]+$ ]]; then
+      safe_value=0
+    fi
+    jq_args=(--argjson value "${safe_value}")
+    jq_value_expr='$value'
+  else
+    jq_args=(--arg value "${safe_value}")
+    jq_value_expr='$value'
+  fi
+
+  if [[ -f "${CONFIG_FILE}" ]] && jq -e . "${CONFIG_FILE}" > /dev/null 2>&1; then
+    jq -S --arg map "${map_key}" --arg entry "${entry_key}" "${jq_args[@]}" \
+      "setpath([\$map, \$entry]; ${jq_value_expr})" \
+      "${CONFIG_FILE}" > "${tmp_file}"
+  else
+    jq -S -n --arg map "${map_key}" --arg entry "${entry_key}" "${jq_args[@]}" \
+      "setpath([\$map, \$entry]; ${jq_value_expr})" \
+      > "${tmp_file}"
+  fi
+  mv "${tmp_file}" "${CONFIG_FILE}"
+}
+
+# ensure_config_file
+# Purpose: Ensure the config.json file exists, copying the template if missing.
+# Args: None.
+# Output: None.
+# Returns: 0 on completion.
+ensure_config_file() {
+  if [[ -f "${CONFIG_FILE}" ]]; then
+    return 0
+  fi
+  if [[ ! -f "${CONFIG_TEMPLATE}" ]]; then
+    log_error "Missing config template at ${CONFIG_TEMPLATE}."
+    return 1
+  fi
+  cp "${CONFIG_TEMPLATE}" "${CONFIG_FILE}"
 }
 
 # read_project_mode
@@ -53,11 +188,8 @@ read_config_value() {
 # Output: Prints the project mode to stdout.
 # Returns: 0 if valid mode exists; 1 otherwise.
 read_project_mode() {
-  if [[ ! -f "${PROJECT_MODE_FILE}" ]]; then
-    return 1
-  fi
   local value
-  value="$(tr -d '[:space:]' < "${PROJECT_MODE_FILE}")"
+  value="$(config_json_read_value "project_mode" "")"
   if [[ "${value}" != "new" && "${value}" != "existing" ]]; then
     return 1
   fi
@@ -108,7 +240,7 @@ init_governator() {
   ensure_db_dir
   ensure_gitignore_entries
   if read_project_mode > /dev/null 2>&1; then
-    log_error "Governator is already initialized. Re-run init after clearing ${PROJECT_MODE_FILE}."
+    log_error "Governator is already initialized. Re-run init after clearing ${CONFIG_FILE}."
     exit 1
   fi
 
@@ -193,9 +325,9 @@ init_governator() {
     fi
   fi
 
-  printf '%s\n' "${project_mode}" > "${PROJECT_MODE_FILE}"
-  printf '%s\n' "${remote_name}" > "${REMOTE_NAME_FILE}"
-  printf '%s\n' "${default_branch}" > "${DEFAULT_BRANCH_FILE}"
+  config_json_write_value "project_mode" "${project_mode}" "string"
+  config_json_write_value "remote_name" "${remote_name}" "string"
+  config_json_write_value "default_branch" "${default_branch}" "string"
 
   write_manifest "${ROOT_DIR}" "${STATE_DIR}" "${MANIFEST_FILE}"
 
@@ -216,7 +348,13 @@ init_governator() {
 # Output: Prints the remote name to stdout.
 # Returns: 0 always.
 read_remote_name() {
-  read_config_value "${REMOTE_NAME_FILE}" "${DEFAULT_REMOTE_NAME}"
+  local value
+  value="$(config_json_read_value "remote_name" "")"
+  if [[ -z "${value}" ]]; then
+    printf '%s\n' "${DEFAULT_REMOTE_NAME}"
+    return 0
+  fi
+  printf '%s\n' "${value}"
 }
 
 # read_default_branch
@@ -225,16 +363,28 @@ read_remote_name() {
 # Output: Prints the branch name to stdout.
 # Returns: 0 always.
 read_default_branch() {
-  read_config_value "${DEFAULT_BRANCH_FILE}" "${DEFAULT_BRANCH_NAME}"
+  local value
+  value="$(config_json_read_value "default_branch" "")"
+  if [[ -z "${value}" ]]; then
+    printf '%s\n' "${DEFAULT_BRANCH_NAME}"
+    return 0
+  fi
+  printf '%s\n' "${value}"
 }
 
 # read_global_cap
-# Purpose: Read the global worker concurrency cap.
+# Purpose: Read the global worker concurrency cap from worker_caps.global.
 # Args: None.
 # Output: Prints the cap value to stdout.
 # Returns: 0 always.
 read_global_cap() {
-  read_numeric_file "${GLOBAL_CAP_FILE}" "${DEFAULT_GLOBAL_CAP}"
+  local value
+  value="$(config_json_read_map_value "worker_caps" "global" "global" "${DEFAULT_GLOBAL_CAP}")"
+  if [[ -z "${value}" || ! "${value}" =~ ^[0-9]+$ ]]; then
+    printf '%s\n' "${DEFAULT_GLOBAL_CAP}"
+    return 0
+  fi
+  printf '%s\n' "${value}"
 }
 
 # read_worker_timeout_seconds
@@ -243,36 +393,54 @@ read_global_cap() {
 # Output: Prints the timeout to stdout.
 # Returns: 0 always.
 read_worker_timeout_seconds() {
-  read_numeric_file "${WORKER_TIMEOUT_FILE}" "${DEFAULT_WORKER_TIMEOUT_SECONDS}"
+  local value
+  value="$(config_json_read_value "worker_timeout_seconds" "${DEFAULT_WORKER_TIMEOUT_SECONDS}")"
+  if [[ -z "${value}" || ! "${value}" =~ ^[0-9]+$ ]]; then
+    printf '%s\n' "${DEFAULT_WORKER_TIMEOUT_SECONDS}"
+    return 0
+  fi
+  printf '%s\n' "${value}"
 }
 
 # read_completion_check_cooldown_seconds
-# Purpose: Read the completion-check cooldown in seconds.
+# Purpose: Read the completion-check cooldown in seconds from done_check config.
 # Args: None.
 # Output: Prints the cooldown value to stdout.
 # Returns: 0 always.
 read_completion_check_cooldown_seconds() {
-  read_numeric_file "${DONE_CHECK_COOLDOWN_FILE}" "3600"
+  local value
+  value="$(config_json_read_value "done_check.cooldown_seconds" "3600")"
+  if [[ -z "${value}" || ! "${value}" =~ ^[0-9]+$ ]]; then
+    printf '%s\n' "3600"
+    return 0
+  fi
+  printf '%s\n' "${value}"
 }
 
 # read_completion_check_last_run
-# Purpose: Read the last completion-check run timestamp.
+# Purpose: Read the last completion-check run timestamp from done_check config.
 # Args: None.
 # Output: Prints the timestamp to stdout.
 # Returns: 0 always.
 read_completion_check_last_run() {
-  read_numeric_file "${DONE_CHECK_LAST_RUN_FILE}" "0"
+  local value
+  value="$(config_json_read_value "done_check.last_check" "0")"
+  if [[ -z "${value}" || ! "${value}" =~ ^[0-9]+$ ]]; then
+    printf '%s\n' "0"
+    return 0
+  fi
+  printf '%s\n' "${value}"
 }
 
 # write_completion_check_last_run
-# Purpose: Persist the last completion-check run timestamp.
+# Purpose: Persist the last completion-check run timestamp to done_check config.
 # Args:
 #   $1: Unix timestamp (string or integer).
 # Output: None.
 # Returns: 0 on success.
 write_completion_check_last_run() {
   local timestamp="$1"
-  printf '%s\n' "${timestamp}" > "${DONE_CHECK_LAST_RUN_FILE}"
+  config_json_write_value "done_check.last_check" "${timestamp}" "number"
 }
 
 # read_last_update_at
@@ -306,27 +474,29 @@ write_last_update_at() {
 }
 
 # read_project_done_sha
-# Purpose: Read the stored GOVERNATOR.md hash for completion checks.
+# Purpose: Read the stored GOVERNATOR.md hash for completion checks from done_check config.
 # Args: None.
 # Output: Prints the SHA or empty string to stdout.
 # Returns: 0 always.
 read_project_done_sha() {
-  if [[ ! -f "${PROJECT_DONE_FILE}" ]]; then
+  local value
+  value="$(config_json_read_value "done_check.done_hash" "")"
+  if [[ -z "${value}" ]]; then
     printf '%s\n' ""
     return 0
   fi
-  trim_whitespace "$(cat "${PROJECT_DONE_FILE}")"
+  trim_whitespace "${value}"
 }
 
 # write_project_done_sha
-# Purpose: Write the stored GOVERNATOR.md hash for completion checks.
+# Purpose: Write the stored GOVERNATOR.md hash for completion checks to done_check config.
 # Args:
 #   $1: Git hash string (string, may be empty).
 # Output: None.
 # Returns: 0 on success.
 write_project_done_sha() {
   local sha="$1"
-  printf '%s\n' "${sha}" > "${PROJECT_DONE_FILE}"
+  config_json_write_value "done_check.done_hash" "${sha}" "string"
 }
 
 # governator_doc_sha
@@ -347,81 +517,36 @@ governator_doc_sha() {
 read_reasoning_effort() {
   local role="$1"
   local fallback="medium"
-  if [[ ! -f "${REASONING_EFFORT_FILE}" ]]; then
-    printf '%s\n' "${fallback}"
-    return 0
-  fi
-
   local value
-  value="$(
-    awk -v role="${role}" -v fallback="${fallback}" '
-      BEGIN { default=fallback; found=0 }
-      $0 ~ /^[[:space:]]*#/ { next }
-      $0 ~ /^[[:space:]]*$/ { next }
-      $0 ~ /^[[:space:]]*[^:]+[[:space:]]*:[[:space:]]*[^[:space:]]+[[:space:]]*$/ {
-        split($0, parts, ":")
-        key = parts[1]
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
-        val = parts[2]
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
-        if (key == "default") {
-          default = val
-          next
-        }
-        if (key == role) {
-          found = 1
-          print val
-        }
-      }
-      END {
-        if (found == 0) {
-          print default
-        }
-      }
-    ' "${REASONING_EFFORT_FILE}" || true
-  )"
+  value="$(config_json_read_map_value "reasoning_effort" "${role}" "default" "${fallback}")"
 
   if [[ -z "${value}" ]]; then
     printf '%s\n' "${fallback}"
     return 0
   fi
-  printf '%s\n' "${value}"
+  case "${value}" in
+    low|medium|high)
+      printf '%s\n' "${value}"
+      return 0
+      ;;
+    *)
+      printf '%s\n' "${fallback}"
+      return 0
+      ;;
+  esac
 }
 
 # read_worker_cap
-# Purpose: Read the per-role worker concurrency cap.
+# Purpose: Read the per-role worker concurrency cap, falling back to global.
 # Args:
 #   $1: Role name (string).
 # Output: Prints the cap value to stdout.
 # Returns: 0 always; falls back to default on missing/invalid data.
 read_worker_cap() {
   local role="$1"
-  if [[ ! -f "${WORKER_CAPS_FILE}" ]]; then
-    printf '%s\n' "${DEFAULT_WORKER_CAP}"
-    return 0
-  fi
-
   local cap
-  cap="$(
-    awk -v role="${role}" '
-      $0 ~ /^[[:space:]]*#/ { next }
-      $0 ~ /^[[:space:]]*$/ { next }
-      $0 ~ /^[[:space:]]*[^:]+[[:space:]]*:[[:space:]]*[0-9]+[[:space:]]*$/ {
-        split($0, parts, ":")
-        key = parts[1]
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
-        if (key == role) {
-          val = parts[2]
-          gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
-          print val
-          exit 0
-        }
-      }
-      END { exit 1 }
-    ' "${WORKER_CAPS_FILE}" || true
-  )"
-
-  if [[ -z "${cap}" ]]; then
+  cap="$(config_json_read_map_value "worker_caps" "${role}" "global" "${DEFAULT_WORKER_CAP}")"
+  if [[ -z "${cap}" || ! "${cap}" =~ ^[0-9]+$ ]]; then
     printf '%s\n' "${DEFAULT_WORKER_CAP}"
     return 0
   fi
@@ -441,19 +566,7 @@ ensure_db_dir() {
   touch "${AUDIT_LOG}"
   touch "${WORKER_PROCESSES_LOG}" "${RETRY_COUNTS_LOG}"
   ensure_migrations_state_file
-  if [[ ! -f "${WORKER_TIMEOUT_FILE}" ]]; then
-    printf '%s\n' "${DEFAULT_WORKER_TIMEOUT_SECONDS}" > "${WORKER_TIMEOUT_FILE}"
-  fi
-  if [[ ! -f "${REASONING_EFFORT_FILE}" ]]; then
-    {
-      printf '%s\n' "# Role-based reasoning effort for Codex workers."
-      printf '%s\n' "# Allowed values: low | medium | high."
-      printf '%s\n' "default: medium"
-    } > "${REASONING_EFFORT_FILE}"
-  fi
-  if [[ ! -f "${WORKER_CAPS_FILE}" ]]; then
-    printf '%s\n' "# Per-role worker caps, formatted as role: number" > "${WORKER_CAPS_FILE}"
-  fi
+  ensure_config_file
 }
 
 # touch_logs

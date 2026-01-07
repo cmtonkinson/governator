@@ -28,7 +28,7 @@ List concrete, testable requirements.
 - Avoid subjective language (“clean”, “nice”, “elegant”)
 
 Example:
-- [ ] Configuration is read from `.governator/default_branch`
+- [ ] Configuration is read from `.governator/config.json`
 - [ ] Script exits non-zero on failure
 - [ ] No new runtime dependencies introduced
 
@@ -64,4 +64,3 @@ Example:
 =============================================================================
 
 ## Notes
-

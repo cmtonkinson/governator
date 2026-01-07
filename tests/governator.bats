@@ -79,8 +79,61 @@ EOF
 }
 
 set_next_task_id() {
-  printf '%s\n' "$1" > "${REPO_DIR}/.governator/next_task_id"
-  commit_paths "Set task id" ".governator/next_task_id"
+  set_config_value "next_task_id" "$1" "number"
+  commit_paths "Set task id" ".governator/config.json"
+}
+
+set_config_value() {
+  local key_path="$1"
+  local value="$2"
+  local value_type="${3:-string}"
+  local tmp_file
+  tmp_file="$(mktemp "${BATS_TMPDIR}/config.XXXXXX")"
+  local safe_value="${value}"
+  local jq_args=()
+  local jq_value_expr
+  if [[ "${value_type}" == "number" ]]; then
+    if [[ ! "${safe_value}" =~ ^-?[0-9]+$ ]]; then
+      safe_value=0
+    fi
+    jq_args=(--argjson value "${safe_value}")
+    jq_value_expr='$value'
+  else
+    jq_args=(--arg value "${safe_value}")
+    jq_value_expr='$value'
+  fi
+
+  jq -S --arg path "${key_path}" "${jq_args[@]}" \
+    "setpath(\$path | split(\".\"); ${jq_value_expr})" \
+    "${REPO_DIR}/.governator/config.json" > "${tmp_file}"
+  mv "${tmp_file}" "${REPO_DIR}/.governator/config.json"
+}
+
+set_config_map_value() {
+  local map_key="$1"
+  local entry_key="$2"
+  local value="$3"
+  local value_type="${4:-string}"
+  local tmp_file
+  tmp_file="$(mktemp "${BATS_TMPDIR}/config.XXXXXX")"
+  local safe_value="${value}"
+  local jq_args=()
+  local jq_value_expr
+  if [[ "${value_type}" == "number" ]]; then
+    if [[ ! "${safe_value}" =~ ^-?[0-9]+$ ]]; then
+      safe_value=0
+    fi
+    jq_args=(--argjson value "${safe_value}")
+    jq_value_expr='$value'
+  else
+    jq_args=(--arg value "${safe_value}")
+    jq_value_expr='$value'
+  fi
+
+  jq -S --arg map "${map_key}" --arg entry "${entry_key}" "${jq_args[@]}" \
+    "setpath([\$map, \$entry]; ${jq_value_expr})" \
+    "${REPO_DIR}/.governator/config.json" > "${tmp_file}"
+  mv "${tmp_file}" "${REPO_DIR}/.governator/config.json"
 }
 
 setup() {
@@ -103,8 +156,8 @@ setup() {
   repo_git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
   repo_git push -u origin main >/dev/null
 
-  printf '%s\n' "new" > "${REPO_DIR}/.governator/project_mode"
-  commit_paths "Set project mode" ".governator/project_mode"
+  set_config_value "project_mode" "new"
+  commit_paths "Set project mode" ".governator/config.json"
 
   cat > "${BIN_DIR}/codex" <<'EOF'
 #!/usr/bin/env bash
@@ -171,8 +224,8 @@ EOF
   complete_bootstrap
   write_task "task-backlog" "005-cap-ruby"
   echo "006-busy-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
-  printf '%s\n' "2" > "${REPO_DIR}/.governator/global_worker_cap"
-  printf '%s\n' "ruby: 1" > "${REPO_DIR}/.governator/worker_caps"
+  set_config_map_value "worker_caps" "global" "2" "number"
+  set_config_map_value "worker_caps" "ruby" "1" "number"
   commit_all "Prepare worker cap"
 
   run bash "${REPO_DIR}/_governator/governator.sh" assign-backlog
@@ -223,7 +276,7 @@ EOF
   mkdir -p "${active_dir}" "${stale_dir}"
   touch -t 202001010000 "${stale_dir}"
 
-  printf '%s\n' "1" > "${REPO_DIR}/.governator/worker_timeout_seconds"
+  set_config_value "worker_timeout_seconds" "1" "number"
   echo "009-cleanup-ruby | ruby | 1234 | ${active_dir} | worker/ruby/009-cleanup-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
   commit_all "Prepare cleanup dirs"
 
@@ -309,8 +362,7 @@ EOF
     PROJECT_NAME=\"${project_name}\"
     DEFAULT_REMOTE_NAME=\"origin\"
     DEFAULT_BRANCH_NAME=\"main\"
-    REMOTE_NAME_FILE=\"\${DB_DIR}/remote_name\"
-    DEFAULT_BRANCH_FILE=\"\${DB_DIR}/default_branch\"
+    CONFIG_FILE=\"\${DB_DIR}/config.json\"
     IN_FLIGHT_LOG=\"\${DB_DIR}/in-flight.log\"
     RETRY_COUNTS_LOG=\"\${DB_DIR}/retry-counts.log\"
     WORKER_PROCESSES_LOG=\"\${DB_DIR}/worker-processes.log\"
@@ -495,7 +547,7 @@ EOF
 }
 
 @test "read-caps returns configured role cap" {
-  printf '%s\n' "ruby: 4" > "${REPO_DIR}/.governator/worker_caps"
+  set_config_map_value "worker_caps" "ruby" "4" "number"
   commit_all "Set worker caps"
 
   run bash "${REPO_DIR}/_governator/governator.sh" read-caps ruby
@@ -535,7 +587,7 @@ EOF
   run bash "${REPO_DIR}/_governator/governator.sh" allocate-task-id
   [ "$status" -eq 0 ]
   [ "${output}" = "7" ]
-  commit_paths "Bump task id" ".governator/next_task_id"
+  commit_paths "Bump task id" ".governator/config.json"
   run bash "${REPO_DIR}/_governator/governator.sh" allocate-task-id
   [ "$status" -eq 0 ]
   [ "${output}" = "8" ]
@@ -562,7 +614,7 @@ EOF
   mkdir -p "${active_dir}" "${stale_dir}"
   touch -t 202001010000 "${stale_dir}"
 
-  printf '%s\n' "1" > "${REPO_DIR}/.governator/worker_timeout_seconds"
+  set_config_value "worker_timeout_seconds" "1" "number"
   echo "017-cleanup-ruby | ruby | 1234 | ${active_dir} | worker/ruby/017-cleanup-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
   commit_all "Prepare cleanup dry-run"
 
@@ -610,8 +662,8 @@ EOF
 
 @test "status reports project done when checks are up to date" {
   done_sha="$(repo_git hash-object "${REPO_DIR}/GOVERNATOR.md")"
-  printf '%s\n' "${done_sha}" > "${REPO_DIR}/.governator/project_done"
-  commit_paths "Set project done" ".governator/project_done"
+  set_config_value "done_check.done_hash" "${done_sha}" "string"
+  commit_paths "Set project done" ".governator/config.json"
 
   run bash "${REPO_DIR}/_governator/governator.sh" status
   local status_output="${output}"
@@ -681,31 +733,37 @@ EOF
 }
 
 @test "init supports defaults and non-interactive options" {
-  rm -f "${REPO_DIR}/.governator/project_mode" \
-    "${REPO_DIR}/.governator/remote_name" \
-    "${REPO_DIR}/.governator/default_branch"
+  rm -f "${REPO_DIR}/.governator/config.json"
   commit_paths "Clear init files" ".governator"
 
   run bash "${REPO_DIR}/_governator/governator.sh" init --defaults
   [ "$status" -eq 0 ]
-  run cat "${REPO_DIR}/.governator/project_mode"
+  run jq -r '.project_mode // ""' "${REPO_DIR}/.governator/config.json"
   [ "$status" -eq 0 ]
   [ "${output}" = "new" ]
+  run cat "${REPO_DIR}/.governator/config.json"
+  [ "$status" -eq 0 ]
+  run grep -F "\"default\": \"medium\"" "${REPO_DIR}/.governator/config.json"
+  [ "$status" -eq 0 ]
+  run grep -F "\"architect\": \"high\"" "${REPO_DIR}/.governator/config.json"
+  [ "$status" -eq 0 ]
+  run grep -F "\"planner\": \"high\"" "${REPO_DIR}/.governator/config.json"
+  [ "$status" -eq 0 ]
+  run grep -F "\"test_engineer\": \"low\"" "${REPO_DIR}/.governator/config.json"
+  [ "$status" -eq 0 ]
 
-  rm -f "${REPO_DIR}/.governator/project_mode" \
-    "${REPO_DIR}/.governator/remote_name" \
-    "${REPO_DIR}/.governator/default_branch"
+  rm -f "${REPO_DIR}/.governator/config.json"
   commit_paths "Clear init files again" ".governator"
 
   run bash "${REPO_DIR}/_governator/governator.sh" init --non-interactive --project-mode=existing --remote=upstream --branch=trunk
   [ "$status" -eq 0 ]
-  run cat "${REPO_DIR}/.governator/project_mode"
+  run jq -r '.project_mode // ""' "${REPO_DIR}/.governator/config.json"
   [ "$status" -eq 0 ]
   [ "${output}" = "existing" ]
-  run cat "${REPO_DIR}/.governator/remote_name"
+  run jq -r '.remote_name // ""' "${REPO_DIR}/.governator/config.json"
   [ "$status" -eq 0 ]
   [ "${output}" = "upstream" ]
-  run cat "${REPO_DIR}/.governator/default_branch"
+  run jq -r '.default_branch // ""' "${REPO_DIR}/.governator/config.json"
   [ "$status" -eq 0 ]
   [ "${output}" = "trunk" ]
 }
@@ -905,8 +963,7 @@ EOF
     STATE_DIR=\"${REPO_DIR}/_governator\"
     DB_DIR=\"${REPO_DIR}/.governator\"
     AUDIT_LOG=\"${REPO_DIR}/.governator/audit.log\"
-    DEFAULT_BRANCH_FILE=\"${REPO_DIR}/.governator/default_branch\"
-    REMOTE_NAME_FILE=\"${REPO_DIR}/.governator/remote_name\"
+    CONFIG_FILE=\"${REPO_DIR}/.governator/config.json\"
     DEFAULT_REMOTE_NAME=\"origin\"
     DEFAULT_BRANCH_NAME=\"main\"
     GOV_QUIET=1
@@ -944,8 +1001,7 @@ EOF
     STATE_DIR=\"${REPO_DIR}/_governator\"
     DB_DIR=\"${REPO_DIR}/.governator\"
     AUDIT_LOG=\"${REPO_DIR}/.governator/audit.log\"
-    DEFAULT_BRANCH_FILE=\"${REPO_DIR}/.governator/default_branch\"
-    REMOTE_NAME_FILE=\"${REPO_DIR}/.governator/remote_name\"
+    CONFIG_FILE=\"${REPO_DIR}/.governator/config.json\"
     DEFAULT_REMOTE_NAME=\"origin\"
     DEFAULT_BRANCH_NAME=\"main\"
     GOV_QUIET=1
@@ -974,9 +1030,7 @@ EOF
     STATE_DIR=\"${REPO_DIR}/_governator\"
     DB_DIR=\"${REPO_DIR}/.governator\"
     AUDIT_LOG=\"${REPO_DIR}/.governator/audit.log\"
-    PROJECT_MODE_FILE=\"${REPO_DIR}/.governator/project_mode\"
-    DEFAULT_BRANCH_FILE=\"${REPO_DIR}/.governator/default_branch\"
-    REMOTE_NAME_FILE=\"${REPO_DIR}/.governator/remote_name\"
+    CONFIG_FILE=\"${REPO_DIR}/.governator/config.json\"
     DEFAULT_REMOTE_NAME=\"origin\"
     DEFAULT_BRANCH_NAME=\"main\"
     BOOTSTRAP_TASK_NAME=\"000-architecture-bootstrap-architect\"

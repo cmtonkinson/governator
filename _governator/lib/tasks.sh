@@ -690,20 +690,15 @@ extract_worker_from_task() {
 }
 
 # read_next_task_id
-# Purpose: Read the next task id from disk, with a default fallback.
+# Purpose: Read the next task id from config.json, with a default fallback.
 # Args: None.
 # Output: Prints the next task id to stdout.
 # Returns: 0 always.
 read_next_task_id() {
   ensure_db_dir
-  if [[ ! -f "${NEXT_TASK_FILE}" ]]; then
-    printf '%s\n' "${DEFAULT_TASK_ID}"
-    return 0
-  fi
-
   local value
-  value="$(tr -d '[:space:]' < "${NEXT_TASK_FILE}")"
-  if [[ -z "${value}" ]]; then
+  value="$(config_json_read_value "next_task_id" "${DEFAULT_TASK_ID}")"
+  if [[ -z "${value}" || ! "${value}" =~ ^[0-9]+$ ]]; then
     printf '%s\n' "${DEFAULT_TASK_ID}"
     return 0
   fi
@@ -711,7 +706,7 @@ read_next_task_id() {
 }
 
 # write_next_task_id
-# Purpose: Persist the next task id to disk.
+# Purpose: Persist the next task id to config.json.
 # Args:
 #   $1: Task id value (string or integer).
 # Output: None.
@@ -719,7 +714,7 @@ read_next_task_id() {
 write_next_task_id() {
   local value="$1"
   ensure_db_dir
-  printf '%s\n' "${value}" > "${NEXT_TASK_FILE}"
+  config_json_write_value "next_task_id" "${value}" "number"
 }
 
 # format_task_id

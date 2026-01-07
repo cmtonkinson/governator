@@ -120,7 +120,7 @@ assign_pending_tasks() {
         log_verbose "Completion check cooldown active (${remaining}s remaining)"
       fi
     else
-      log_verbose "Completion check not needed (project_done matches GOVERNATOR.md)"
+      log_verbose "Completion check not needed (done_check.done_hash matches GOVERNATOR.md)"
     fi
   else
     log_verbose "Tasks pending; skipping completion check"

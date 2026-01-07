@@ -179,7 +179,7 @@ create_completion_check_task() {
 
   write_completion_check_last_run "$(date +%s)"
 
-  git -C "${ROOT_DIR}" add "${dest}" "${AUDIT_LOG}" "${DONE_CHECK_LAST_RUN_FILE}"
+  git -C "${ROOT_DIR}" add "${dest}" "${AUDIT_LOG}" "${CONFIG_FILE}"
   git -C "${ROOT_DIR}" commit -q -m "[governator] Create completion check task"
   git_push_default_branch
 }

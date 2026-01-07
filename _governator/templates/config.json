@@ -1,0 +1,21 @@
+{
+  "project_mode": "",
+  "remote_name": "origin",
+  "default_branch": "main",
+  "next_task_id": 1,
+  "done_check": {
+    "cooldown_seconds": 300,
+    "done_hash": "",
+    "last_check": 0
+  },
+  "worker_timeout_seconds": 900,
+  "worker_caps": {
+    "global": 1
+  },
+  "reasoning_effort": {
+    "default": "medium",
+    "architect": "high",
+    "planner": "high",
+    "test_engineer": "low"
+  }
+}

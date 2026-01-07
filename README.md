@@ -5,11 +5,11 @@ The agentic anti-swarm (read: just a state machine)
 
 ![Governator](img/governator_512.png)
 
-More specificially, Governator is a file-backed, git-driven, auditable,
-deterministic, waterfall orchestration framework for converting operator intent
-into working software. Goals, requirements, constraints, and assumptions are
-defined in `GOVERNATOR.md`. Then Governator deploys agentic workers to assess
-the gap between the stated vision and the current repo, decomposes that gap into
+Governator is a file-backed, git-driven, auditable, deterministic, waterfall
+orchestration framework for converting operator intent into working software.
+Goals, requirements, constraints, and assumptions are defined in
+`GOVERNATOR.md`. Then Governator deploys agentic workers to assess the gap
+between the stated vision and the current repo, decomposes that gap into
 individually executable discrete tasks, and oversees planning, dispatch and
 quality Control.
 
@@ -175,7 +175,7 @@ does not match a role file in `_governator/roles/`, the task will be
 assigned to the default `generalist` role.
 
 The `templates/task.md` file is the stub for new tasks. `next_task_id`
-stores the next auto-increment id.
+in `.governator/config.json` controls the auto-increment id.
 
 There are some specialized task templates that are pre-programmed into the
 system, mostly for initial bootstrapping and goal testing. Whenever those are
@@ -183,14 +183,9 @@ used by the control loop, they will be prefixed with the special number `000-`
 just to distinguish them from anything unique to your project.
 
 ## Concurrency Controls
-Governator limits concurrent work using:
-
-- `.governator/global_worker_cap` for the global cap (default `1`)
-- `.governator/worker_caps` for per-role caps (default `1` when absent)
-- `.governator/worker_timeout_seconds` for worker timeouts (default `900`)
-
-In-flight assignments are tracked in `.governator/in-flight.log` with one line
-per task:
+Governator limits concurrent work using a global cap (`worker_caps.global`) and
+optional per-role caps. In-flight assignments are tracked in
+`.governator/in-flight.log` (one line per task).
 
 ## Audit Log
 Governator writes fine-grained lifecycle events to `.governator/audit.log`:
@@ -329,6 +324,7 @@ ensure all of the prereqs met, and whine stubbornly if not.
 
 It requires:
 - git
+- jq
 - cron (or some other means of invocation)
 - one or more non-interactive LLM CLIs (currently only supports Codex CLI)
 - a fully-baked `GOVERNATOR.md`
