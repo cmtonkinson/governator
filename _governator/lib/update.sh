@@ -437,7 +437,7 @@ update_governator() {
     printf 'No updates applied.\n'
   fi
 
-  git -C "${ROOT_DIR}" add "${STATE_DIR}" "${MANIFEST_FILE}"
+  git -C "${ROOT_DIR}" add "${STATE_DIR}" "${MANIFEST_FILE}" "${MIGRATIONS_STATE_FILE}"
   if [[ "${#UPDATED_FILES[@]}" -gt 0 ]]; then
     git -C "${ROOT_DIR}" add "${AUDIT_LOG}" "${LAST_UPDATE_FILE}"
   fi
