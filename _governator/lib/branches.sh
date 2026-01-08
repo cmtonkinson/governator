@@ -145,6 +145,14 @@ process_worker_branch() {
       fi
       return 0
     fi
+    if [[ "${task_dir}" == "task-blocked" ]]; then
+      log_warn "Worker marked ${task_name} blocked; skipping merge."
+      in_flight_remove "${task_name}" "${worker_name}"
+      delete_worker_branch "${local_branch}"
+      cleanup_worker_tmp_dirs "${worker_name}" "${task_name}"
+      ensure_unblock_planner_task || true
+      return 0
+    fi
   fi
 
   case "${task_dir}" in

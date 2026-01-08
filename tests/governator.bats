@@ -431,6 +431,23 @@ EOF
   [ "$status" -eq 0 ]
 }
 
+@test "process-branches keeps blocked tasks and queues unblock planner" {
+  write_task "task-blocked" "060-blocked-ruby"
+  echo "060-blocked-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+  commit_all "Prepare blocked task"
+
+  create_worker_branch "060-blocked-ruby" "ruby"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" process-branches
+  [ "$status" -eq 0 ]
+
+  [ -f "${REPO_DIR}/_governator/task-blocked/060-blocked-ruby.md" ]
+  [ -f "${REPO_DIR}/_governator/task-assigned/000-unblock-planner.md" ]
+  run grep -F "060-blocked-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
+  [ "$status" -ne 0 ]
+  [ ! -f "${ORIGIN_DIR}/refs/heads/worker/ruby/060-blocked-ruby" ]
+}
+
 @test "process_worker_branch clears in-flight entry when branch is missing" {
   write_task "task-assigned" "011-missing-ruby"
   echo "011-missing-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
