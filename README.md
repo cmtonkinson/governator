@@ -31,8 +31,7 @@ traditional waterfall process. Sexy? Nope. Effecitve here? Hell yeah.
 
 > Weeks of coding can save you hours of thinking.
 
-**Solution:**
-The Governator:
+**Solution:** The Governator
 1. Takes your idea (as specified in `GOVERNATOR.md`)
 2. Designs a cohesive system architecture for it
 3. Decomposes that design into a plan (milestones, epics, and tasks)

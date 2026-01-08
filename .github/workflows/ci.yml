@@ -8,7 +8,27 @@ permissions:
   contents: read
 
 jobs:
-  lint-and-test:
+  lint:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            git \
+            curl \
+            ca-certificates \
+            wget \
+            shellcheck \
+            shfmt \
+            jq
+          git clone https://github.com/bats-core/bats-core.git /tmp/bats-core
+          sudo /tmp/bats-core/install.sh /usr/local
+      - name: Run lint suite
+        run: ./scripts/lint.sh
+  test:
     runs-on: ubuntu-22.04
     steps:
       - name: Check out repository
@@ -27,4 +47,4 @@ jobs:
           git clone https://github.com/bats-core/bats-core.git /tmp/bats-core
           sudo /tmp/bats-core/install.sh /usr/local
       - name: Run test suite
-        run: COVERAGE=1 ./scripts/all-tests.sh
+        run: ./scripts/test.sh
