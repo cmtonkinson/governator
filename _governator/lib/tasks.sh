@@ -93,19 +93,69 @@ frontmatter_list() {
   local file="$1"
   local key="$2"
   local raw
-  raw="$(frontmatter_value "${file}" "${key}")"
+  raw="$(
+    awk -v want="${key}" '
+      NR == 1 && $0 == "---" { in_frontmatter=1; next }
+      in_frontmatter == 1 {
+        if ($0 == "---") exit
+        if (!found) {
+          if ($0 ~ ("^" want ":[[:space:]]*")) {
+            found=1
+            value=$0
+            sub("^" want ":[[:space:]]*", "", value)
+            if (value == "") {
+              list_mode=1
+              next
+            }
+            print value
+            exit
+          }
+        } else if (list_mode) {
+          if ($0 ~ /^[[:space:]]*-[[:space:]]*/) {
+            item=$0
+            sub(/^[[:space:]]*-[[:space:]]*/, "", item)
+            print item
+            next
+          }
+          exit
+        }
+      }
+    ' "${file}"
+  )"
   if [[ -z "${raw}" ]]; then
     return 0
   fi
-  raw="${raw#[}"
-  raw="${raw%]}"
-  printf '%s\n' "${raw}" | tr ',' '\n' | awk '
+  printf '%s\n' "${raw}" | awk '
     {
-      gsub(/^[ \t]+/, "", $0)
-      gsub(/[ \t]+$/, "", $0)
-      if ($0 != "") print
+      line=$0
+      gsub(/^\[/, "", line)
+      gsub(/\]$/, "", line)
+      count=split(line, parts, ",")
+      for (i=1; i<=count; i++) {
+        item=parts[i]
+        gsub(/^[ \t]+/, "", item)
+        gsub(/[ \t]+$/, "", item)
+        if (item ~ /^".*"$/ || item ~ /^'\''.*'\''$/) {
+          item=substr(item, 2, length(item) - 2)
+        }
+        if (item != "") print item
+      }
     }
   '
+}
+
+# normalize_dependency_id
+# Purpose: Normalize dependency ids to a zero-padded task id.
+# Args:
+#   $1: Dependency id (string).
+# Output: Prints normalized id to stdout.
+# Returns: 0 if id is numeric; 1 otherwise.
+normalize_dependency_id() {
+  local dep_id="$1"
+  if [[ -z "${dep_id}" || ! "${dep_id}" =~ ^[0-9]+$ ]]; then
+    return 1
+  fi
+  printf '%03d' "${dep_id}"
 }
 
 # task_dependency_ids
@@ -116,9 +166,12 @@ frontmatter_list() {
 # Returns: 0 always.
 task_dependency_ids() {
   local task_file="$1"
-  frontmatter_list "${task_file}" "depends_on" | awk '
-    /^[0-9]+$/ { print }
-  '
+  local raw
+  while IFS= read -r raw; do
+    if dep_id="$(normalize_dependency_id "${raw}")"; then
+      printf '%s\n' "${dep_id}"
+    fi
+  done < <(frontmatter_list "${task_file}" "depends_on")
 }
 
 # task_dependency_done

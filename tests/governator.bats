@@ -355,6 +355,32 @@ EOF
   [ -f "${REPO_DIR}/_governator/task-backlog/002-dependent-ruby.md" ]
 }
 
+@test "assign-backlog supports quoted and unpadded dependency ids" {
+  complete_bootstrap
+  set_config_map_value "worker_caps" "global" "2" "number"
+  write_task "task-done" "001-base-ruby"
+  write_task_with_frontmatter "task-backlog" "002-dependent-ruby" $'milestone:\nepic:\ntask:\ndepends_on: ["1"]'
+  commit_all "Add quoted dependency tasks"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" assign-backlog
+  [ "$status" -eq 0 ]
+
+  [ -f "${REPO_DIR}/_governator/task-assigned/002-dependent-ruby.md" ]
+}
+
+@test "assign-backlog supports multiline dependency lists" {
+  complete_bootstrap
+  set_config_map_value "worker_caps" "global" "2" "number"
+  write_task "task-done" "003-base-ruby"
+  write_task_with_frontmatter "task-backlog" "004-dependent-ruby" $'milestone:\nepic:\ntask:\ndepends_on:\n  - 003'
+  commit_all "Add multiline dependency tasks"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" assign-backlog
+  [ "$status" -eq 0 ]
+
+  [ -f "${REPO_DIR}/_governator/task-assigned/004-dependent-ruby.md" ]
+}
+
 @test "assign-backlog gates later milestones until earlier milestones complete" {
   complete_bootstrap
   set_config_map_value "worker_caps" "global" "2" "number"
