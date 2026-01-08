@@ -72,6 +72,45 @@ escape_log_value() {
   printf '%s' "${value}"
 }
 
+# sha256_file
+# Purpose: Compute a SHA-256 hash for a file using available tooling.
+# Args:
+#   $1: File path (string).
+# Output: Prints the hash to stdout.
+# Returns: 0 on success; 1 if no supported tool is available.
+sha256_file() {
+  local path="$1"
+  local sha=""
+  if command -v shasum > /dev/null 2>&1; then
+    if sha="$(shasum -a 256 "${path}" 2> /dev/null)"; then
+      sha="$(printf '%s' "${sha}" | awk '{print $1}')"
+      if [[ -n "${sha}" ]]; then
+        printf '%s\n' "${sha}"
+        return 0
+      fi
+    fi
+  fi
+  if command -v sha256sum > /dev/null 2>&1; then
+    if sha="$(sha256sum "${path}" 2> /dev/null)"; then
+      sha="$(printf '%s' "${sha}" | awk '{print $1}')"
+      if [[ -n "${sha}" ]]; then
+        printf '%s\n' "${sha}"
+        return 0
+      fi
+    fi
+  fi
+  if command -v openssl > /dev/null 2>&1; then
+    if sha="$(openssl dgst -sha256 "${path}" 2> /dev/null)"; then
+      sha="$(printf '%s' "${sha}" | awk '{print $2}')"
+      if [[ -n "${sha}" ]]; then
+        printf '%s\n' "${sha}"
+        return 0
+      fi
+    fi
+  fi
+  return 1
+}
+
 # file_mtime_epoch
 # Purpose: Read file modification time in epoch seconds.
 # Args:

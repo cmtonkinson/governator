@@ -61,7 +61,7 @@ write_manifest() {
     while IFS= read -r rel; do
       local abs="${base_root}/${rel}"
       local sha
-      sha="$(shasum -a 256 "${abs}" | awk '{print $1}')"
+      sha="$(sha256_or_fail "${abs}")"
       if [[ "${first}" -eq 1 ]]; then
         first=0
       else
@@ -86,6 +86,26 @@ ensure_manifest_exists() {
   fi
   log_warn "Manifest missing at ${MANIFEST_FILE}; creating from current files."
   write_manifest "${ROOT_DIR}" "${STATE_DIR}" "${MANIFEST_FILE}"
+}
+
+# sha256_or_fail
+# Purpose: Compute a SHA-256 hash for a file or exit with an error.
+# Args:
+#   $1: File path (string).
+# Output: Prints the hash to stdout.
+# Returns: 0 on success; exits 1 on failure.
+sha256_or_fail() {
+  local path="$1"
+  local sha=""
+  if ! sha="$(sha256_file "${path}")"; then
+    log_error "Failed to compute sha256 for ${path}"
+    exit 1
+  fi
+  if [[ -z "${sha}" ]]; then
+    log_error "Failed to compute sha256 for ${path}"
+    exit 1
+  fi
+  printf '%s\n' "${sha}"
 }
 
 # is_code_file
@@ -203,7 +223,7 @@ update_code_file() {
   local updated_ref="$5"
   local local_sha=""
   if [[ -f "${local_path}" ]]; then
-    local_sha="$(shasum -a 256 "${local_path}" | awk '{print $1}')"
+    local_sha="$(sha256_or_fail "${local_path}")"
   fi
   if [[ "${local_sha}" == "${upstream_sha}" ]]; then
     return 0
@@ -238,7 +258,7 @@ update_prompt_file() {
   fi
 
   local local_sha
-  local_sha="$(shasum -a 256 "${local_path}" | awk '{print $1}')"
+  local_sha="$(sha256_or_fail "${local_path}")"
   if [[ "${local_sha}" == "${upstream_sha}" ]]; then
     return 0
   fi
@@ -294,7 +314,7 @@ remove_prompt_file() {
   fi
 
   local local_sha
-  local_sha="$(shasum -a 256 "${local_path}" | awk '{print $1}')"
+  local_sha="$(sha256_or_fail "${local_path}")"
   local manifest_sha
   manifest_sha="$(manifest_sha_for_path "${rel_path}")"
 
@@ -389,7 +409,7 @@ update_governator() {
     local upstream_path="${UPDATE_TMP_ROOT}/${rel_path}"
     local local_path="${ROOT_DIR}/${rel_path}"
     local upstream_sha
-    upstream_sha="$(shasum -a 256 "${upstream_path}" | awk '{print $1}')"
+    upstream_sha="$(sha256_or_fail "${upstream_path}")"
 
     if is_code_file "${rel_path}"; then
       update_code_file "${rel_path}" "${upstream_path}" "${local_path}" "${upstream_sha}" code_updated

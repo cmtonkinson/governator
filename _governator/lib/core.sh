@@ -32,14 +32,30 @@ ensure_update_dependencies() {
     log_error "Missing dependency: curl"
     exit 1
   fi
-  if ! command -v shasum > /dev/null 2>&1; then
-    log_error "Missing dependency: shasum"
-    exit 1
-  fi
+  ensure_sha256_tool
   if ! command -v tar > /dev/null 2>&1; then
     log_error "Missing dependency: tar"
     exit 1
   fi
+}
+
+# ensure_sha256_tool
+# Purpose: Verify a SHA-256 hashing tool is available.
+# Args: None.
+# Output: Logs missing dependency via log_error.
+# Returns: 0 if available; exits 1 if missing.
+ensure_sha256_tool() {
+  if command -v shasum > /dev/null 2>&1; then
+    return 0
+  fi
+  if command -v sha256sum > /dev/null 2>&1; then
+    return 0
+  fi
+  if command -v openssl > /dev/null 2>&1; then
+    return 0
+  fi
+  log_error "Missing dependency: sha256 tool (shasum, sha256sum, or openssl)"
+  exit 1
 }
 
 # require_governator_doc

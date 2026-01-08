@@ -511,14 +511,14 @@ annotate_unblocked() {
   append_section "${task_file}" "## Unblock Note" "governator" "${note}"
 }
 
-# block_task_from_backlog
-# Purpose: Move a backlog task to blocked and record the reason.
+# move_task_to_blocked
+# Purpose: Move a task file to blocked, annotate the reason, and commit.
 # Args:
 #   $1: Task file path (string).
 #   $2: Block reason (string).
-# Output: Logs and commits the state change.
+# Output: Logs task state changes and updates git.
 # Returns: 0 on success.
-block_task_from_backlog() {
+move_task_to_blocked() {
   local task_file="$1"
   local reason="$2"
   sync_default_branch
@@ -532,6 +532,17 @@ block_task_from_backlog() {
   git_push_default_branch
 }
 
+# block_task_from_backlog
+# Purpose: Move a backlog task to blocked and record the reason.
+# Args:
+#   $1: Task file path (string).
+#   $2: Block reason (string).
+# Output: Logs and commits the state change.
+# Returns: 0 on success.
+block_task_from_backlog() {
+  move_task_to_blocked "$@"
+}
+
 # block_task_from_assigned
 # Purpose: Move an assigned task to blocked and record the reason.
 # Args:
@@ -540,17 +551,7 @@ block_task_from_backlog() {
 # Output: Logs and commits the state change.
 # Returns: 0 on success.
 block_task_from_assigned() {
-  local task_file="$1"
-  local reason="$2"
-  sync_default_branch
-  local task_name
-  task_name="$(basename "${task_file}" .md)"
-  local blocked_file="${STATE_DIR}/task-blocked/${task_name}.md"
-  move_task_file "${task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
-  annotate_blocked "${blocked_file}" "${reason}"
-  git -C "${ROOT_DIR}" add "${STATE_DIR}"
-  git -C "${ROOT_DIR}" commit -q -m "[governator] Block task ${task_name}"
-  git_push_default_branch
+  move_task_to_blocked "$@"
 }
 
 # annotate_abort

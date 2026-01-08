@@ -169,6 +169,32 @@ EOF
   export PATH="${BIN_DIR}:${PATH}"
 }
 
+@test "sha256_file falls back when shasum fails" {
+  test_file="${REPO_DIR}/hash-input.txt"
+  printf '%s\n' "hash me" > "${test_file}"
+
+  cat > "${BIN_DIR}/shasum" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+  chmod +x "${BIN_DIR}/shasum"
+
+  cat > "${BIN_DIR}/sha256sum" <<'EOF'
+#!/usr/bin/env bash
+printf '%s  %s\n' "deadbeef" "$1"
+EOF
+  chmod +x "${BIN_DIR}/sha256sum"
+
+  run bash -c "
+    set -euo pipefail
+    PATH=\"${BIN_DIR}:\$PATH\"
+    source \"${REPO_DIR}/_governator/lib/utils.sh\"
+    sha256_file \"${test_file}\"
+  "
+  [ "$status" -eq 0 ]
+  [ "${output}" = "deadbeef" ]
+}
+
 @test "assign-backlog assigns task and logs in-flight" {
   complete_bootstrap
   write_task "task-backlog" "001-sample-ruby"
@@ -236,6 +262,18 @@ EOF
   [ ! -f "${REPO_DIR}/_governator/task-assigned/005-cap-ruby.md" ]
 }
 
+@test "assign-backlog skips completion check during cooldown" {
+  complete_bootstrap
+  set_config_value "done_check.done_hash" "deadbeef"
+  set_config_value "done_check.last_check" "$(date +%s)" "number"
+  commit_all "Prepare completion cooldown state"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" assign-backlog
+  [ "$status" -eq 0 ]
+
+  [ ! -f "${REPO_DIR}/_governator/task-assigned/000-completion-check-reviewer.md" ]
+}
+
 @test "check-zombies retries when branch missing and worker dead" {
   write_task "task-assigned" "007-zombie-ruby"
   echo "007-zombie-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
@@ -248,6 +286,18 @@ EOF
   [ "$status" -eq 0 ]
 
   run grep -F "007-zombie-ruby | 1" "${REPO_DIR}/.governator/retry-counts.log"
+  [ "$status" -eq 0 ]
+}
+
+@test "check-zombies retries when worker process record is missing" {
+  write_task "task-assigned" "026-missing-proc-ruby"
+  echo "026-missing-proc-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+  commit_all "Prepare missing worker process record"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" check-zombies
+  [ "$status" -eq 0 ]
+
+  run grep -F "026-missing-proc-ruby | 1" "${REPO_DIR}/.governator/retry-counts.log"
   [ "$status" -eq 0 ]
 }
 

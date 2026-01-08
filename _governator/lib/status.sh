@@ -40,19 +40,18 @@ print_project_status() {
   blocked_count="$(count_task_files "${STATE_DIR}/task-blocked")"
   local pending_total=$((backlog_count + assigned_count + worked_count + blocked_count))
 
-  local completion_check_due=1
-  if completion_check_needed; then
-    completion_check_due=1
-  else
-    completion_check_due=0
+  local completion_needed=0
+  local completion_label="up-to-date"
+  if completion_check_hash_mismatch; then
+    completion_needed=1
+    if completion_check_due; then
+      completion_label="due"
+    else
+      completion_label="cooldown"
+    fi
   fi
 
-  local completion_label="due"
-  if [[ "${completion_check_due}" -eq 0 ]]; then
-    completion_label="up-to-date"
-  fi
-
-  if [[ "${pending_total}" -eq 0 && "${completion_check_due}" -eq 0 ]]; then
+  if [[ "${pending_total}" -eq 0 && "${completion_needed}" -eq 0 ]]; then
     printf 'Project status: DONE (completion check %s; pending tasks %s)\n' "${completion_label}" "${pending_total}"
   else
     printf 'Project status: IN PROGRESS (completion check %s; pending tasks %s)\n' "${completion_label}" "${pending_total}"

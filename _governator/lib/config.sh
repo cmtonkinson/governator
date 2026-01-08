@@ -329,6 +329,7 @@ init_governator() {
   config_json_write_value "remote_name" "${remote_name}" "string"
   config_json_write_value "default_branch" "${default_branch}" "string"
 
+  ensure_sha256_tool
   write_manifest "${ROOT_DIR}" "${STATE_DIR}" "${MANIFEST_FILE}"
 
   printf 'Governator initialized:\n'

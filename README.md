@@ -356,14 +356,17 @@ ensure all of the prereqs met, and whine stubbornly if not.
 It requires:
 - git
 - jq
+- a SHA256 tool (shasum, sha256sum, or openssl)
 - cron (or some other means of invocation)
-- one or more non-interactive LLM CLIs (currently only supports Codex CLI)
+- one or more non-interactive LLM CLIs
+    - _NOTE: Governator currently only supports Codex CLI_
 - a fully-baked `GOVERNATOR.md`
-  - overview
+  - overview/summary
   - goals & non-goals
   - assumptions
   - constraints
-  - high-level architecture
+  - requirements
+  - any design or architecture guidance (high or low level)
 
 ## Philosophy
 Correctness and bounded execution matter more than speed or cleverness.
@@ -397,9 +400,9 @@ Dependencies for development testing live in `scripts/common.sh` and include:
   test runs
 
 Governator also exposes "hidden" subcommands (for targeted testing and ops
-drills). They are intentionally undocumented; check `_governator/governator.sh`
-for the full list and behavior.
+drills). They are intentionally undocumented; check
+`_governator/lib/internal.sh` for the full list and behavior.
 
-To generate coverage, set `COVERAGE=1` when running the test suite. Coverage
-output is written to `coverage/`, including `coverage/coverage.xml` in Cobertura
-format.
+To generate code coverage reporting, set `COVERAGE=1` when running the test
+suite. Coverage output is written to `coverage/`, including
+`coverage/coverage.xml` in Cobertura format.

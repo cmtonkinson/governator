@@ -103,7 +103,7 @@ assign_pending_tasks() {
 
   if [[ "${queues_empty}" -eq 1 ]]; then
     log_verbose "All queues empty"
-    if completion_check_needed; then
+    if completion_check_hash_mismatch; then
       if completion_check_due; then
         create_completion_check_task || true
       else

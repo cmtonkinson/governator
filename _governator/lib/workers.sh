@@ -623,6 +623,47 @@ retry_count_clear() {
   mv "${tmp_file}" "${RETRY_COUNTS_LOG}"
 }
 
+# handle_zombie_failure
+# Purpose: Retry or block a task when a worker fails to push a branch.
+# Args:
+#   $1: Task name (string).
+#   $2: Worker name (string).
+#   $3: Temp dir path (string, optional).
+# Output: Logs warnings and task transitions.
+# Returns: 0 on completion.
+handle_zombie_failure() {
+  local task_name="$1"
+  local worker="$2"
+  local tmp_dir="${3:-}"
+
+  cleanup_tmp_dir "${tmp_dir}"
+
+  local retry_count
+  retry_count="$(retry_count_get "${task_name}")"
+  retry_count=$((retry_count + 1))
+  retry_count_set "${task_name}" "${retry_count}"
+
+  if [[ "${retry_count}" -ge 2 ]]; then
+    local task_file
+    if task_file="$(task_file_for_name "${task_name}")"; then
+      annotate_blocked "${task_file}" "Worker exited before pushing branch twice; blocking task."
+      move_task_file "${task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
+      git -C "${ROOT_DIR}" add "${STATE_DIR}"
+      git -C "${ROOT_DIR}" commit -q -m "[governator] Block task ${task_name} on retry failure"
+      git_push_default_branch
+    fi
+    in_flight_remove "${task_name}" "${worker}"
+    worker_process_clear "${task_name}" "${worker}"
+    return 0
+  fi
+
+  local task_file
+  if task_file="$(task_file_for_name "${task_name}")"; then
+    spawn_worker_for_task "${task_file}" "${worker}" "retry started for ${worker}"
+  fi
+  return 0
+}
+
 # spawn_worker_for_task
 # Purpose: Launch a worker for a task file and record metadata.
 # Args:
@@ -715,6 +756,8 @@ check_zombie_workers() {
 
     local proc_info=()
     if ! mapfile -t proc_info < <(worker_process_get "${task_name}" "${worker}"); then
+      log_task_warn "${task_name}" "missing worker process record for ${worker}; treating as zombie"
+      handle_zombie_failure "${task_name}" "${worker}"
       continue
     fi
 
@@ -749,30 +792,6 @@ check_zombie_workers() {
 
     log_task_warn "${task_name}" "worker ${worker} exited before pushing branch"
 
-    cleanup_tmp_dir "${tmp_dir}"
-
-    local retry_count
-    retry_count="$(retry_count_get "${task_name}")"
-    retry_count=$((retry_count + 1))
-    retry_count_set "${task_name}" "${retry_count}"
-
-    if [[ "${retry_count}" -ge 2 ]]; then
-      local task_file
-      if task_file="$(task_file_for_name "${task_name}")"; then
-        annotate_blocked "${task_file}" "Worker exited before pushing branch twice; blocking task."
-        move_task_file "${task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
-        git -C "${ROOT_DIR}" add "${STATE_DIR}"
-        git -C "${ROOT_DIR}" commit -q -m "[governator] Block task ${task_name} on retry failure"
-        git_push_default_branch
-      fi
-      in_flight_remove "${task_name}" "${worker}"
-      worker_process_clear "${task_name}" "${worker}"
-      continue
-    fi
-
-    local task_file
-    if task_file="$(task_file_for_name "${task_name}")"; then
-      spawn_worker_for_task "${task_file}" "${worker}" "retry started for ${worker}"
-    fi
+    handle_zombie_failure "${task_name}" "${worker}" "${tmp_dir}"
   done < <(in_flight_entries)
 }
