@@ -5,6 +5,7 @@ The agentic anti-swarm (or: just a context-managing state machine)
 
 ![Governator](img/governator_512.png)
 
+## Overview
 **Problem:**
 Orchestrating Agentic software development is Hard&trade; because
 - Context windows are limited
