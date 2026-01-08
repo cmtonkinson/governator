@@ -1,0 +1,149 @@
+#!/usr/bin/env bats
+
+load ./helpers.bash
+
+@test "check-zombies retries when branch missing and worker dead" {
+  write_task "task-assigned" "007-zombie-ruby"
+  echo "007-zombie-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+
+  tmp_dir="$(mktemp -d "${BATS_TMPDIR}/worker-tmp.XXXXXX")"
+  echo "007-zombie-ruby | ruby | 999999 | ${tmp_dir} | worker/ruby/007-zombie-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  commit_all "Prepare zombie task"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" check-zombies
+  [ "$status" -eq 0 ]
+
+  run grep -F "007-zombie-ruby | 1" "${REPO_DIR}/.governator/retry-counts.log"
+  [ "$status" -eq 0 ]
+}
+
+@test "check-zombies retries when worker process record is missing" {
+  write_task "task-assigned" "026-missing-proc-ruby"
+  echo "026-missing-proc-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+  commit_all "Prepare missing worker process record"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" check-zombies
+  [ "$status" -eq 0 ]
+
+  run grep -F "026-missing-proc-ruby | 1" "${REPO_DIR}/.governator/retry-counts.log"
+  [ "$status" -eq 0 ]
+}
+
+@test "check-zombies blocks after second failure" {
+  write_task "task-assigned" "008-stuck-ruby"
+  echo "008-stuck-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+  echo "008-stuck-ruby | 1" >> "${REPO_DIR}/.governator/retry-counts.log"
+
+  tmp_dir="$(mktemp -d "${BATS_TMPDIR}/worker-tmp.XXXXXX")"
+  echo "008-stuck-ruby | ruby | 999999 | ${tmp_dir} | worker/ruby/008-stuck-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  commit_all "Prepare stuck task"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" check-zombies
+  [ "$status" -eq 0 ]
+
+  [ -f "${REPO_DIR}/_governator/task-blocked/008-stuck-ruby.md" ]
+  run grep -F "008-stuck-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
+  [ "$status" -ne 0 ]
+  run grep -F "008-stuck-ruby |" "${REPO_DIR}/.governator/retry-counts.log"
+  [ "$status" -ne 0 ]
+}
+
+@test "check-zombies blocks multiple tasks in one pass" {
+  write_task "task-assigned" "012-zombie-a-ruby"
+  write_task "task-assigned" "013-zombie-b-ruby"
+  echo "012-zombie-a-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+  echo "013-zombie-b-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+  echo "012-zombie-a-ruby | 1" >> "${REPO_DIR}/.governator/retry-counts.log"
+  echo "013-zombie-b-ruby | 1" >> "${REPO_DIR}/.governator/retry-counts.log"
+
+  project_name="$(basename "${REPO_DIR}")"
+  tmp_dir_a="$(mktemp -d "/tmp/governator-${project_name}-ruby-012-zombie-a-ruby-XXXXXX")"
+  tmp_dir_b="$(mktemp -d "/tmp/governator-${project_name}-ruby-013-zombie-b-ruby-XXXXXX")"
+  echo "012-zombie-a-ruby | ruby | 999999 | ${tmp_dir_a} | worker/ruby/012-zombie-a-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  echo "013-zombie-b-ruby | ruby | 999999 | ${tmp_dir_b} | worker/ruby/013-zombie-b-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  commit_all "Prepare multiple zombie tasks"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" check-zombies
+  [ "$status" -eq 0 ]
+
+  [ -f "${REPO_DIR}/_governator/task-blocked/012-zombie-a-ruby.md" ]
+  [ -f "${REPO_DIR}/_governator/task-blocked/013-zombie-b-ruby.md" ]
+  run grep -F "012-zombie-a-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
+  [ "$status" -ne 0 ]
+  run grep -F "013-zombie-b-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
+  [ "$status" -ne 0 ]
+}
+
+@test "check-zombies recovers reviewer output by pushing review branch" {
+  write_task "task-worked" "016-review-ruby"
+  echo "016-review-ruby -> reviewer" >> "${REPO_DIR}/.governator/in-flight.log"
+
+  project_name="$(basename "${REPO_DIR}")"
+  tmp_dir="$(mktemp -d "/tmp/governator-${project_name}-reviewer-016-review-ruby-XXXXXX")"
+  git clone "${ORIGIN_DIR}" "${tmp_dir}" >/dev/null
+  git -C "${tmp_dir}" checkout -b "worker/reviewer/016-review-ruby" "origin/main" >/dev/null
+  git -C "${tmp_dir}" config user.email "test@example.com"
+  git -C "${tmp_dir}" config user.name "Test User"
+  cat > "${tmp_dir}/review.json" <<'EOF_REVIEW'
+{"result":"reject","comments":["needs work"]}
+EOF_REVIEW
+
+  echo "016-review-ruby | reviewer | 999999 | ${tmp_dir} | worker/reviewer/016-review-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  commit_all "Prepare reviewer recovery"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" check-zombies
+  [ "$status" -eq 0 ]
+
+  [ -f "${ORIGIN_DIR}/refs/heads/worker/reviewer/016-review-ruby" ]
+}
+
+@test "cleanup-tmp removes stale directories but keeps active ones" {
+  project_name="$(basename "${REPO_DIR}")"
+  active_dir="/tmp/governator-${project_name}-active-123"
+  stale_dir="/tmp/governator-${project_name}-stale-123"
+  mkdir -p "${active_dir}" "${stale_dir}"
+  touch -t 202001010000 "${stale_dir}"
+
+  set_config_value "worker_timeout_seconds" "1" "number"
+  echo "009-cleanup-ruby | ruby | 1234 | ${active_dir} | worker/ruby/009-cleanup-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  commit_all "Prepare cleanup dirs"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" cleanup-tmp
+  [ "$status" -eq 0 ]
+
+  [ -d "${active_dir}" ]
+  [ ! -d "${stale_dir}" ]
+}
+
+@test "cleanup-tmp dry-run lists stale dirs only" {
+  project_name="$(basename "${REPO_DIR}")"
+  active_dir="/tmp/governator-${project_name}-active-456"
+  stale_dir="/tmp/governator-${project_name}-stale-456"
+  mkdir -p "${active_dir}" "${stale_dir}"
+  touch -t 202001010000 "${stale_dir}"
+
+  set_config_value "worker_timeout_seconds" "1" "number"
+  echo "017-cleanup-ruby | ruby | 1234 | ${active_dir} | worker/ruby/017-cleanup-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  commit_all "Prepare cleanup dry-run"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" cleanup-tmp --dry-run
+  [ "$status" -eq 0 ]
+  run grep -F "${stale_dir}" <<< "${output}"
+  [ "$status" -eq 0 ]
+  run grep -F "${active_dir}" <<< "${output}"
+  [ "$status" -ne 0 ]
+}
+
+@test "count-in-flight totals and per-role counts" {
+  printf '%s\n' "014-one-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+  printf '%s\n' "015-one-sre -> sre" >> "${REPO_DIR}/.governator/in-flight.log"
+  commit_all "Add in-flight"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" count-in-flight
+  [ "$status" -eq 0 ]
+  [ "${output}" = "2" ]
+
+  run bash "${REPO_DIR}/_governator/governator.sh" count-in-flight ruby
+  [ "$status" -eq 0 ]
+  [ "${output}" = "1" ]
+}
