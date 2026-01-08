@@ -265,6 +265,16 @@ EOF
   [ -f "${REPO_DIR}/_governator/task-backlog/001-sample-ruby.md" ]
 }
 
+@test "run skips gap-analysis planner before bootstrap completes" {
+  set_config_value "planning.gov_hash" "deadbeef"
+  commit_paths "Set stale planning hash" ".governator/config.json"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" run
+  [ "$status" -eq 0 ]
+
+  [ ! -f "${REPO_DIR}/_governator/task-assigned/000-gap-analysis-planner.md" ]
+}
+
 @test "assign-backlog blocks tasks missing a role suffix" {
   complete_bootstrap
   write_task "task-backlog" "002norole"

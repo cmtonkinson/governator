@@ -74,10 +74,14 @@ gap_analysis_planner_active() {
 
 # ensure_gap_analysis_planner_task
 # Purpose: Create the gap-analysis planner task when GOVERNATOR.md changes.
+# Notes: Skips creation until a bootstrap task has been completed.
 # Args: None.
 # Output: Logs task creation and commits changes.
 # Returns: 0 on completion; 1 on failure to copy the template.
 ensure_gap_analysis_planner_task() {
+  if ! architecture_bootstrap_complete; then
+    return 0
+  fi
   if ! planning_hash_mismatch; then
     return 0
   fi
