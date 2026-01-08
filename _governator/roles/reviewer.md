@@ -125,3 +125,4 @@ _Note:_ The only acceptable values for the key `result` in the JSON are:
 - "approve"
 - "reject"
 - "block"
+- "blocked"

@@ -1,5 +1,5 @@
 # Governator
-The agentic anti-swarm (read: just a state machine)
+The agentic anti-swarm (or: just a state machine)
 
 [![CI](https://github.com/cmtonkinson/governator/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cmtonkinson/governator/actions/workflows/ci.yml)
 

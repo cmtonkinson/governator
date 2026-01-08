@@ -2,7 +2,7 @@
 
 # parse_review_json
 # Purpose: Extract the decision and comments from a review.json file, normalizing
-#   known approval/rejection variants.
+#   known approval/rejection/block variants.
 # Args:
 #   $1: Path to review.json (string).
 # Output: Writes decision on first line, followed by zero or more comment lines.
@@ -30,7 +30,7 @@ parse_review_json() {
     reject | rejected | deny | denied | fail)
       printf '%s\n' "reject"
       ;;
-    block | blocked)
+    block | blocked | stuck)
       printf '%s\n' "block"
       ;;
     *)
