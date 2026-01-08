@@ -553,6 +553,14 @@ read_worker_cap() {
     printf '%s\n' "${DEFAULT_WORKER_CAP}"
     return 0
   fi
+  if [[ "${cap}" == "${DEFAULT_WORKER_CAP}" ]]; then
+    local direct_cap
+    direct_cap="$(config_json_read_value "worker_caps.${role}" "")"
+    direct_cap="$(trim_whitespace "${direct_cap}")"
+    if [[ -n "${direct_cap}" && "${direct_cap}" =~ ^[0-9]+$ ]]; then
+      cap="${direct_cap}"
+    fi
+  fi
   printf '%s\n' "${cap}"
 }
 
