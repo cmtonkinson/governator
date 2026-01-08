@@ -1,15 +1,47 @@
 # Governator
-The agentic anti-swarm (or: just a state machine)
+The agentic anti-swarm (or: just a context-managing state machine)
 
 [![CI](https://github.com/cmtonkinson/governator/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cmtonkinson/governator/actions/workflows/ci.yml)
 
 ![Governator](img/governator_512.png)
 
+**Problem:**
+Orchestrating Agentic software development is Hard&trade; because
+- Context windows are limited
+- Context rot is a real problem
+- Attention/intent drift can lead to unexplainable choices
+- LLMs are great at retconning, which makes them irresponsible for
+  challenging/defending their own decisions (see: the tendency to just change
+  the test to make it pass)
+
+In other words, you can only give a single agent so much scope at a time, or it
+starts to make really poor choices. The ceiling of capability seems to grow
+quarter after quarter as LLMs improve, but the core limitation isn't going away.
+
+I see a lot of effort going into "swarming" but I don't see the remedy there
+(yet); only high-order challenges of alignment, coordination, decision making,
+and too much "human in the loop" to control the chaos. Not to mention, a ton of
+noise as these systems attempt to direct inter-agent communication.
+
+In my opinion, multi-agent development is a perfect use-case for boring old
+traditional waterfall process. Sexy? Nope. Effecitve here? Hell yeah.
+
+> Weeks of coding can save you hours of thinking.
+
+**Solution:**
+The Governator:
+1. Takes your idea (as specified in `GOVERNATOR.md`)
+2. Designs a cohesive system architecture for it
+3. Decomposes that design into a plan (milestones, epics, and tasks)
+4. Assigns individual tasks to async workers (coding agents)
+5. Uses different agents to verify results against requirements
+6. Merges approved work into `main`
+
 Governator is a file-backed, git-driven, auditable, deterministic, waterfall
 orchestration framework for converting operator intent into working software.
 Goals, requirements, constraints, and assumptions are defined in
 `GOVERNATOR.md`. Then Governator deploys agentic workers to assess the gap
-between the stated vision and the current repo, decomposes that gap into
+between the stated vision and the current repo, translates that gap into
 individually executable discrete tasks, and oversees planning, dispatch and
 quality Control.
 
