@@ -1,29 +1,5 @@
 # shellcheck shell=bash
 
-# read_numeric_file
-# Purpose: Read a numeric value from a file with fallback handling.
-# Args:
-#   $1: Path to file (string).
-#   $2: Fallback value (string or integer).
-# Output: Prints the numeric value or fallback to stdout.
-# Returns: 0 always.
-read_numeric_file() {
-  local file="$1"
-  local fallback="$2"
-  if [[ ! -f "${file}" ]]; then
-    printf '%s\n' "${fallback}"
-    return 0
-  fi
-
-  local value
-  value="$(tr -d '[:space:]' < "${file}")"
-  if [[ -z "${value}" || ! "${value}" =~ ^[0-9]+$ ]]; then
-    printf '%s\n' "${fallback}"
-    return 0
-  fi
-  printf '%s\n' "${value}"
-}
-
 # config_json_read_value
 # Purpose: Read a scalar value from the config.json file with fallback.
 # Args:
@@ -119,48 +95,6 @@ config_json_write_value() {
   else
     jq -S -n --arg path "${key_path}" "${jq_args[@]}" \
       "setpath(\$path | split(\".\"); ${jq_value_expr})" \
-      > "${tmp_file}"
-  fi
-  mv "${tmp_file}" "${CONFIG_FILE}"
-}
-
-# config_json_write_map_value
-# Purpose: Write a map entry into config.json.
-# Args:
-#   $1: Map key (string).
-#   $2: Entry key (string).
-#   $3: Value to write (string).
-#   $4: Value type ("string" or "number").
-# Output: None.
-# Returns: 0 on success.
-config_json_write_map_value() {
-  local map_key="$1"
-  local entry_key="$2"
-  local value="$3"
-  local value_type="${4:-string}"
-  local tmp_file
-  tmp_file="$(mktemp "${DB_DIR}/config.XXXXXX")"
-  local safe_value="${value}"
-  local jq_args=()
-  local jq_value_expr
-  if [[ "${value_type}" == "number" ]]; then
-    if [[ ! "${safe_value}" =~ ^-?[0-9]+$ ]]; then
-      safe_value=0
-    fi
-    jq_args=(--argjson value "${safe_value}")
-    jq_value_expr='$value'
-  else
-    jq_args=(--arg value "${safe_value}")
-    jq_value_expr='$value'
-  fi
-
-  if [[ -f "${CONFIG_FILE}" ]] && jq -e . "${CONFIG_FILE}" > /dev/null 2>&1; then
-    jq -S --arg map "${map_key}" --arg entry "${entry_key}" "${jq_args[@]}" \
-      "setpath([\$map, \$entry]; ${jq_value_expr})" \
-      "${CONFIG_FILE}" > "${tmp_file}"
-  else
-    jq -S -n --arg map "${map_key}" --arg entry "${entry_key}" "${jq_args[@]}" \
-      "setpath([\$map, \$entry]; ${jq_value_expr})" \
       > "${tmp_file}"
   fi
   mv "${tmp_file}" "${CONFIG_FILE}"

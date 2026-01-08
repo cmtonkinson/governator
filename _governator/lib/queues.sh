@@ -82,7 +82,7 @@ ensure_gap_analysis_planner_task() {
   if ! architecture_bootstrap_complete; then
     return 0
   fi
-  if ! planning_hash_mismatch; then
+  if ! governator_hash_mismatch; then
     return 0
   fi
   if task_exists "${GAP_ANALYSIS_PLANNER_TASK}"; then
@@ -156,7 +156,7 @@ assign_pending_tasks() {
 
   if [[ "${queues_empty}" -eq 1 ]]; then
     log_verbose "All queues empty"
-    if completion_check_hash_mismatch; then
+    if governator_hash_mismatch; then
       if completion_check_due; then
         create_completion_check_task || true
       else
@@ -190,7 +190,7 @@ assign_pending_tasks() {
       local task_name
       task_name="$(basename "${task_file}" .md)"
       log_warn "Missing required role for ${task_name}, blocking."
-      block_task_from_backlog "${task_file}" "Missing required role in filename suffix."
+      move_task_to_blocked "${task_file}" "Missing required role in filename suffix."
       continue
     fi
     local metadata=()
@@ -204,7 +204,7 @@ assign_pending_tasks() {
 
     if ! role_exists "${worker}"; then
       log_warn "Unknown role ${worker} for ${task_name}, blocking."
-      block_task_from_backlog "${task_file}" "Unknown role ${worker} referenced in filename suffix."
+      move_task_to_blocked "${task_file}" "Unknown role ${worker} referenced in filename suffix."
       continue
     fi
 
@@ -300,7 +300,7 @@ resume_assigned_tasks() {
       local task_name
       task_name="$(basename "${task_file}" .md)"
       log_warn "Missing required role for ${task_name}, blocking."
-      block_task_from_assigned "${task_file}" "Missing required role in filename suffix."
+      move_task_to_blocked "${task_file}" "Missing required role in filename suffix."
       continue
     fi
     local metadata=()
@@ -324,7 +324,7 @@ resume_assigned_tasks() {
 
     if ! role_exists "${worker}"; then
       log_warn "Unknown role ${worker} for ${task_name}, blocking."
-      block_task_from_assigned "${task_file}" "Unknown role ${worker} referenced in filename suffix."
+      move_task_to_blocked "${task_file}" "Unknown role ${worker} referenced in filename suffix."
       continue
     fi
 

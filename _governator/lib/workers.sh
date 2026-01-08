@@ -215,24 +215,6 @@ in_flight_has_task() {
   return 1
 }
 
-# in_flight_has_worker
-# Purpose: Check whether a worker already has an in-flight task.
-# Args:
-#   $1: Worker name (string).
-# Output: None.
-# Returns: 0 if worker has in-flight task; 1 otherwise.
-in_flight_has_worker() {
-  local worker_name="$1"
-  local task
-  local worker
-  while IFS='|' read -r task worker; do
-    if [[ "${worker}" == "${worker_name}" ]]; then
-      return 0
-    fi
-  done < <(in_flight_entries)
-  return 1
-}
-
 # in_flight_has_task_worker
 # Purpose: Check whether a specific task/worker pair is in-flight.
 # Args:

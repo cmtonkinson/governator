@@ -77,25 +77,6 @@ log_error() {
   log_with_level "ERROR" "$@" >&2
 }
 
-# log_verbose_file
-# Purpose: Emit a labeled file dump when verbose mode is enabled.
-# Args:
-#   $1: Label string.
-#   $2: File path (string).
-# Output: Writes to stderr.
-# Returns: 0 always.
-log_verbose_file() {
-  local label="$1"
-  local file="$2"
-  if [[ "${GOV_QUIET}" -eq 1 || "${GOV_VERBOSE}" -eq 0 ]]; then
-    return 0
-  fi
-  {
-    log_with_level "INFO" "${label}: ${file}"
-    cat "${file}"
-  } >&2
-}
-
 # append_worker_log_separator
 # Purpose: Add visual separators to a worker log file.
 # Args:

@@ -138,12 +138,12 @@ completion_check_due() {
   return 1
 }
 
-# completion_check_hash_mismatch
+# governator_hash_mismatch
 # Purpose: Determine whether the stored planning hash differs from GOVERNATOR.md.
 # Args: None.
 # Output: None.
 # Returns: 0 if mismatch or missing; 1 if up-to-date.
-completion_check_hash_mismatch() {
+governator_hash_mismatch() {
   local gov_sha
   gov_sha="$(governator_doc_sha)"
   if [[ -z "${gov_sha}" ]]; then
@@ -155,40 +155,6 @@ completion_check_hash_mismatch() {
     return 0
   fi
   return 1
-}
-
-# planning_hash_mismatch
-# Purpose: Determine whether the stored planning hash differs from GOVERNATOR.md.
-# Args: None.
-# Output: None.
-# Returns: 0 if mismatch or missing; 1 if up-to-date.
-planning_hash_mismatch() {
-  local gov_sha
-  gov_sha="$(governator_doc_sha)"
-  if [[ -z "${gov_sha}" ]]; then
-    return 0
-  fi
-  local planning_sha
-  planning_sha="$(read_planning_gov_sha)"
-  if [[ "${planning_sha}" != "${gov_sha}" ]]; then
-    return 0
-  fi
-  return 1
-}
-
-# completion_check_needed
-# Purpose: Determine whether a completion-check should run based on hash and cooldown.
-# Args: None.
-# Output: None.
-# Returns: 0 if needed; 1 otherwise.
-completion_check_needed() {
-  if ! completion_check_hash_mismatch; then
-    return 1
-  fi
-  if ! completion_check_due; then
-    return 1
-  fi
-  return 0
 }
 
 # create_completion_check_task

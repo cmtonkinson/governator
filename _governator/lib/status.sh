@@ -42,7 +42,7 @@ print_project_status() {
 
   local completion_needed=0
   local completion_label="up-to-date"
-  if completion_check_hash_mismatch; then
+  if governator_hash_mismatch; then
     completion_needed=1
     if completion_check_due; then
       completion_label="due"
