@@ -23,18 +23,8 @@ jobs:
             wget \
             shellcheck \
             shfmt \
-            jq \
-            kcov
+            jq
           git clone https://github.com/bats-core/bats-core.git /tmp/bats-core
           sudo /tmp/bats-core/install.sh /usr/local
       - name: Run test suite
         run: COVERAGE=1 ./scripts/all-tests.sh
-      - name: Upload coverage artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage
-          path: |
-            coverage/coverage.xml
-            coverage/
-          if-no-files-found: ignore

@@ -1,8 +1,7 @@
 # Governator
-The agentic anti-swarm (or: just a context-managing state machine)
+The agentic anti-swarm (or: just a context management state machine)
 
 [![CI](https://github.com/cmtonkinson/governator/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cmtonkinson/governator/actions/workflows/ci.yml)
-[![codecov](https://img.shields.io/codecov/c/github/cmtonkinson/governator)](https://codecov.io/gh/cmtonkinson/governator)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.txt)
 [![Share on X](https://img.shields.io/badge/X-Share-black?logo=x&logoColor=white)](https://x.com/intent/tweet?text=Governator%20-%20agentic%20anti-swarm%20state%20machine&url=https%3A%2F%2Fgithub.com%2Fcmtonkinson%2Fgovernator)
 
@@ -393,19 +392,15 @@ clone shows what the system is capable of producing with even minimal guidance.
 
 ## Hacking
 Use `scripts/all-tests.sh` to run the full suite.
+- `scripts/test.sh --fast` will run the bats tests in parallel
 
 Dependencies for development testing live in `scripts/common.sh` and include:
 - [shellcheck](https://github.com/koalaman/shellcheck) for shell linting
 - [shfmt](https://github.com/patrickvane/shfmt) for formatting checks
 - [bats](https://github.com/bats-core/bats-core) for test execution
-- [kcov](https://github.com/SimonKagstrom/kcov) for coverage reports
 - _(optional)_ [parallel](https://www.gnu.org/software/parallel/) for faster
   test runs
 
 Governator also exposes "hidden" subcommands (for targeted testing and ops
 drills). They are intentionally undocumented; check
 `_governator/lib/internal.sh` for the full list and behavior.
-
-To generate code coverage reporting, set `COVERAGE=1` when running the test
-suite. Coverage output is written to `coverage/`, including
-`coverage/coverage.xml` in Cobertura format.

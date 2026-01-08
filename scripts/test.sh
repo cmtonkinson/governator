@@ -3,7 +3,6 @@ set -euo pipefail
 IFS=$'\n\t'
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COVERAGE_DIR="${ROOT_DIR}/coverage"
 
 # shellcheck source=./common.sh
 source "${ROOT_DIR}/scripts/common.sh"
@@ -30,45 +29,41 @@ detect_logical_cores() {
 }
 
 # run_bats
-# Purpose: Execute bats test suite with optional parallelization.
-# Args: None.
+# Purpose: Execute bats test suite.
+# Args:
+#   $1: Optional "--fast" to enable parallel execution when available.
 # Output: Bats output to stdout/stderr.
 # Returns: Exit code from bats.
 run_bats() {
-  if command -v parallel >/dev/null 2>&1; then
+  local mode="${1:-}"
+  if [[ "${mode}" == "--fast" && $(command -v parallel >/dev/null 2>&1; printf '%s' "$?") -eq 0 ]]; then
     local jobs
     jobs="$(detect_logical_cores)"
+    echo "Running bats in parallel with ${jobs} jobs..."
     bats --jobs "${jobs}" "${ROOT_DIR}/tests"
   else
+    echo "Running bats serially..."
     bats "${ROOT_DIR}/tests"
   fi
 }
 
-# run_bats_with_kcov
-# Purpose: Execute bats under kcov and emit CLI + Cobertura coverage reports.
-# Args: None.
-# Output: kcov and bats output; writes coverage artifacts to ${COVERAGE_DIR}.
-# Returns: Exit code from kcov.
-run_bats_with_kcov() {
-  require_deps kcov
-  mkdir -p "${COVERAGE_DIR}"
+mode="serial"
+seen_fast=0
+for arg in "$@"; do
+  case "${arg}" in
+    --fast)
+      seen_fast=1
+      mode="fast"
+      ;;
+    *)
+      printf 'Usage: %s [--fast]\n' "$0" >&2
+      exit 1
+      ;;
+  esac
+done
 
-  local bats_args=("${ROOT_DIR}/tests")
-  if command -v parallel >/dev/null 2>&1; then
-    local jobs
-    jobs="$(detect_logical_cores)"
-    bats_args=(--jobs "${jobs}" "${ROOT_DIR}/tests")
-  fi
-
-  kcov \
-    --include-path="${ROOT_DIR}" \
-    --exclude-path="${ROOT_DIR}/tests" \
-    "${COVERAGE_DIR}" \
-    bats "${bats_args[@]}"
-}
-
-if [[ "${COVERAGE:-0}" == "1" ]]; then
-  run_bats_with_kcov
+if [[ "${mode}" == "fast" ]]; then
+  run_bats --fast
 else
   run_bats
 fi
