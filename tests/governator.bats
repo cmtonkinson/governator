@@ -651,7 +651,7 @@ EOF
 
 @test "read-caps returns configured role cap" {
   set_config_map_value "worker_caps" "ruby" "4" "number"
-  commit_all "Set worker caps"
+  #commit_all "Set worker caps"
 
   run bash "${REPO_DIR}/_governator/governator.sh" read-caps ruby
   [ "$status" -eq 0 ]
