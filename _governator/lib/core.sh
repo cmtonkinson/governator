@@ -94,3 +94,14 @@ ensure_ready_no_lock() {
   ensure_db_dir
   require_governator_doc
 }
+
+# ensure_ready_read_only
+# Purpose: Apply safety checks for read-only commands without enforcing clean git or locks.
+# Args: None.
+# Output: Errors are logged by called helpers.
+# Returns: 0 if environment is ready; exits on failure.
+ensure_ready_read_only() {
+  ensure_dependencies
+  ensure_db_dir
+  require_governator_doc
+}

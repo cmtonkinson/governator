@@ -302,7 +302,7 @@ dispatch_subcommand() {
       fi
       ;;
     read-caps)
-      ensure_ready_with_lock
+      ensure_ready_read_only
       if [[ -n "${1:-}" ]]; then
         read_worker_cap "${1}"
       else
