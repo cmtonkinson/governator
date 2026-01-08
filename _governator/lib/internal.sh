@@ -236,8 +236,6 @@ dispatch_subcommand() {
         lock_governator
         printf 'Governator locked at %s\n' "$(locked_since)"
       fi
-      printf 'Active work snapshot:\n'
-      print_activity_snapshot
       ;;
     unlock)
       ensure_db_dir
