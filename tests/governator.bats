@@ -4,6 +4,45 @@ repo_git() {
   git -C "${REPO_DIR}" "$@"
 }
 
+# file_sha256
+# Purpose: Compute a SHA-256 hash for a file using available tooling.
+# Args:
+#   $1: File path (string).
+# Output: Prints the hash to stdout.
+# Returns: 0 on success; 1 if no supported tool is available.
+file_sha256() {
+  local path="$1"
+  local sha=""
+  if command -v shasum > /dev/null 2>&1; then
+    if sha="$(shasum -a 256 "${path}" 2> /dev/null)"; then
+      sha="$(printf '%s' "${sha}" | awk '{print $1}')"
+      if [[ -n "${sha}" ]]; then
+        printf '%s\n' "${sha}"
+        return 0
+      fi
+    fi
+  fi
+  if command -v sha256sum > /dev/null 2>&1; then
+    if sha="$(sha256sum "${path}" 2> /dev/null)"; then
+      sha="$(printf '%s' "${sha}" | awk '{print $1}')"
+      if [[ -n "${sha}" ]]; then
+        printf '%s\n' "${sha}"
+        return 0
+      fi
+    fi
+  fi
+  if command -v openssl > /dev/null 2>&1; then
+    if sha="$(openssl dgst -sha256 "${path}" 2> /dev/null)"; then
+      sha="$(printf '%s' "${sha}" | awk '{print $2}')"
+      if [[ -n "${sha}" ]]; then
+        printf '%s\n' "${sha}"
+        return 0
+      fi
+    fi
+  fi
+  return 1
+}
+
 commit_all() {
   local message="$1"
   repo_git add GOVERNATOR.md _governator .governator
@@ -160,7 +199,7 @@ setup() {
   set_config_value "project_mode" "new"
   commit_paths "Set project mode" ".governator/config.json"
   local gov_sha
-  gov_sha="$(git -C "${REPO_DIR}" hash-object "${REPO_DIR}/GOVERNATOR.md")"
+  gov_sha="$(file_sha256 "${REPO_DIR}/GOVERNATOR.md")"
   set_config_value "planning.gov_hash" "${gov_sha}"
   commit_paths "Set planning hash" ".governator/config.json"
 
@@ -780,7 +819,7 @@ EOF
 }
 
 @test "status reports project done when checks are up to date" {
-  done_sha="$(repo_git hash-object "${REPO_DIR}/GOVERNATOR.md")"
+  done_sha="$(file_sha256 "${REPO_DIR}/GOVERNATOR.md")"
   set_config_value "planning.gov_hash" "deadbeef" "string"
   commit_paths "Set stale planning hash" ".governator/config.json"
   set_config_value "planning.gov_hash" "${done_sha}" "string"

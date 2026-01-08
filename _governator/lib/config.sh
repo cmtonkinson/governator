@@ -493,7 +493,7 @@ read_planning_gov_sha() {
 # write_planning_gov_sha
 # Purpose: Write the stored GOVERNATOR.md hash for planning reanalysis to planning config.
 # Args:
-#   $1: Git hash string (string, may be empty).
+#   $1: SHA-256 hash string (string, may be empty).
 # Output: None.
 # Returns: 0 on success.
 write_planning_gov_sha() {
@@ -502,12 +502,12 @@ write_planning_gov_sha() {
 }
 
 # governator_doc_sha
-# Purpose: Compute the Git hash of GOVERNATOR.md.
+# Purpose: Compute the SHA-256 hash of GOVERNATOR.md.
 # Args: None.
 # Output: Prints the hash to stdout; prints nothing on failure.
 # Returns: 0 always.
 governator_doc_sha() {
-  git -C "${ROOT_DIR}" hash-object "${ROOT_DIR}/GOVERNATOR.md" 2> /dev/null || true
+  sha256_file "${ROOT_DIR}/GOVERNATOR.md" 2> /dev/null || true
 }
 
 # read_reasoning_effort

@@ -20,6 +20,7 @@ ensure_dependencies() {
     log_error "Missing dependencies: ${missing[*]}"
     exit 1
   fi
+  ensure_sha256_tool
 }
 
 # ensure_update_dependencies
