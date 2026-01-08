@@ -127,36 +127,22 @@ in_flight_entries() {
   awk -F ' -> ' 'NF == 2 { print $1 "|" $2 }' "${IN_FLIGHT_LOG}"
 }
 
-# count_in_flight_total
-# Purpose: Count total in-flight tasks across all roles.
-# Args: None.
-# Output: Prints count to stdout.
-# Returns: 0 always.
-count_in_flight_total() {
-  local count=0
-  local task
-  local worker
-  while IFS='|' read -r task worker; do
-    count=$((count + 1))
-  done < <(in_flight_entries)
-  printf '%s\n' "${count}"
-}
-
-# count_in_flight_role
-# Purpose: Count in-flight tasks for a specific role.
+# count_in_flight
+# Purpose: Count in-flight tasks, optionally filtered by role.
 # Args:
-#   $1: Role name (string).
+#   $1: Role name (string, optional).
 # Output: Prints count to stdout.
 # Returns: 0 always.
-count_in_flight_role() {
-  local role="$1"
+count_in_flight() {
+  local role="${1:-}"
   local count=0
   local task
   local worker
   while IFS='|' read -r task worker; do
-    if [[ "${worker}" == "${role}" ]]; then
-      count=$((count + 1))
+    if [[ -n "${role}" && "${worker}" != "${role}" ]]; then
+      continue
     fi
+    count=$((count + 1))
   done < <(in_flight_entries)
   printf '%s\n' "${count}"
 }

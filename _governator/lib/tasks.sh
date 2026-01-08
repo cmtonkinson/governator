@@ -211,7 +211,7 @@ archive_done_system_tasks() {
     local timestamp
     timestamp="$(date +%Y-%m-%d-%H-%M-%S)"
     local archived_name="${task_name}-${timestamp}"
-    move_task_file_renamed "${task_file}" "${archive_dir}" "${task_name}" "${archived_name}" "archived to task-archive"
+    move_task_file "${task_file}" "${archive_dir}" "${task_name}" "archived to task-archive" "${archived_name}"
     moved=1
   done < <(list_task_files_in_dir "${done_dir}")
 
@@ -567,6 +567,7 @@ annotate_merge_failure() {
 #   $2: Destination directory (string).
 #   $3: Task name (string).
 #   $4: Audit message (string).
+#   $5: New base name (string, optional, without extension).
 # Output: Logs the task event.
 # Returns: 0 on success.
 move_task_file() {
@@ -574,27 +575,14 @@ move_task_file() {
   local dest_dir="$2"
   local task_name="$3"
   local audit_message="$4"
-  mv "${task_file}" "${dest_dir}/$(basename "${task_file}")"
-  log_task_event "${task_name}" "${audit_message}"
-}
-
-# move_task_file_renamed
-# Purpose: Move a task file to a new queue with a new name and audit entry.
-# Args:
-#   $1: Task file path (string).
-#   $2: Destination directory (string).
-#   $3: Task name (string).
-#   $4: New base name (string, without extension).
-#   $5: Audit message (string).
-# Output: Logs the task event.
-# Returns: 0 on success.
-move_task_file_renamed() {
-  local task_file="$1"
-  local dest_dir="$2"
-  local task_name="$3"
-  local new_name="$4"
-  local audit_message="$5"
-  mv "${task_file}" "${dest_dir}/${new_name}.md"
+  local new_name="${5:-}"
+  local dest_name
+  if [[ -n "${new_name}" ]]; then
+    dest_name="${new_name}.md"
+  else
+    dest_name="$(basename "${task_file}")"
+  fi
+  mv "${task_file}" "${dest_dir}/${dest_name}"
   log_task_event "${task_name}" "${audit_message}"
 }
 

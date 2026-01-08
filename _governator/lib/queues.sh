@@ -40,7 +40,7 @@ can_assign_task() {
   local task_name="$2"
 
   local total_count
-  total_count="$(count_in_flight_total)"
+  total_count="$(count_in_flight)"
   local global_cap
   global_cap="$(read_global_cap)"
   if [[ "${total_count}" -ge "${global_cap}" ]]; then
@@ -49,7 +49,7 @@ can_assign_task() {
   fi
 
   local role_count
-  role_count="$(count_in_flight_role "${worker}")"
+  role_count="$(count_in_flight "${worker}")"
   local role_cap
   role_cap="$(read_worker_cap "${worker}")"
   if [[ "${role_count}" -ge "${role_cap}" ]]; then

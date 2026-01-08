@@ -58,17 +58,6 @@ print_project_status() {
   fi
 }
 
-# format_task_label
-# Purpose: Format a task label for status output.
-# Args:
-#   $1: Task file path (string).
-# Output: Prints formatted label to stdout.
-# Returns: 0 always.
-format_task_label() {
-  local path="$1"
-  task_label "${path}"
-}
-
 # inflight_pid_status
 # Purpose: Report whether a worker PID is active.
 # Args:
@@ -244,7 +233,7 @@ print_stage_task_list() {
   local title="$1"
   local dir="$2"
   local limit="${3:-5}"
-  print_task_list "${title}" "${dir}" format_task_label "${limit}"
+  print_task_list "${title}" "${dir}" task_label "${limit}"
 }
 
 # print_blocked_tasks_summary
@@ -317,7 +306,7 @@ print_pending_branches() {
 # Returns: 0 on completion.
 print_inflight_summary() {
   local total
-  total="$(count_in_flight_total)"
+  total="$(count_in_flight)"
   printf 'In-flight workers (%s):\n' "${total}"
   local now
   now="$(date +%s)"

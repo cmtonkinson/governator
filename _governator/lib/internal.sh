@@ -320,9 +320,9 @@ dispatch_subcommand() {
     count-in-flight)
       ensure_ready_with_lock
       if [[ -n "${1:-}" ]]; then
-        count_in_flight_role "${1}"
+        count_in_flight "${1}"
       else
-        count_in_flight_total
+        count_in_flight
       fi
       ;;
     format-task-id)
