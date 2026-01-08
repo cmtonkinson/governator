@@ -119,23 +119,7 @@ assign_pending_tasks() {
   ensure_bootstrap_task_exists
   complete_bootstrap_task_if_ready || true
 
-  # Gate normal task assignment until bootstrap completes.
-  if ! architecture_bootstrap_complete; then
-    log_verbose "Not bootstrapped; skipping task assignment"
-    local blocking_task
-    if blocking_task="$(has_non_bootstrap_tasks)"; then
-      log_warn "Bootstrap incomplete; ignoring task ${blocking_task}."
-    fi
-    local bootstrap_task
-    if bootstrap_task="$(bootstrap_task_path)"; then
-      local task_dir
-      task_dir="$(basename "$(dirname "${bootstrap_task}")")"
-      if [[ "${task_dir}" == "task-backlog" ]]; then
-        if ! in_flight_has_task "${BOOTSTRAP_TASK_NAME}"; then
-          assign_bootstrap_task "${bootstrap_task}"
-        fi
-      fi
-    fi
+  if ! bootstrap_gate_allows_assignment; then
     return 0
   fi
 
@@ -146,39 +130,100 @@ assign_pending_tasks() {
     return 0
   fi
 
-  local queues_empty=1
+  handle_completion_check_when_idle
+  assign_backlog_tasks
+}
+
+# bootstrap_gate_allows_assignment
+# Purpose: Gate task assignment until bootstrap is complete.
+# Args: None.
+# Output: Logs gating decisions and bootstrap task assignment.
+# Returns: 0 when assignment can continue; 1 when gating stops assignment.
+bootstrap_gate_allows_assignment() {
+  if architecture_bootstrap_complete; then
+    return 0
+  fi
+  log_verbose "Not bootstrapped; skipping task assignment"
+  local blocking_task
+  if blocking_task="$(has_non_bootstrap_tasks)"; then
+    log_warn "Bootstrap incomplete; ignoring task ${blocking_task}."
+  fi
+  local bootstrap_task
+  if bootstrap_task="$(bootstrap_task_path)"; then
+    local task_dir
+    task_dir="$(basename "$(dirname "${bootstrap_task}")")"
+    if [[ "${task_dir}" == "task-backlog" ]]; then
+      if ! in_flight_has_task "${BOOTSTRAP_TASK_NAME}"; then
+        assign_bootstrap_task "${bootstrap_task}"
+      fi
+    fi
+  fi
+  return 1
+}
+
+# queues_are_empty
+# Purpose: Check whether all task queues are empty.
+# Args: None.
+# Output: None.
+# Returns: 0 if empty; 1 otherwise.
+queues_are_empty() {
   if [[ "$(count_task_files "${STATE_DIR}/task-backlog")" -gt 0 ]] ||
     [[ "$(count_task_files "${STATE_DIR}/task-assigned")" -gt 0 ]] ||
     [[ "$(count_task_files "${STATE_DIR}/task-worked")" -gt 0 ]] ||
     [[ "$(count_task_files "${STATE_DIR}/task-blocked")" -gt 0 ]]; then
-    queues_empty=0
+    return 1
+  fi
+  return 0
+}
+
+# log_completion_check_cooldown
+# Purpose: Log remaining completion-check cooldown time.
+# Args: None.
+# Output: Logs cooldown status.
+# Returns: 0 always.
+log_completion_check_cooldown() {
+  local last_run
+  last_run="$(read_completion_check_last_run)"
+  local cooldown
+  cooldown="$(read_completion_check_cooldown_seconds)"
+  local now
+  now="$(date +%s)"
+  local remaining=$((cooldown - (now - last_run)))
+  if [[ "${remaining}" -lt 0 ]]; then
+    remaining=0
+  fi
+  log_verbose "Completion check cooldown active (${remaining}s remaining)"
+}
+
+# handle_completion_check_when_idle
+# Purpose: Run completion-check logic when queues are empty.
+# Args: None.
+# Output: Logs completion-check decisions and triggers tasks as needed.
+# Returns: 0 always.
+handle_completion_check_when_idle() {
+  if ! queues_are_empty; then
+    log_verbose "Tasks pending; skipping completion check"
+    return 0
   fi
 
-  if [[ "${queues_empty}" -eq 1 ]]; then
-    log_verbose "All queues empty"
-    if governator_hash_mismatch; then
-      if completion_check_due; then
-        create_completion_check_task || true
-      else
-        local last_run
-        last_run="$(read_completion_check_last_run)"
-        local cooldown
-        cooldown="$(read_completion_check_cooldown_seconds)"
-        local now
-        now="$(date +%s)"
-        local remaining=$((cooldown - (now - last_run)))
-        if [[ "${remaining}" -lt 0 ]]; then
-          remaining=0
-        fi
-        log_verbose "Completion check cooldown active (${remaining}s remaining)"
-      fi
+  log_verbose "All queues empty"
+  if governator_hash_mismatch; then
+    if completion_check_due; then
+      create_completion_check_task || true
     else
-      log_verbose "Completion check not needed (planning.gov_hash matches GOVERNATOR.md)"
+      log_completion_check_cooldown
     fi
   else
-    log_verbose "Tasks pending; skipping completion check"
+    log_verbose "Completion check not needed (planning.gov_hash matches GOVERNATOR.md)"
   fi
+}
 
+# assign_backlog_tasks
+# Purpose: Assign backlog tasks to workers based on metadata and caps.
+# Args: None.
+# Output: Logs assignment decisions and blocking reasons.
+# Returns: 0 on completion.
+assign_backlog_tasks() {
   local task_file
   while IFS= read -r task_file; do
     if [[ "${task_file}" == *"/.keep" ]]; then
