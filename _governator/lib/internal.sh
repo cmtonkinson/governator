@@ -225,25 +225,29 @@ dispatch_subcommand() {
       ;;
     lock)
       ensure_db_dir
+      local red="\033[1;31m"
+      local reset="\033[0m"
       if system_locked; then
         local since
         if since="$(locked_since)"; then
-          printf 'Governator already locked since %s\n' "${since}"
+          printf 'Governator already %blocked%b since %s\n' "${red}" "${reset}" "${since}"
         else
-          printf 'Governator already locked\n'
+          printf 'Governator already %blocked%b\n' "${red}" "${reset}"
         fi
       else
         lock_governator
-        printf 'Governator locked at %s\n' "$(locked_since)"
+        printf 'Governator %blocked%b at %s\n' "${red}" "${reset}" "$(locked_since)"
       fi
       ;;
     unlock)
       ensure_db_dir
+      local green="\033[1;32m"
+      local reset="\033[0m"
       if system_locked; then
         unlock_governator
-        printf 'Governator unlocked\n'
+        printf 'Governator %bunlocked%b\n' "${green}" "${reset}"
       else
-        printf 'Governator already unlocked\n'
+        printf 'Governator already %bunlocked%b\n' "${green}" "${reset}"
       fi
       ;;
     abort)
