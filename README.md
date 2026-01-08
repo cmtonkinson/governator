@@ -392,9 +392,14 @@ Dependencies for development testing live in `scripts/common.sh` and include:
 - [shellcheck](https://github.com/koalaman/shellcheck) for shell linting
 - [shfmt](https://github.com/patrickvane/shfmt) for formatting checks
 - [bats](https://github.com/bats-core/bats-core) for test execution
+- [kcov](https://github.com/SimonKagstrom/kcov) for coverage reports
 - _(optional)_ [parallel](https://www.gnu.org/software/parallel/) for faster
   test runs
 
 Governator also exposes "hidden" subcommands (for targeted testing and ops
 drills). They are intentionally undocumented; check `_governator/governator.sh`
 for the full list and behavior.
+
+To generate coverage, set `COVERAGE=1` when running the test suite. Coverage
+output is written to `coverage/`, including `coverage/coverage.xml` in Cobertura
+format.
