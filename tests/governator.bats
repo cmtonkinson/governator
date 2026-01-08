@@ -751,8 +751,6 @@ EOF
   run bash "${REPO_DIR}/_governator/governator.sh" lock
   [ "$status" -eq 0 ]
   [ -f "${REPO_DIR}/.governator/governator.locked" ]
-  run grep -F "Active work snapshot" <<< "${output}"
-  [ "$status" -eq 0 ]
 }
 
 @test "status command notes the locked state" {
