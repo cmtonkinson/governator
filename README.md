@@ -7,7 +7,7 @@ The agentic anti-swarm (or: just a context-managing state machine)
 
 ## Overview
 **Problem:**
-Orchestrating Agentic software development is Hard&trade; because
+Orchestrating agentic software development is Hard&trade; because
 - Context windows are limited
 - Context rot is a real problem
 - Attention/intent drift can lead to unexplainable choices
