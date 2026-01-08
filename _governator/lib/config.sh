@@ -377,10 +377,11 @@ read_default_branch() {
 # Purpose: Read the global worker concurrency cap from worker_caps.global.
 # Args: None.
 # Output: Prints the cap value to stdout.
-# Returns: 0 always.
+# Returns: 0 always; trims whitespace before validation.
 read_global_cap() {
   local value
   value="$(config_json_read_map_value "worker_caps" "global" "global" "${DEFAULT_GLOBAL_CAP}")"
+  value="$(trim_whitespace "${value}")"
   if [[ -z "${value}" || ! "${value}" =~ ^[0-9]+$ ]]; then
     printf '%s\n' "${DEFAULT_GLOBAL_CAP}"
     return 0
@@ -542,11 +543,12 @@ read_reasoning_effort() {
 # Args:
 #   $1: Role name (string).
 # Output: Prints the cap value to stdout.
-# Returns: 0 always; falls back to default on missing/invalid data.
+# Returns: 0 always; trims whitespace and falls back on missing/invalid data.
 read_worker_cap() {
   local role="$1"
   local cap
   cap="$(config_json_read_map_value "worker_caps" "${role}" "global" "${DEFAULT_WORKER_CAP}")"
+  cap="$(trim_whitespace "${cap}")"
   if [[ -z "${cap}" || ! "${cap}" =~ ^[0-9]+$ ]]; then
     printf '%s\n' "${DEFAULT_WORKER_CAP}"
     return 0
