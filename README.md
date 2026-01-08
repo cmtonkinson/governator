@@ -219,7 +219,12 @@ just to distinguish them from anything unique to your project.
 ## Concurrency Controls
 Governator limits concurrent work using a global cap (`worker_caps.global`) and
 optional per-role caps. In-flight assignments are tracked in
-`.governator/in-flight.log` (one line per task).
+`.governator/in-flight.log` (one line per task). The planner also has basic
+understanding of task dependency, and Governator will respect a simplistic DAG
+constraint for planning tasks.
+
+(So if you have N available workers defined, but fewer-than-N tasks in flight,
+it could be because of a milestone or task constraint.)
 
 ## Audit Log
 Governator writes fine-grained lifecycle events to `.governator/audit.log`:

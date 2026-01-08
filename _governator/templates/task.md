@@ -2,6 +2,7 @@
 milestone: 
 epic: 
 task: 
+depends_on: []
 ---
 
 # Task: <Short Descriptive Title>

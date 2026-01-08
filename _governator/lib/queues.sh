@@ -224,6 +224,12 @@ handle_completion_check_when_idle() {
 # Output: Logs assignment decisions and blocking reasons.
 # Returns: 0 on completion.
 assign_backlog_tasks() {
+  local active_milestone
+  active_milestone="$(earliest_incomplete_milestone)"
+  if [[ -n "${active_milestone}" ]]; then
+    log_verbose "Active milestone gate: ${active_milestone}"
+  fi
+
   local task_file
   while IFS= read -r task_file; do
     if [[ "${task_file}" == *"/.keep" ]]; then
@@ -244,6 +250,18 @@ assign_backlog_tasks() {
     local worker="${metadata[2]}"
 
     if in_flight_has_task "${task_name}"; then
+      continue
+    fi
+
+    local milestone_note
+    if ! milestone_note="$(milestone_gate_allows_task "${task_file}" "${active_milestone}")"; then
+      log_verbose "Skipping ${task_name}; ${milestone_note}"
+      continue
+    fi
+
+    local dependency_note
+    if ! dependency_note="$(task_dependencies_satisfied "${task_file}")"; then
+      log_verbose "Skipping ${task_name}; ${dependency_note}"
       continue
     fi
 
@@ -333,6 +351,12 @@ resume_assigned_tasks() {
     log_verbose "Gap-analysis planner active; pausing non-planner dispatch"
   fi
 
+  local active_milestone
+  active_milestone="$(earliest_incomplete_milestone)"
+  if [[ -n "${active_milestone}" ]]; then
+    log_verbose "Active milestone gate: ${active_milestone}"
+  fi
+
   log_verbose "Resuming assigned tasks"
   local task_file
   while IFS= read -r task_file; do
@@ -361,6 +385,19 @@ resume_assigned_tasks() {
       log_verbose "Planner active; deferring ${task_name}"
       continue
     fi
+
+    local milestone_note
+    if ! milestone_note="$(milestone_gate_allows_task "${task_file}" "${active_milestone}")"; then
+      log_verbose "Skipping ${task_name}; ${milestone_note}"
+      continue
+    fi
+
+    local dependency_note
+    if ! dependency_note="$(task_dependencies_satisfied "${task_file}")"; then
+      log_verbose "Skipping ${task_name}; ${dependency_note}"
+      continue
+    fi
+
     if worker_process_get "${task_name}" "${worker}" > /dev/null 2>&1; then
       in_flight_add "${task_name}" "${worker}"
       log_verbose "Skipping task ${task_name}; worker process already recorded for ${worker}"

@@ -66,6 +66,18 @@ write_task() {
 EOF
 }
 
+write_task_with_frontmatter() {
+  local dir="$1"
+  local name="$2"
+  local frontmatter="$3"
+  cat > "${REPO_DIR}/_governator/${dir}/${name}.md" <<EOF
+---
+${frontmatter}
+---
+# Task
+EOF
+}
+
 complete_bootstrap() {
   mkdir -p "${REPO_DIR}/_governator/docs"
   printf '%s\n' "# ASR" > "${REPO_DIR}/_governator/docs/asr.md"
@@ -327,6 +339,34 @@ EOF
 
   [ -f "${REPO_DIR}/_governator/task-backlog/005-cap-ruby.md" ]
   [ ! -f "${REPO_DIR}/_governator/task-assigned/005-cap-ruby.md" ]
+}
+
+@test "assign-backlog defers tasks with unmet dependencies" {
+  complete_bootstrap
+  set_config_map_value "worker_caps" "global" "2" "number"
+  write_task_with_frontmatter "task-backlog" "001-dependency-ruby" $'milestone:\nepic:\ntask:\ndepends_on: []'
+  write_task_with_frontmatter "task-backlog" "002-dependent-ruby" $'milestone:\nepic:\ntask:\ndepends_on: [001]'
+  commit_all "Add dependency tasks"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" assign-backlog
+  [ "$status" -eq 0 ]
+
+  [ -f "${REPO_DIR}/_governator/task-assigned/001-dependency-ruby.md" ]
+  [ -f "${REPO_DIR}/_governator/task-backlog/002-dependent-ruby.md" ]
+}
+
+@test "assign-backlog gates later milestones until earlier milestones complete" {
+  complete_bootstrap
+  set_config_map_value "worker_caps" "global" "2" "number"
+  write_task_with_frontmatter "task-backlog" "010-m0-ruby" $'milestone: M0\nepic:\ntask:\ndepends_on: []'
+  write_task_with_frontmatter "task-backlog" "011-m1-ruby" $'milestone: M1\nepic:\ntask:\ndepends_on: []'
+  commit_all "Add milestone tasks"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" assign-backlog
+  [ "$status" -eq 0 ]
+
+  [ -f "${REPO_DIR}/_governator/task-assigned/010-m0-ruby.md" ]
+  [ -f "${REPO_DIR}/_governator/task-backlog/011-m1-ruby.md" ]
 }
 
 @test "assign-backlog skips completion check during cooldown" {

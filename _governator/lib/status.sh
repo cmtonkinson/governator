@@ -75,32 +75,6 @@ inflight_pid_status() {
   printf '%s\n' "inactive"
 }
 
-# frontmatter_value
-# Purpose: Extract a YAML frontmatter value from a task file.
-# Args:
-#   $1: Task file path (string).
-#   $2: Key name (string).
-# Output: Prints the value when present.
-# Returns: 0 always.
-frontmatter_value() {
-  local file="$1"
-  local key="$2"
-  awk -v want="${key}" '
-    NR == 1 && $0 == "---" { in_frontmatter=1; next }
-    in_frontmatter == 1 {
-      if ($0 == "---") exit
-      if ($0 ~ /^[A-Za-z0-9_-]+:[[:space:]]*/) {
-        split($0, parts, ":")
-        k = parts[1]
-        v = substr($0, index($0, ":") + 1)
-        sub(/^[ \t]+/, "", v)
-        sub(/[ \t]+$/, "", v)
-        if (k == want) { print v; exit }
-      }
-    }
-  ' "${file}"
-}
-
 # milestone_epic_rows
 # Purpose: Emit milestone and epic status rows from task frontmatter.
 # Args: None.

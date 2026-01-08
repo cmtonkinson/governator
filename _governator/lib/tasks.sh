@@ -56,6 +56,263 @@ task_label() {
   fi
 }
 
+# frontmatter_value
+# Purpose: Extract a YAML frontmatter value from a task file.
+# Args:
+#   $1: Task file path (string).
+#   $2: Key name (string).
+# Output: Prints the value when present.
+# Returns: 0 always.
+frontmatter_value() {
+  local file="$1"
+  local key="$2"
+  awk -v want="${key}" '
+    NR == 1 && $0 == "---" { in_frontmatter=1; next }
+    in_frontmatter == 1 {
+      if ($0 == "---") exit
+      if ($0 ~ /^[A-Za-z0-9_-]+:[[:space:]]*/) {
+        split($0, parts, ":")
+        k = parts[1]
+        v = substr($0, index($0, ":") + 1)
+        sub(/^[ \t]+/, "", v)
+        sub(/[ \t]+$/, "", v)
+        if (k == want) { print v; exit }
+      }
+    }
+  ' "${file}"
+}
+
+# frontmatter_list
+# Purpose: Extract a YAML frontmatter list value into one entry per line.
+# Args:
+#   $1: Task file path (string).
+#   $2: Key name (string).
+# Output: Prints list entries, one per line.
+# Returns: 0 always.
+frontmatter_list() {
+  local file="$1"
+  local key="$2"
+  local raw
+  raw="$(frontmatter_value "${file}" "${key}")"
+  if [[ -z "${raw}" ]]; then
+    return 0
+  fi
+  raw="${raw#[}"
+  raw="${raw%]}"
+  printf '%s\n' "${raw}" | tr ',' '\n' | awk '
+    {
+      gsub(/^[ \t]+/, "", $0)
+      gsub(/[ \t]+$/, "", $0)
+      if ($0 != "") print
+    }
+  '
+}
+
+# task_dependency_ids
+# Purpose: Extract numeric dependency ids from task frontmatter.
+# Args:
+#   $1: Task file path (string).
+# Output: Prints dependency ids, one per line.
+# Returns: 0 always.
+task_dependency_ids() {
+  local task_file="$1"
+  frontmatter_list "${task_file}" "depends_on" | awk '
+    /^[0-9]+$/ { print }
+  '
+}
+
+# task_dependency_done
+# Purpose: Check if a dependency id has a matching done task.
+# Args:
+#   $1: Dependency id (string).
+# Output: None.
+# Returns: 0 if a matching task is done; 1 otherwise.
+task_dependency_done() {
+  local dep_id="$1"
+  if compgen -G "${STATE_DIR}/task-done/${dep_id}-*.md" > /dev/null; then
+    return 0
+  fi
+  return 1
+}
+
+# task_id_exists
+# Purpose: Check if any task file exists for a numeric id prefix.
+# Args:
+#   $1: Dependency id (string).
+# Output: None.
+# Returns: 0 if any task exists; 1 otherwise.
+task_id_exists() {
+  local dep_id="$1"
+  if find_task_files "${dep_id}-*" | grep -q .; then
+    return 0
+  fi
+  return 1
+}
+
+# task_dependencies_satisfied
+# Purpose: Determine whether all dependencies for a task are done.
+# Args:
+#   $1: Task file path (string).
+# Output: Prints a blocking reason when dependencies are missing or incomplete.
+# Returns: 0 if all dependencies are satisfied; 1 otherwise.
+task_dependencies_satisfied() {
+  local task_file="$1"
+  local missing=()
+  local incomplete=()
+  local dep_id
+  while IFS= read -r dep_id; do
+    if task_dependency_done "${dep_id}"; then
+      continue
+    fi
+    if task_id_exists "${dep_id}"; then
+      incomplete+=("${dep_id}")
+    else
+      missing+=("${dep_id}")
+    fi
+  done < <(task_dependency_ids "${task_file}")
+
+  if [[ "${#missing[@]}" -eq 0 && "${#incomplete[@]}" -eq 0 ]]; then
+    return 0
+  fi
+  if [[ "${#missing[@]}" -gt 0 ]]; then
+    printf 'Depends on missing task id(s): %s.' "${missing[*]}"
+    return 1
+  fi
+  printf 'Depends on incomplete task id(s): %s.' "${incomplete[*]}"
+  return 1
+}
+
+# list_milestone_ids
+# Purpose: List unique milestone ids from task frontmatter.
+# Args: None.
+# Output: Prints milestone ids, one per line.
+# Returns: 0 always.
+list_milestone_ids() {
+  local task_file
+  local -A seen=()
+  while IFS= read -r task_file; do
+    local task_name
+    task_name="$(basename "${task_file}" .md)"
+    if [[ "${task_name}" == 000-* ]]; then
+      continue
+    fi
+    local milestone
+    milestone="$(frontmatter_value "${task_file}" "milestone")"
+    if [[ -z "${milestone}" ]]; then
+      continue
+    fi
+    if [[ -z "${seen[${milestone}]+x}" ]]; then
+      seen["${milestone}"]=1
+      printf '%s\n' "${milestone}"
+    fi
+  done < <(
+    list_task_files_in_dir "${STATE_DIR}/task-backlog"
+    list_task_files_in_dir "${STATE_DIR}/task-assigned"
+    list_task_files_in_dir "${STATE_DIR}/task-worked"
+    list_task_files_in_dir "${STATE_DIR}/task-blocked"
+    list_task_files_in_dir "${STATE_DIR}/task-done"
+  )
+}
+
+# sorted_milestone_ids
+# Purpose: Sort milestone ids with numeric order for M-number patterns.
+# Args: None.
+# Output: Prints sorted milestone ids, one per line.
+# Returns: 0 always.
+sorted_milestone_ids() {
+  list_milestone_ids | awk '
+    {
+      id=$0
+      if (id ~ /^M[0-9]+$/) {
+        num=substr(id, 2) + 0
+        printf "0|%010d|%s\n", num, id
+      } else {
+        printf "1|%s|%s\n", id, id
+      }
+    }
+  ' | sort -t '|' -k1,1 -k2,2 | cut -d '|' -f3
+}
+
+# milestone_is_complete
+# Purpose: Check whether all tasks for a milestone are in task-done.
+# Args:
+#   $1: Milestone id (string).
+# Output: None.
+# Returns: 0 if complete; 1 if any task is incomplete.
+milestone_is_complete() {
+  local milestone="$1"
+  local task_file
+  while IFS= read -r task_file; do
+    local task_name
+    task_name="$(basename "${task_file}" .md)"
+    if [[ "${task_name}" == 000-* ]]; then
+      continue
+    fi
+    local current
+    current="$(frontmatter_value "${task_file}" "milestone")"
+    if [[ "${current}" != "${milestone}" ]]; then
+      continue
+    fi
+    local dir
+    dir="$(basename "$(dirname "${task_file}")")"
+    if [[ "${dir}" != "task-done" ]]; then
+      return 1
+    fi
+  done < <(
+    list_task_files_in_dir "${STATE_DIR}/task-backlog"
+    list_task_files_in_dir "${STATE_DIR}/task-assigned"
+    list_task_files_in_dir "${STATE_DIR}/task-worked"
+    list_task_files_in_dir "${STATE_DIR}/task-blocked"
+    list_task_files_in_dir "${STATE_DIR}/task-done"
+  )
+  return 0
+}
+
+# earliest_incomplete_milestone
+# Purpose: Return the earliest milestone id that is not complete.
+# Args: None.
+# Output: Prints the milestone id when present.
+# Returns: 0 always.
+earliest_incomplete_milestone() {
+  local milestone
+  while IFS= read -r milestone; do
+    if ! milestone_is_complete "${milestone}"; then
+      printf '%s\n' "${milestone}"
+      return 0
+    fi
+  done < <(sorted_milestone_ids)
+}
+
+# milestone_gate_allows_task
+# Purpose: Enforce sequential milestone dispatch for a task.
+# Args:
+#   $1: Task file path (string).
+#   $2: Active milestone id (string, optional).
+# Output: Prints a blocking reason when the task is outside the active milestone.
+# Returns: 0 if task is eligible; 1 otherwise.
+milestone_gate_allows_task() {
+  local task_file="$1"
+  local active_milestone="$2"
+  if [[ -z "${active_milestone}" ]]; then
+    return 0
+  fi
+  local task_name
+  task_name="$(basename "${task_file}" .md)"
+  if [[ "${task_name}" == 000-* ]]; then
+    return 0
+  fi
+  local milestone
+  milestone="$(frontmatter_value "${task_file}" "milestone")"
+  if [[ -z "${milestone}" ]]; then
+    return 0
+  fi
+  if [[ "${milestone}" == "${active_milestone}" ]]; then
+    return 0
+  fi
+  printf 'Milestone %s is not active (current %s).' "${milestone}" "${active_milestone}"
+  return 1
+}
+
 # extract_block_reason
 # Purpose: Extract the block reason from a task file.
 # Args:
