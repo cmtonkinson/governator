@@ -475,14 +475,14 @@ write_last_update_at() {
   printf '%s\n' "${timestamp}" > "${LAST_UPDATE_FILE}"
 }
 
-# read_project_done_sha
-# Purpose: Read the stored GOVERNATOR.md hash for completion checks from done_check config.
+# read_planning_gov_sha
+# Purpose: Read the stored GOVERNATOR.md hash for planning reanalysis from planning config.
 # Args: None.
 # Output: Prints the SHA or empty string to stdout.
 # Returns: 0 always.
-read_project_done_sha() {
+read_planning_gov_sha() {
   local value
-  value="$(config_json_read_value "done_check.done_hash" "")"
+  value="$(config_json_read_value "planning.gov_hash" "")"
   if [[ -z "${value}" ]]; then
     printf '%s\n' ""
     return 0
@@ -490,15 +490,15 @@ read_project_done_sha() {
   trim_whitespace "${value}"
 }
 
-# write_project_done_sha
-# Purpose: Write the stored GOVERNATOR.md hash for completion checks to done_check config.
+# write_planning_gov_sha
+# Purpose: Write the stored GOVERNATOR.md hash for planning reanalysis to planning config.
 # Args:
 #   $1: Git hash string (string, may be empty).
 # Output: None.
 # Returns: 0 on success.
-write_project_done_sha() {
+write_planning_gov_sha() {
   local sha="$1"
-  config_json_write_value "done_check.done_hash" "${sha}" "string"
+  config_json_write_value "planning.gov_hash" "${sha}" "string"
 }
 
 # governator_doc_sha

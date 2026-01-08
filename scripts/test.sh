@@ -29,7 +29,7 @@ detect_logical_cores() {
 }
 
 # run_bats
-# Purpose: Execute bats test suite.
+# Purpose: Execute bats test suite with verbose timing and output on failure.
 # Args:
 #   $1: Optional "--fast" to enable parallel execution when available.
 # Output: Bats output to stdout/stderr.
@@ -40,10 +40,10 @@ run_bats() {
     local jobs
     jobs="$(detect_logical_cores)"
     echo "Running bats in parallel with ${jobs} jobs..."
-    bats --jobs "${jobs}" "${ROOT_DIR}/tests"
+    bats -xT --print-output-on-failure --jobs "${jobs}" "${ROOT_DIR}/tests"
   else
     echo "Running bats serially..."
-    bats "${ROOT_DIR}/tests"
+    bats -xT --print-output-on-failure "${ROOT_DIR}/tests"
   fi
 }
 

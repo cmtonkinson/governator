@@ -89,6 +89,7 @@ apply_review_decision() {
 
   local task_dir
   task_dir="$(basename "$(dirname "${main_task_file}")")"
+  local gap_task="${GAP_ANALYSIS_PLANNER_TASK:-}"
 
   case "${task_dir}" in
     task-worked | task-assigned)
@@ -102,25 +103,34 @@ apply_review_decision() {
         case "${decision}" in
           approve)
             if [[ "${task_name}" == "${COMPLETION_CHECK_REVIEW_TASK}" ]]; then
-              write_project_done_sha "$(governator_doc_sha)"
+              write_planning_gov_sha "$(governator_doc_sha)"
               move_task_file "${main_task_file}" "${STATE_DIR}/task-done" "${task_name}" "moved to task-done"
             else
+              if [[ -n "${gap_task}" && "${task_name}" == "${gap_task}" ]]; then
+                write_planning_gov_sha "$(governator_doc_sha)"
+              fi
               move_task_file "${main_task_file}" "${STATE_DIR}/task-done" "${task_name}" "moved to task-done"
             fi
             ;;
           reject)
             if [[ "${task_name}" == "${COMPLETION_CHECK_REVIEW_TASK}" ]]; then
-              write_project_done_sha ""
+              write_planning_gov_sha ""
               move_completion_check_to_gap_analysis "${main_task_file}" "${task_name}"
             else
+              if [[ -n "${gap_task}" && "${task_name}" == "${gap_task}" ]]; then
+                write_planning_gov_sha ""
+              fi
               move_task_file "${main_task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "moved to task-assigned"
             fi
             ;;
           *)
             if [[ "${task_name}" == "${COMPLETION_CHECK_REVIEW_TASK}" ]]; then
-              write_project_done_sha ""
+              write_planning_gov_sha ""
               move_completion_check_to_gap_analysis "${main_task_file}" "${task_name}"
             else
+              if [[ -n "${gap_task}" && "${task_name}" == "${gap_task}" ]]; then
+                write_planning_gov_sha ""
+              fi
               move_task_file "${main_task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
             fi
             ;;

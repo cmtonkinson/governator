@@ -60,6 +60,50 @@ can_assign_task() {
   return 0
 }
 
+# gap_analysis_planner_active
+# Purpose: Determine whether the gap-analysis planner task exists.
+# Args: None.
+# Output: None.
+# Returns: 0 if the planner task exists; 1 otherwise.
+gap_analysis_planner_active() {
+  if task_exists "${GAP_ANALYSIS_PLANNER_TASK}"; then
+    return 0
+  fi
+  return 1
+}
+
+# ensure_gap_analysis_planner_task
+# Purpose: Create the gap-analysis planner task when GOVERNATOR.md changes.
+# Args: None.
+# Output: Logs task creation and commits changes.
+# Returns: 0 on completion; 1 on failure to copy the template.
+ensure_gap_analysis_planner_task() {
+  if ! planning_hash_mismatch; then
+    return 0
+  fi
+  if task_exists "${GAP_ANALYSIS_PLANNER_TASK}"; then
+    return 0
+  fi
+  if [[ ! -f "${GAP_ANALYSIS_PLANNER_TEMPLATE}" ]]; then
+    log_error "Missing gap-analysis template at ${GAP_ANALYSIS_PLANNER_TEMPLATE}."
+    return 1
+  fi
+  if ! role_exists "${GAP_ANALYSIS_PLANNER_ROLE}"; then
+    log_warn "Unknown role ${GAP_ANALYSIS_PLANNER_ROLE} for gap-analysis planner task."
+    return 0
+  fi
+
+  local dest="${STATE_DIR}/task-assigned/${GAP_ANALYSIS_PLANNER_TASK}.md"
+  cp "${GAP_ANALYSIS_PLANNER_TEMPLATE}" "${dest}"
+  annotate_assignment "${dest}" "${GAP_ANALYSIS_PLANNER_ROLE}"
+  log_task_event "${GAP_ANALYSIS_PLANNER_TASK}" "created gap-analysis planner task"
+
+  git -C "${ROOT_DIR}" add "${dest}" "${AUDIT_LOG}"
+  git -C "${ROOT_DIR}" commit -q -m "[governator] Create gap-analysis planner task"
+  git_push_default_branch
+  return 0
+}
+
 # assign_pending_tasks
 # Purpose: Assign backlog tasks according to role suffix and caps.
 # Args: None.
@@ -92,6 +136,11 @@ assign_pending_tasks() {
   fi
 
   ensure_unblock_planner_task || true
+  ensure_gap_analysis_planner_task || true
+  if gap_analysis_planner_active; then
+    log_verbose "Gap-analysis planner active; skipping backlog assignment"
+    return 0
+  fi
 
   local queues_empty=1
   if [[ "$(count_task_files "${STATE_DIR}/task-backlog")" -gt 0 ]] ||
@@ -120,7 +169,7 @@ assign_pending_tasks() {
         log_verbose "Completion check cooldown active (${remaining}s remaining)"
       fi
     else
-      log_verbose "Completion check not needed (done_check.done_hash matches GOVERNATOR.md)"
+      log_verbose "Completion check not needed (planning.gov_hash matches GOVERNATOR.md)"
     fi
   else
     log_verbose "Tasks pending; skipping completion check"
@@ -228,6 +277,13 @@ resume_assigned_tasks() {
   touch_logs
   require_project_mode
 
+  ensure_gap_analysis_planner_task || true
+  local planner_active=0
+  if gap_analysis_planner_active; then
+    planner_active=1
+    log_verbose "Gap-analysis planner active; pausing non-planner dispatch"
+  fi
+
   log_verbose "Resuming assigned tasks"
   local task_file
   while IFS= read -r task_file; do
@@ -250,6 +306,10 @@ resume_assigned_tasks() {
 
     if in_flight_has_task "${task_name}"; then
       log_verbose "Skipping in-flight task ${task_name}"
+      continue
+    fi
+    if [[ "${planner_active}" -eq 1 && "${task_name}" != "${GAP_ANALYSIS_PLANNER_TASK}" ]]; then
+      log_verbose "Planner active; deferring ${task_name}"
       continue
     fi
     if worker_process_get "${task_name}" "${worker}" > /dev/null 2>&1; then

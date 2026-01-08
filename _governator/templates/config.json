@@ -5,8 +5,10 @@
   "next_task_id": 1,
   "done_check": {
     "cooldown_seconds": 300,
-    "done_hash": "",
     "last_check": 0
+  },
+  "planning": {
+    "gov_hash": ""
   },
   "worker_timeout_seconds": 900,
   "worker_caps": {

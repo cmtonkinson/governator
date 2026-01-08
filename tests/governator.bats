@@ -159,6 +159,10 @@ setup() {
 
   set_config_value "project_mode" "new"
   commit_paths "Set project mode" ".governator/config.json"
+  local gov_sha
+  gov_sha="$(git -C "${REPO_DIR}" hash-object "${REPO_DIR}/GOVERNATOR.md")"
+  set_config_value "planning.gov_hash" "${gov_sha}"
+  commit_paths "Set planning hash" ".governator/config.json"
 
   cat > "${BIN_DIR}/codex" <<'EOF'
 #!/usr/bin/env bash
@@ -206,6 +210,20 @@ EOF
   [ -f "${REPO_DIR}/_governator/task-assigned/001-sample-ruby.md" ]
   run grep -F "001-sample-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
   [ "$status" -eq 0 ]
+}
+
+@test "assign-backlog queues gap-analysis planner on GOVERNATOR changes" {
+  complete_bootstrap
+  set_config_value "planning.gov_hash" "deadbeef"
+  commit_paths "Set stale planning hash" ".governator/config.json"
+  write_task "task-backlog" "001-sample-ruby"
+  commit_all "Add backlog task"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" assign-backlog
+  [ "$status" -eq 0 ]
+
+  [ -f "${REPO_DIR}/_governator/task-assigned/000-gap-analysis-planner.md" ]
+  [ -f "${REPO_DIR}/_governator/task-backlog/001-sample-ruby.md" ]
 }
 
 @test "assign-backlog blocks tasks missing a role suffix" {
@@ -264,7 +282,7 @@ EOF
 
 @test "assign-backlog skips completion check during cooldown" {
   complete_bootstrap
-  set_config_value "done_check.done_hash" "deadbeef"
+  set_config_value "planning.gov_hash" "deadbeef"
   set_config_value "done_check.last_check" "$(date +%s)" "number"
   commit_all "Prepare completion cooldown state"
 
@@ -765,7 +783,9 @@ EOF
 
 @test "status reports project done when checks are up to date" {
   done_sha="$(repo_git hash-object "${REPO_DIR}/GOVERNATOR.md")"
-  set_config_value "done_check.done_hash" "${done_sha}" "string"
+  set_config_value "planning.gov_hash" "deadbeef" "string"
+  commit_paths "Set stale planning hash" ".governator/config.json"
+  set_config_value "planning.gov_hash" "${done_sha}" "string"
   commit_paths "Set project done" ".governator/config.json"
 
   run bash "${REPO_DIR}/_governator/governator.sh" status

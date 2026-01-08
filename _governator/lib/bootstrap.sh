@@ -139,7 +139,7 @@ completion_check_due() {
 }
 
 # completion_check_hash_mismatch
-# Purpose: Determine whether the stored completion hash differs from GOVERNATOR.md.
+# Purpose: Determine whether the stored planning hash differs from GOVERNATOR.md.
 # Args: None.
 # Output: None.
 # Returns: 0 if mismatch or missing; 1 if up-to-date.
@@ -150,8 +150,27 @@ completion_check_hash_mismatch() {
     return 0
   fi
   local done_sha
-  done_sha="$(read_project_done_sha)"
+  done_sha="$(read_planning_gov_sha)"
   if [[ "${done_sha}" != "${gov_sha}" ]]; then
+    return 0
+  fi
+  return 1
+}
+
+# planning_hash_mismatch
+# Purpose: Determine whether the stored planning hash differs from GOVERNATOR.md.
+# Args: None.
+# Output: None.
+# Returns: 0 if mismatch or missing; 1 if up-to-date.
+planning_hash_mismatch() {
+  local gov_sha
+  gov_sha="$(governator_doc_sha)"
+  if [[ -z "${gov_sha}" ]]; then
+    return 0
+  fi
+  local planning_sha
+  planning_sha="$(read_planning_gov_sha)"
+  if [[ "${planning_sha}" != "${gov_sha}" ]]; then
     return 0
   fi
   return 1
