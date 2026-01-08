@@ -709,6 +709,208 @@ unblock_task() {
   git_push_default_branch
 }
 
+# truncate_task_notes
+# Purpose: Truncate a task file to the Notes section heading.
+# Args:
+#   $1: Task file path (string).
+# Output: None.
+# Returns: 0 on success.
+truncate_task_notes() {
+  local task_file="$1"
+  if [[ -z "${task_file}" || ! -f "${task_file}" ]]; then
+    return 0
+  fi
+  local tmp_file
+  tmp_file="$(mktemp "${task_file}.tmp.XXXXXX")"
+  awk '
+    { print }
+    $0 ~ /^## Notes[[:space:]]*$/ { exit }
+  ' "${task_file}" > "${tmp_file}"
+  mv "${tmp_file}" "${task_file}"
+}
+
+# restart_cleanup_worker
+# Purpose: Stop a worker process and clean up artifacts for a task.
+# Args:
+#   $1: Task name (string).
+#   $2: Worker name (string).
+# Output: None.
+# Returns: 0 on completion.
+restart_cleanup_worker() {
+  local task_name="$1"
+  local worker="$2"
+  if [[ -z "${task_name}" || -z "${worker}" ]]; then
+    return 0
+  fi
+
+  local worker_info=()
+  local pid=""
+  local tmp_dir=""
+  local branch=""
+  if mapfile -t worker_info < <(worker_process_get "${task_name}" "${worker}" 2> /dev/null); then
+    pid="${worker_info[0]:-}"
+    tmp_dir="${worker_info[1]:-}"
+    branch="${worker_info[2]:-}"
+  fi
+
+  if [[ -n "${pid}" ]]; then
+    if kill -0 "${pid}" > /dev/null 2>&1; then
+      kill -9 "${pid}" > /dev/null 2>&1 || true
+    fi
+  fi
+
+  if [[ -n "${tmp_dir}" && -d "${tmp_dir}" ]]; then
+    cleanup_tmp_dir "${tmp_dir}"
+  fi
+  cleanup_worker_tmp_dirs "${worker}" "${task_name}"
+
+  if [[ -z "${branch}" ]]; then
+    branch="worker/${worker}/${task_name}"
+  fi
+  delete_worker_branch "${branch}"
+}
+
+# restart_cleanup_in_flight
+# Purpose: Stop any in-flight workers for a task and clear tracking entries.
+# Args:
+#   $1: Task name (string).
+# Output: None.
+# Returns: 0 on completion.
+restart_cleanup_in_flight() {
+  local task_name="$1"
+  if [[ -z "${task_name}" ]]; then
+    return 0
+  fi
+
+  local workers=()
+  local task=""
+  local worker=""
+  while IFS='|' read -r task worker; do
+    if [[ "${task}" == "${task_name}" ]]; then
+      workers+=("${worker}")
+    fi
+  done < <(in_flight_entries)
+
+  for worker in "${workers[@]}"; do
+    restart_cleanup_worker "${task_name}" "${worker}"
+    in_flight_remove "${task_name}" "${worker}"
+  done
+
+  in_flight_remove "${task_name}" ""
+}
+
+# restart_tasks
+# Purpose: Reset tasks to backlog and remove all notes/annotations.
+# Args:
+#   $@: Task prefixes (string) and optional --dry-run.
+# Output: Logs task state changes and cleanup actions.
+# Returns: 0 on completion; exits 1 on invalid input.
+restart_tasks() {
+  if [[ "$#" -lt 1 ]]; then
+    log_error "Usage: restart [--dry-run] <task-prefix> [task-prefix ...]"
+    exit 1
+  fi
+
+  local dry_run=0
+  local prefixes=()
+  local arg=""
+  while [[ "$#" -gt 0 ]]; do
+    arg="$1"
+    case "${arg}" in
+      --dry-run)
+        dry_run=1
+        ;;
+      *)
+        prefixes+=("${arg}")
+        ;;
+    esac
+    shift
+  done
+
+  if [[ "${#prefixes[@]}" -eq 0 ]]; then
+    log_error "Usage: restart [--dry-run] <task-prefix> [task-prefix ...]"
+    exit 1
+  fi
+
+  local prefix
+  for prefix in "${prefixes[@]}"; do
+    if [[ ! "${prefix}" =~ ^[0-9]+$ ]]; then
+      log_error "Invalid task prefix ${prefix}; must be numeric."
+      exit 1
+    fi
+  done
+
+  local task_files=()
+  local task_names=()
+  local task_dirs=()
+  local -A seen=()
+  for prefix in "${prefixes[@]}"; do
+    local task_file
+    if ! task_file="$(task_file_for_prefix "${prefix}")"; then
+      log_error "No task matches prefix ${prefix}"
+      exit 1
+    fi
+    local task_name
+    task_name="$(basename "${task_file}" .md)"
+    if [[ -n "${seen[${task_name}]+x}" ]]; then
+      continue
+    fi
+    seen["${task_name}"]=1
+    task_files+=("${task_file}")
+    task_names+=("${task_name}")
+    task_dirs+=("$(basename "$(dirname "${task_file}")")")
+  done
+
+  if [[ "${dry_run}" -eq 1 ]]; then
+    log_info "Dry run: restart ${task_names[*]}"
+  else
+    sync_default_branch
+  fi
+
+  local idx=0
+  local task_file=""
+  local task_name=""
+  local task_dir=""
+  local dest_file=""
+  for idx in "${!task_files[@]}"; do
+    task_file="${task_files[${idx}]}"
+    task_name="${task_names[${idx}]}"
+    task_dir="${task_dirs[${idx}]}"
+
+    if [[ "${dry_run}" -eq 1 ]]; then
+      if in_flight_has_task "${task_name}"; then
+        log_info "Dry run: would stop in-flight workers for ${task_name}"
+      fi
+    else
+      restart_cleanup_in_flight "${task_name}"
+    fi
+
+    if [[ "${dry_run}" -eq 1 ]]; then
+      log_info "Dry run: would move ${task_name} from ${task_dir} to task-backlog"
+      log_info "Dry run: would truncate notes for ${task_name}"
+      continue
+    fi
+
+    if [[ "${task_dir}" != "task-backlog" ]]; then
+      move_task_file "${task_file}" "${STATE_DIR}/task-backlog" "${task_name}" "restarted by operator"
+      dest_file="${STATE_DIR}/task-backlog/${task_name}.md"
+    else
+      log_task_event "${task_name}" "restarted by operator"
+      dest_file="${task_file}"
+    fi
+
+    truncate_task_notes "${dest_file}"
+  done
+
+  if [[ "${dry_run}" -eq 1 ]]; then
+    return 0
+  fi
+
+  git -C "${ROOT_DIR}" add "${STATE_DIR}"
+  git -C "${ROOT_DIR}" commit -q -m "[governator] Restart tasks ${task_names[*]}"
+  git_push_default_branch
+}
+
 # list_available_workers
 # Purpose: List available worker roles.
 # Args: None.

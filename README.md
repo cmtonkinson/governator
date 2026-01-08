@@ -100,7 +100,7 @@ similar:
 
 Internally, Governator uses a lock file, so if a `run` takes longer than your
 scheduling interval, it won't cause overlaps or collisions. Other commands such
-as `status` can be invoked at any time.
+as `status`, `restart`, and `unblock` can be invoked at any time.
 
 ### Shortcut
 Governator is a cool name but it's annoying to type all the time. I'd recommend

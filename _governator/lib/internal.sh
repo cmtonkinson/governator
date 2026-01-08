@@ -170,6 +170,7 @@ Public commands:
   lock     Prevent new activity from starting and show a work snapshot.
   unlock   Resume activity after a lock.
   unblock  Move a blocked task back to assigned with a note.
+  restart  Reset tasks to backlog and remove notes/annotations (use --dry-run to preview).
 
 Options:
   -h, --help   Show this help message.
@@ -267,6 +268,14 @@ dispatch_subcommand() {
       local prefix="${1}"
       shift
       unblock_task "${prefix}" "$@"
+      ;;
+    restart)
+      ensure_ready_no_lock
+      if [[ -z "${1:-}" ]]; then
+        log_error "Usage: restart [--dry-run] <task-prefix> [task-prefix ...]"
+        exit 1
+      fi
+      restart_tasks "$@"
       ;;
     process-branches)
       run_locked_action "processing worker branches" process_branches_action

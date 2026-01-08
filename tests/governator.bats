@@ -1187,6 +1187,102 @@ EOF
   [ "$status" -eq 0 ]
 }
 
+@test "restart resets tasks to backlog and truncates notes for multiple prefixes" {
+  cat > "${REPO_DIR}/_governator/task-assigned/030-restart-ruby.md" <<'EOF'
+# Task
+## Notes
+Assigned note
+## Assignment
+should be removed
+EOF
+  cat > "${REPO_DIR}/_governator/task-blocked/031-restart-ruby.md" <<'EOF'
+# Task
+## Notes
+Blocked note
+## Governator Block
+should be removed
+EOF
+
+  tmp_dir="$(mktemp -d "${BATS_TMPDIR}/worker-XXXXXX")"
+  sleep 60 >/dev/null &
+  pid=$!
+  printf '%s | %s | %s | %s | %s | %s\n' \
+    "030-restart-ruby" "ruby" "${pid}" "${tmp_dir}" "worker/ruby/030-restart-ruby" "0" \
+    >> "${REPO_DIR}/.governator/worker-processes.log"
+  printf '%s -> %s\n' "030-restart-ruby" "ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+
+  commit_all "Prepare restart tasks"
+  create_worker_branch "030-restart-ruby" "ruby"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" restart 030 031
+  [ "$status" -eq 0 ]
+
+  run kill -0 "${pid}" >/dev/null 2>&1
+  [ "$status" -ne 0 ]
+  kill -9 "${pid}" >/dev/null 2>&1 || true
+  wait "${pid}" >/dev/null 2>&1 || true
+
+  [ ! -d "${tmp_dir}" ]
+  [ -f "${REPO_DIR}/_governator/task-backlog/030-restart-ruby.md" ]
+  [ -f "${REPO_DIR}/_governator/task-backlog/031-restart-ruby.md" ]
+  [ ! -f "${REPO_DIR}/_governator/task-assigned/030-restart-ruby.md" ]
+  [ ! -f "${REPO_DIR}/_governator/task-blocked/031-restart-ruby.md" ]
+
+  run grep -F "## Notes" "${REPO_DIR}/_governator/task-backlog/030-restart-ruby.md"
+  [ "$status" -eq 0 ]
+  run grep -F "Assigned note" "${REPO_DIR}/_governator/task-backlog/030-restart-ruby.md"
+  [ "$status" -ne 0 ]
+  run grep -F "Assignment" "${REPO_DIR}/_governator/task-backlog/030-restart-ruby.md"
+  [ "$status" -ne 0 ]
+
+  run grep -F "## Notes" "${REPO_DIR}/_governator/task-backlog/031-restart-ruby.md"
+  [ "$status" -eq 0 ]
+  run grep -F "Blocked note" "${REPO_DIR}/_governator/task-backlog/031-restart-ruby.md"
+  [ "$status" -ne 0 ]
+  run grep -F "Governator Block" "${REPO_DIR}/_governator/task-backlog/031-restart-ruby.md"
+  [ "$status" -ne 0 ]
+
+  run grep -F "030-restart-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
+  [ "$status" -ne 0 ]
+  run grep -F "030-restart-ruby | ruby" "${REPO_DIR}/.governator/worker-processes.log"
+  [ "$status" -ne 0 ]
+
+  [ ! -f "${ORIGIN_DIR}/refs/heads/worker/ruby/030-restart-ruby" ]
+}
+
+@test "restart --dry-run reports changes without mutating tasks" {
+  cat > "${REPO_DIR}/_governator/task-assigned/032-restart-ruby.md" <<'EOF'
+# Task
+## Notes
+Keep me
+## Assignment
+keep annotation
+EOF
+
+  printf '%s | %s | %s | %s | %s | %s\n' \
+    "032-restart-ruby" "ruby" "99999" "/tmp/governator-test" "worker/ruby/032-restart-ruby" "0" \
+    >> "${REPO_DIR}/.governator/worker-processes.log"
+  printf '%s -> %s\n' "032-restart-ruby" "ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+
+  commit_all "Prepare dry-run restart task"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" restart --dry-run 032
+  [ "$status" -eq 0 ]
+
+  [ -f "${REPO_DIR}/_governator/task-assigned/032-restart-ruby.md" ]
+  [ ! -f "${REPO_DIR}/_governator/task-backlog/032-restart-ruby.md" ]
+
+  run grep -F "Keep me" "${REPO_DIR}/_governator/task-assigned/032-restart-ruby.md"
+  [ "$status" -eq 0 ]
+  run grep -F "Assignment" "${REPO_DIR}/_governator/task-assigned/032-restart-ruby.md"
+  [ "$status" -eq 0 ]
+
+  run grep -F "032-restart-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
+  [ "$status" -eq 0 ]
+  run grep -F "032-restart-ruby | ruby" "${REPO_DIR}/.governator/worker-processes.log"
+  [ "$status" -eq 0 ]
+}
+
 @test "archive_done_system_tasks archives done 000 tasks with timestamp" {
   complete_bootstrap
   write_task "task-done" "000-completion-check-reviewer"
