@@ -2,6 +2,9 @@
 The agentic anti-swarm (or: just a context-managing state machine)
 
 [![CI](https://github.com/cmtonkinson/governator/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cmtonkinson/governator/actions/workflows/ci.yml)
+[![codecov](https://img.shields.io/codecov/c/github/cmtonkinson/governator)](https://codecov.io/gh/cmtonkinson/governator)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.txt)
+[![Share on X](https://img.shields.io/badge/X-Share-black?logo=x&logoColor=white)](https://x.com/intent/tweet?text=Governator%20-%20agentic%20anti-swarm%20state%20machine&url=https%3A%2F%2Fgithub.com%2Fcmtonkinson%2Fgovernator)
 
 ![Governator](img/governator_512.png)
 
