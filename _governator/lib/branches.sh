@@ -202,14 +202,14 @@ process_worker_branch() {
     return 0
   fi
   if [[ "${merge_ready}" -eq 1 ]]; then
-    if git -C "${ROOT_DIR}" merge --ff-only -q "${merge_branch}" > /dev/null; then
+    if git -C "${ROOT_DIR}" merge --ff-only -q "${merge_branch}" > /dev/null 2>&1; then
       merged=1
     else
       local base_branch
       base_branch="$(read_default_branch)"
       log_warn "Fast-forward merge failed for ${merge_branch}; attempting rebase onto ${base_branch}."
       if git -C "${ROOT_DIR}" rebase -q "${base_branch}" "${merge_branch}" > /dev/null 2>&1; then
-        if git -C "${ROOT_DIR}" merge --ff-only -q "${merge_branch}" > /dev/null; then
+        if git -C "${ROOT_DIR}" merge --ff-only -q "${merge_branch}" > /dev/null 2>&1; then
           merged=1
         fi
       else
@@ -218,7 +218,7 @@ process_worker_branch() {
 
       if [[ "${merged}" -eq 0 ]]; then
         log_warn "Fast-forward still not possible; attempting merge commit for ${merge_branch} into ${base_branch}."
-        if git -C "${ROOT_DIR}" merge -q --no-ff "${merge_branch}" -m "[governator] Merge task ${task_name}" > /dev/null; then
+        if git -C "${ROOT_DIR}" merge -q --no-ff "${merge_branch}" -m "[governator] Merge task ${task_name}" > /dev/null 2>&1; then
           merged=1
         else
           git -C "${ROOT_DIR}" merge --abort > /dev/null 2>&1 || true
