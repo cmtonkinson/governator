@@ -283,42 +283,6 @@ recover_reviewer_output() {
   return 0
 }
 
-# cleanup_tmp_dir
-# Purpose: Remove a worker temporary directory if it exists.
-# Args:
-#   $1: Directory path (string).
-# Output: None.
-# Returns: 0 on completion.
-cleanup_tmp_dir() {
-  local dir="$1"
-  if [[ -n "${dir}" && -d "${dir}" ]]; then
-    rm -rf "${dir}"
-  fi
-}
-
-# cleanup_worker_tmp_dirs
-# Purpose: Remove worker temp dirs from known tmp roots.
-# Args:
-#   $1: Worker name (string).
-#   $2: Task name (string).
-# Output: None.
-# Returns: 0 on completion.
-cleanup_worker_tmp_dirs() {
-  local worker="$1"
-  local task_name="$2"
-  if [[ -z "${worker}" || -z "${task_name}" ]]; then
-    return 0
-  fi
-  local roots=(/tmp)
-  if [[ -d "/private/tmp" ]]; then
-    roots+=(/private/tmp)
-  fi
-
-  local root
-  for root in "${roots[@]}"; do
-    find "${root}" -maxdepth 1 -type d -name "governator-${PROJECT_NAME}-${worker}-${task_name}-*" -exec rm -rf {} + > /dev/null 2>&1 || true
-  done
-}
 
 # filter_worker_process_log
 # Purpose: Create a filtered copy of the worker process log excluding a task/worker.
@@ -475,64 +439,6 @@ worker_process_get() {
   ' "${WORKER_PROCESSES_LOG}"
 }
 
-# cleanup_stale_worker_dirs
-# Purpose: Remove stale worker temp directories not tracked as active.
-# Args:
-#   $1: Optional "--dry-run" to list candidates without deleting.
-# Output: Prints stale directories when running in dry-run mode.
-# Returns: 0 on completion.
-cleanup_stale_worker_dirs() {
-  local tmp_root="/tmp"
-  if [[ -d "/private/tmp" ]]; then
-    tmp_root="/private/tmp"
-  fi
-
-  local dry_run="${1:-}"
-  local timeout
-  timeout="$(read_worker_timeout_seconds)"
-  local now
-  now="$(date +%s)"
-
-  local active_dirs=()
-  if [[ -f "${WORKER_PROCESSES_LOG}" ]]; then
-    while IFS=' | ' read -r task_name worker pid tmp_dir branch started_at; do
-      if [[ -n "${tmp_dir}" ]]; then
-        active_dirs+=("$(normalize_tmp_path "${tmp_dir}")")
-      fi
-    done < "${WORKER_PROCESSES_LOG}"
-  fi
-
-  local dir
-  while IFS= read -r dir; do
-    local normalized
-    normalized="$(normalize_tmp_path "${dir}")"
-    local active=0
-    local candidate
-    for candidate in "${active_dirs[@]}"; do
-      if [[ "${candidate}" == "${normalized}" ]]; then
-        active=1
-        break
-      fi
-    done
-    if [[ "${active}" -eq 1 ]]; then
-      continue
-    fi
-
-    local mtime
-    mtime="$(file_mtime_epoch "${dir}")"
-    if [[ -z "${mtime}" || ! "${mtime}" =~ ^[0-9]+$ ]]; then
-      continue
-    fi
-    local age=$((now - mtime))
-    if [[ "${age}" -ge "${timeout}" ]]; then
-      if [[ "${dry_run}" == "--dry-run" ]]; then
-        printf '%s\n' "${dir}"
-      else
-        cleanup_tmp_dir "${dir}"
-      fi
-    fi
-  done < <(find "${tmp_root}" -maxdepth 1 -type d -name "governator-${PROJECT_NAME}-*" 2> /dev/null)
-}
 
 # retry_count_get
 # Purpose: Read the retry count for a task.
@@ -603,19 +509,17 @@ retry_count_clear() {
 }
 
 # handle_zombie_failure
-# Purpose: Retry or block a task when a worker fails to push a branch.
+# Purpose: Retry or block a task when a worker fails to complete.
 # Args:
 #   $1: Task name (string).
 #   $2: Worker name (string).
-#   $3: Temp dir path (string, optional).
 # Output: Logs warnings and task transitions.
 # Returns: 0 on completion.
 handle_zombie_failure() {
   local task_name="$1"
   local worker="$2"
-  local tmp_dir="${3:-}"
 
-  cleanup_tmp_dir "${tmp_dir}"
+  remove_worktree "${task_name}" "${worker}"
 
   local retry_count
   retry_count="$(retry_count_get "${task_name}")"
@@ -775,6 +679,6 @@ check_zombie_workers() {
 
     log_task_warn "${task_name}" "worker ${worker} exited without completing"
 
-    handle_zombie_failure "${task_name}" "${worker}" "${worktree_dir}"
+    handle_zombie_failure "${task_name}" "${worker}"
   done < <(in_flight_entries)
 }

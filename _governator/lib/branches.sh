@@ -76,7 +76,6 @@ ensure_worker_branch_present() {
     in_flight_remove "${task_name}" "${worker_name}"
     remove_worktree "${task_name}" "${worker_name}"
     worker_process_clear "${task_name}" "${worker_name}"
-    cleanup_worker_tmp_dirs "${worker_name}" "${task_name}"
     return 1
   fi
   return 0
@@ -224,33 +223,27 @@ validate_task_state_for_processing() {
 }
 
 # cleanup_worker_artifacts
-# Purpose: Remove in-flight entries, branches, and temp dirs for workers.
+# Purpose: Remove in-flight entries, branches, and worktrees for workers.
 # Args:
 #   $1: Task name (string).
 #   $2: Primary worker name (string).
 #   $3: Merge worker name (string).
-#   $4: Local branch name (string).
-#   $5: Merge branch name (string).
 # Output: None.
 # Returns: 0 always.
 cleanup_worker_artifacts() {
   local task_name="$1"
   local worker_name="$2"
   local merge_worker="$3"
-  local local_branch="$4"
-  local merge_branch="$5"
 
   in_flight_remove "${task_name}" "${worker_name}"
   if [[ "${merge_worker}" != "${worker_name}" ]]; then
     in_flight_remove "${task_name}" "${merge_worker}"
   fi
 
-  delete_worker_branch "${merge_branch}"
-  if [[ "${merge_branch}" != "${local_branch}" ]]; then
-    delete_worker_branch "${local_branch}"
+  remove_worktree "${task_name}" "${worker_name}"
+  if [[ "${merge_worker}" != "${worker_name}" ]]; then
+    remove_worktree "${task_name}" "${merge_worker}"
   fi
-  cleanup_worker_tmp_dirs "${worker_name}" "${task_name}"
-  cleanup_worker_tmp_dirs "${merge_worker}" "${task_name}"
 }
 
 # finalize_review_and_cleanup
@@ -261,8 +254,6 @@ cleanup_worker_artifacts() {
 #   $3: Decision (string).
 #   $4: Block reason (string).
 #   $5: Merge worker name (string).
-#   $6: Local branch name (string).
-#   $7: Merge branch name (string).
 #   $@: Review comment lines.
 # Output: None.
 # Returns: 0 always.
@@ -272,14 +263,12 @@ finalize_review_and_cleanup() {
   local decision="$3"
   local block_reason="$4"
   local merge_worker="$5"
-  local local_branch="$6"
-  local merge_branch="$7"
-  shift 7
+  shift 5
   local review_lines=("$@")
 
   apply_review_decision "${task_name}" "${worker_name}" "${decision}" "${block_reason}" "${review_lines[@]}"
   git_push_default_branch
-  cleanup_worker_artifacts "${task_name}" "${worker_name}" "${merge_worker}" "${local_branch}" "${merge_branch}"
+  cleanup_worker_artifacts "${task_name}" "${worker_name}" "${merge_worker}"
 }
 
 # merge_branch_into_default
@@ -335,16 +324,14 @@ merge_branch_into_default() {
 #   $1: Task name (string).
 #   $2: Worker name (string).
 #   $3: Merge worker name (string).
-#   $4: Branch name (string).
-#   $5: Merge branch name (string).
+#   $4: Merge branch name (string).
 # Output: Logs failures, updates tasks, and cleans up.
 # Returns: 0 always.
 handle_merge_failure() {
   local task_name="$1"
   local worker_name="$2"
   local merge_worker="$3"
-  local branch="$4"
-  local merge_branch="$5"
+  local merge_branch="$4"
 
   local main_task_file
   if main_task_file="$(task_file_for_name "${task_name}")"; then
@@ -359,7 +346,7 @@ handle_merge_failure() {
   local failed_sha
   failed_sha="$(git -C "${ROOT_DIR}" rev-parse "${merge_branch}" 2> /dev/null || true)"
   printf '%s %s %s\n' "$(timestamp_utc_seconds)" "${merge_branch}" "${failed_sha:-unknown}" >> "${FAILED_MERGES_LOG}"
-  cleanup_worker_artifacts "${task_name}" "${worker_name}" "${merge_worker}" "${branch}" "${merge_branch}"
+  cleanup_worker_artifacts "${task_name}" "${worker_name}" "${merge_worker}"
 }
 
 # process_worker_branch
@@ -432,13 +419,11 @@ process_worker_branch() {
       "${decision}" \
       "${block_reason}" \
       "${merge_worker}" \
-      "${branch}" \
-      "${merge_branch}" \
       "${review_lines[@]:1}"
     return 0
   fi
   if ! merge_branch_into_default "${task_name}" "${merge_branch}"; then
-    handle_merge_failure "${task_name}" "${worker_name}" "${merge_worker}" "${branch}" "${merge_branch}"
+    handle_merge_failure "${task_name}" "${worker_name}" "${merge_worker}" "${merge_branch}"
     return 0
   fi
 
@@ -448,8 +433,6 @@ process_worker_branch() {
     "${decision}" \
     "${block_reason}" \
     "${merge_worker}" \
-    "${branch}" \
-    "${merge_branch}" \
     "${review_lines[@]:1}"
 }
 

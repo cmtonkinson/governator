@@ -26,7 +26,7 @@ create_worktree() {
 
   # Remove existing worktree if present (cleanup from previous failed run)
   if [[ -d "${worktree_path}" ]]; then
-    git -C "${ROOT_DIR}" worktree remove --force "${worktree_path}" 2>/dev/null || true
+    git -C "${ROOT_DIR}" worktree remove --force "${worktree_path}" 2>/dev/null || rm -rf "${worktree_path}"
   fi
 
   # Delete existing branch if present (cleanup from previous failed run)
@@ -62,7 +62,7 @@ remove_worktree() {
 
   # Remove the worktree directory
   if [[ -d "${worktree_path}" ]]; then
-    git -C "${ROOT_DIR}" worktree remove --force "${worktree_path}" 2>/dev/null || true
+    git -C "${ROOT_DIR}" worktree remove --force "${worktree_path}" 2>/dev/null || rm -rf "${worktree_path}"
     log_verbose "Removed worktree at ${worktree_path}"
   fi
 

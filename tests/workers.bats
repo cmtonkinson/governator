@@ -111,10 +111,10 @@ EOF_REVIEW
   [ "$output" -gt 0 ]
 }
 
-@test "cleanup-tmp removes stale directories but keeps active ones" {
-  project_name="$(basename "${REPO_DIR}")"
-  active_dir="/tmp/governator-${project_name}-active-123"
-  stale_dir="/tmp/governator-${project_name}-stale-123"
+@test "cleanup-tmp removes stale worktrees but keeps active ones" {
+  worktrees_dir="${REPO_DIR}/.governator/worktrees"
+  active_dir="${worktrees_dir}/009-cleanup-ruby-ruby"
+  stale_dir="${worktrees_dir}/stale-task-ruby"
   mkdir -p "${active_dir}" "${stale_dir}"
   touch -t 202001010000 "${stale_dir}"
 
@@ -129,10 +129,10 @@ EOF_REVIEW
   [ ! -d "${stale_dir}" ]
 }
 
-@test "cleanup-tmp dry-run lists stale dirs only" {
-  project_name="$(basename "${REPO_DIR}")"
-  active_dir="/tmp/governator-${project_name}-active-456"
-  stale_dir="/tmp/governator-${project_name}-stale-456"
+@test "cleanup-tmp dry-run lists stale worktrees only" {
+  worktrees_dir="${REPO_DIR}/.governator/worktrees"
+  active_dir="${worktrees_dir}/017-cleanup-ruby-ruby"
+  stale_dir="${worktrees_dir}/stale-task-sre"
   mkdir -p "${active_dir}" "${stale_dir}"
   touch -t 202001010000 "${stale_dir}"
 

@@ -607,11 +607,9 @@ abort_task() {
 
   local worker_info=()
   local pid=""
-  local tmp_dir=""
   local branch=""
   if mapfile -t worker_info < <(worker_process_get "${task_name}" "${worker}" 2> /dev/null); then
     pid="${worker_info[0]:-}"
-    tmp_dir="${worker_info[1]:-}"
     branch="${worker_info[2]:-}"
   fi
   local expected_branch="worker/${worker}/${task_name}"
@@ -625,13 +623,7 @@ abort_task() {
     fi
   fi
 
-  if [[ -n "${tmp_dir}" && -d "${tmp_dir}" ]]; then
-    cleanup_tmp_dir "${tmp_dir}"
-  fi
-  cleanup_worker_tmp_dirs "${worker}" "${task_name}"
-
-  delete_worker_branch "${branch}"
-
+  remove_worktree "${task_name}" "${worker}"
   in_flight_remove "${task_name}" "${worker}"
 
   local blocked_dest="${STATE_DIR}/task-blocked/${task_name}.md"
@@ -700,8 +692,7 @@ unblock_task() {
 
   in_flight_remove "${task_name}" ""
   if [[ -n "${worker}" ]]; then
-    worker_process_clear "${task_name}" "${worker}"
-    cleanup_worker_tmp_dirs "${worker}" "${task_name}"
+    remove_worktree "${task_name}" "${worker}"
   fi
 
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
@@ -745,12 +736,8 @@ restart_cleanup_worker() {
 
   local worker_info=()
   local pid=""
-  local tmp_dir=""
-  local branch=""
   if mapfile -t worker_info < <(worker_process_get "${task_name}" "${worker}" 2> /dev/null); then
     pid="${worker_info[0]:-}"
-    tmp_dir="${worker_info[1]:-}"
-    branch="${worker_info[2]:-}"
   fi
 
   if [[ -n "${pid}" ]]; then
@@ -759,15 +746,7 @@ restart_cleanup_worker() {
     fi
   fi
 
-  if [[ -n "${tmp_dir}" && -d "${tmp_dir}" ]]; then
-    cleanup_tmp_dir "${tmp_dir}"
-  fi
-  cleanup_worker_tmp_dirs "${worker}" "${task_name}"
-
-  if [[ -z "${branch}" ]]; then
-    branch="worker/${worker}/${task_name}"
-  fi
-  delete_worker_branch "${branch}"
+  remove_worktree "${task_name}" "${worker}"
 }
 
 # restart_cleanup_in_flight

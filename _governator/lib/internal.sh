@@ -39,9 +39,9 @@
 #   on the second failure. Does not process branches or assign backlog.
 #
 # - cleanup-tmp:
-#   Removes stale worker tmp directories in /tmp that are older than the worker
-#   timeout and not referenced in the worker process log. Use --dry-run to list
-#   candidates without removing them.
+#   Removes stale worker worktrees that are older than the worker timeout and
+#   not referenced in the worker process log. Use --dry-run to list candidates
+#   without removing them.
 #
 # - parse-review:
 #   Prints the parsed review result and comments from a review.json file.
@@ -288,7 +288,7 @@ dispatch_subcommand() {
       ;;
     cleanup-tmp)
       ensure_ready_with_lock
-      cleanup_stale_worker_dirs "${1:-}"
+      cleanup_stale_worktrees "${1:-}"
       ;;
     parse-review)
       ensure_ready_with_lock

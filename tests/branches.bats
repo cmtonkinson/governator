@@ -89,9 +89,9 @@ EOF_REVIEW
   write_task "task-assigned" "011-missing-ruby"
   echo "011-missing-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
 
-  project_name="$(basename "${REPO_DIR}")"
-  tmp_dir="$(mktemp -d "/tmp/governator-${project_name}-ruby-011-missing-ruby-XXXXXX")"
-  echo "011-missing-ruby | ruby | 999999 | ${tmp_dir} | worker/ruby/011-missing-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  worktree_dir="${REPO_DIR}/.governator/worktrees/011-missing-ruby-ruby"
+  mkdir -p "${worktree_dir}"
+  echo "011-missing-ruby | ruby | 999999 | ${worktree_dir} | worker/ruby/011-missing-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
   commit_all "Prepare missing branch task"
 
   run bash -c "
@@ -99,7 +99,6 @@ EOF_REVIEW
     ROOT_DIR=\"${REPO_DIR}\"
     STATE_DIR=\"${REPO_DIR}/_governator\"
     DB_DIR=\"${REPO_DIR}/.governator\"
-    PROJECT_NAME=\"${project_name}\"
     WORKTREES_DIR=\"\${DB_DIR}/worktrees\"
     DEFAULT_REMOTE_NAME=\"origin\"
     DEFAULT_BRANCH_NAME=\"main\"
@@ -127,5 +126,5 @@ EOF_REVIEW
   [ "$status" -ne 0 ]
   run grep -F "011-missing-ruby | ruby" "${REPO_DIR}/.governator/worker-processes.log"
   [ "$status" -ne 0 ]
-  [ ! -d "${tmp_dir}" ]
+  [ ! -d "${worktree_dir}" ]
 }

@@ -48,13 +48,14 @@ load ./helpers.bash
   [ "${output}" = "8" ]
 }
 
-@test "abort terminates worker, removes tmp dir, and blocks task" {
+@test "abort terminates worker, removes worktree, and blocks task" {
   write_task "task-assigned" "019-abort-ruby"
   printf '%s\n' "019-abort-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
-  tmp_dir="$(mktemp -d "${BATS_TMPDIR}/worker-XXXXXX")"
+  worktree_dir="${REPO_DIR}/.governator/worktrees/019-abort-ruby-ruby"
+  mkdir -p "${worktree_dir}"
   sleep 60 >/dev/null &
   pid=$!
-  printf '%s | %s | %s | %s | worker/ruby/019-abort-ruby | 0\n' "019-abort-ruby" "ruby" "${pid}" "${tmp_dir}" >> "${REPO_DIR}/.governator/worker-processes.log"
+  printf '%s | %s | %s | %s | worker/ruby/019-abort-ruby | 0\n' "019-abort-ruby" "ruby" "${pid}" "${worktree_dir}" >> "${REPO_DIR}/.governator/worker-processes.log"
   commit_all "Prepare abort task"
 
   create_worker_branch "019-abort-ruby" "ruby"
@@ -67,7 +68,7 @@ load ./helpers.bash
   kill -9 "${pid}" >/dev/null 2>&1 || true
   wait "${pid}" >/dev/null 2>&1 || true
 
-  [ ! -d "${tmp_dir}" ]
+  [ ! -d "${worktree_dir}" ]
   [ -f "${REPO_DIR}/_governator/task-blocked/019-abort-ruby.md" ]
   run grep -F "## Abort" "${REPO_DIR}/_governator/task-blocked/019-abort-ruby.md"
   [ "$status" -eq 0 ]
@@ -77,7 +78,8 @@ load ./helpers.bash
   run grep -F "019-abort-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
   [ "$status" -ne 0 ]
 
-  [ ! -f "${ORIGIN_DIR}/refs/heads/worker/ruby/019-abort-ruby" ]
+  run repo_git show-ref --verify "refs/heads/worker/ruby/019-abort-ruby"
+  [ "$status" -ne 0 ]
 }
 
 @test "unblock moves blocked task to assigned with note" {
@@ -111,11 +113,12 @@ Blocked note
 should be removed
 EOF_TASK
 
-  tmp_dir="$(mktemp -d "${BATS_TMPDIR}/worker-XXXXXX")"
+  worktree_dir="${REPO_DIR}/.governator/worktrees/030-restart-ruby-ruby"
+  mkdir -p "${worktree_dir}"
   sleep 60 >/dev/null &
   pid=$!
   printf '%s | %s | %s | %s | %s | %s\n' \
-    "030-restart-ruby" "ruby" "${pid}" "${tmp_dir}" "worker/ruby/030-restart-ruby" "0" \
+    "030-restart-ruby" "ruby" "${pid}" "${worktree_dir}" "worker/ruby/030-restart-ruby" "0" \
     >> "${REPO_DIR}/.governator/worker-processes.log"
   printf '%s -> %s\n' "030-restart-ruby" "ruby" >> "${REPO_DIR}/.governator/in-flight.log"
 
@@ -130,7 +133,7 @@ EOF_TASK
   kill -9 "${pid}" >/dev/null 2>&1 || true
   wait "${pid}" >/dev/null 2>&1 || true
 
-  [ ! -d "${tmp_dir}" ]
+  [ ! -d "${worktree_dir}" ]
   [ -f "${REPO_DIR}/_governator/task-backlog/030-restart-ruby.md" ]
   [ -f "${REPO_DIR}/_governator/task-backlog/031-restart-ruby.md" ]
   [ ! -f "${REPO_DIR}/_governator/task-assigned/030-restart-ruby.md" ]
