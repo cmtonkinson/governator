@@ -142,7 +142,7 @@ log_worker_elapsed_if_known() {
 #   $5: Task file path (string).
 #   $6: Remote name (string).
 # Output: Logs and spawns reviewers as needed.
-# Returns: 0 if processing should continue; 1 if handled and should stop.
+# Returns: 0 if handled and should stop; 1 if processing should continue.
 handle_non_reviewer_branch_state() {
   local task_name="$1"
   local worker_name="$2"
@@ -158,7 +158,7 @@ handle_non_reviewer_branch_state() {
     local review_branch="worker/reviewer/${task_name}"
     if in_flight_has_task_worker "${task_name}" "reviewer"; then
       log_verbose "Reviewer already in-flight for ${task_name}; skipping spawn"
-      return 1
+      return 0
     fi
     if ! git -C "${ROOT_DIR}" show-ref --verify --quiet "refs/remotes/${remote}/${review_branch}"; then
       local cap_note
@@ -169,7 +169,7 @@ handle_non_reviewer_branch_state() {
         spawn_worker_for_task "${task_relpath}" "reviewer" "starting review for ${task_name}" "${remote}/${local_branch}"
       fi
     fi
-    return 1
+    return 0
   fi
 
   if [[ "${task_dir}" == "task-blocked" ]]; then
@@ -178,10 +178,10 @@ handle_non_reviewer_branch_state() {
     delete_worker_branch "${local_branch}"
     cleanup_worker_tmp_dirs "${worker_name}" "${task_name}"
     ensure_unblock_planner_task || true
-    return 1
+    return 0
   fi
 
-  return 0
+  return 1
 }
 
 # validate_task_state_for_processing
