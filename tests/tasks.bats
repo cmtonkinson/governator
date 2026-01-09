@@ -50,12 +50,11 @@ load ./helpers.bash
 
 @test "abort terminates worker, removes worktree, and blocks task" {
   write_task "task-assigned" "019-abort-ruby"
-  printf '%s\n' "019-abort-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
-  worktree_dir="${REPO_DIR}/.governator/worktrees/019-abort-ruby-ruby"
-  mkdir -p "${worktree_dir}"
+  add_in_flight "019-abort-ruby" "ruby"
+  worktree_dir="$(create_worktree_dir "019-abort-ruby" "ruby")"
   sleep 60 >/dev/null &
   pid=$!
-  printf '%s | %s | %s | %s | worker/ruby/019-abort-ruby | 0\n' "019-abort-ruby" "ruby" "${pid}" "${worktree_dir}" >> "${REPO_DIR}/.governator/worker-processes.log"
+  add_worker_process "019-abort-ruby" "ruby" "${pid}"
   commit_all "Prepare abort task"
 
   create_worker_branch "019-abort-ruby" "ruby"
@@ -113,14 +112,11 @@ Blocked note
 should be removed
 EOF_TASK
 
-  worktree_dir="${REPO_DIR}/.governator/worktrees/030-restart-ruby-ruby"
-  mkdir -p "${worktree_dir}"
+  worktree_dir="$(create_worktree_dir "030-restart-ruby" "ruby")"
   sleep 60 >/dev/null &
   pid=$!
-  printf '%s | %s | %s | %s | %s | %s\n' \
-    "030-restart-ruby" "ruby" "${pid}" "${worktree_dir}" "worker/ruby/030-restart-ruby" "0" \
-    >> "${REPO_DIR}/.governator/worker-processes.log"
-  printf '%s -> %s\n' "030-restart-ruby" "ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+  add_worker_process "030-restart-ruby" "ruby" "${pid}"
+  add_in_flight "030-restart-ruby" "ruby"
 
   commit_all "Prepare restart tasks"
   create_worker_branch "030-restart-ruby" "ruby"
@@ -170,10 +166,8 @@ Keep me
 keep annotation
 EOF_TASK
 
-  printf '%s | %s | %s | %s | %s | %s\n' \
-    "032-restart-ruby" "ruby" "99999" "${REPO_DIR}/.governator/worktrees/032-restart-ruby-ruby" "worker/ruby/032-restart-ruby" "0" \
-    >> "${REPO_DIR}/.governator/worker-processes.log"
-  printf '%s -> %s\n' "032-restart-ruby" "ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+  add_worker_process "032-restart-ruby" "ruby" "99999"
+  add_in_flight "032-restart-ruby" "ruby"
 
   commit_all "Prepare dry-run restart task"
 

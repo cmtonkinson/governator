@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 
+# repo_git
+# Purpose: Run git commands in the test repo.
+# Args:
+#   $@: Git arguments.
+# Output: Passthrough git output.
+# Returns: Exit code from git.
 repo_git() {
   git -C "${REPO_DIR}" "$@"
 }
@@ -43,6 +49,12 @@ file_sha256() {
   return 1
 }
 
+# commit_all
+# Purpose: Commit and push standard Governator files in tests.
+# Args:
+#   $1: Commit message (string).
+# Output: None.
+# Returns: 0 on success; propagates git errors.
 commit_all() {
   local message="$1"
   repo_git add GOVERNATOR.md _governator .governator
@@ -50,6 +62,13 @@ commit_all() {
   repo_git push origin main >/dev/null
 }
 
+# commit_paths
+# Purpose: Commit and push specific paths in tests.
+# Args:
+#   $1: Commit message (string).
+#   $@: Paths to add (strings).
+# Output: None.
+# Returns: 0 on success; propagates git errors.
 commit_paths() {
   local message="$1"
   shift
@@ -58,6 +77,13 @@ commit_paths() {
   repo_git push origin main >/dev/null
 }
 
+# write_task
+# Purpose: Create a minimal task file in the requested directory.
+# Args:
+#   $1: Task directory name (string).
+#   $2: Task base name (string).
+# Output: Writes a task file to disk.
+# Returns: 0 on success.
 write_task() {
   local dir="$1"
   local name="$2"
@@ -66,6 +92,14 @@ write_task() {
 EOF_TASK
 }
 
+# write_task_with_frontmatter
+# Purpose: Create a task file with provided frontmatter.
+# Args:
+#   $1: Task directory name (string).
+#   $2: Task base name (string).
+#   $3: Frontmatter content (string).
+# Output: Writes a task file to disk.
+# Returns: 0 on success.
 write_task_with_frontmatter() {
   local dir="$1"
   local name="$2"
@@ -78,6 +112,11 @@ ${frontmatter}
 EOF_TASK
 }
 
+# complete_bootstrap
+# Purpose: Seed the repo with required bootstrap artifacts and mark complete.
+# Args: None.
+# Output: Writes bootstrap artifacts and commits them.
+# Returns: 0 on success.
 complete_bootstrap() {
   mkdir -p "${REPO_DIR}/_governator/docs"
   printf '%s\n' "# ASR" > "${REPO_DIR}/_governator/docs/asr.md"
@@ -95,6 +134,13 @@ complete_bootstrap() {
     "_governator/task-done/000-architecture-bootstrap-architect.md"
 }
 
+# create_worker_branch
+# Purpose: Create a worker branch with a simple commit for tests.
+# Args:
+#   $1: Task name (string).
+#   $2: Worker role (string).
+# Output: Creates a commit on the worker branch.
+# Returns: 0 on success; propagates git errors.
 create_worker_branch() {
   local task_name="$1"
   local worker="$2"
@@ -105,6 +151,80 @@ create_worker_branch() {
   repo_git checkout main >/dev/null
 }
 
+# add_in_flight
+# Purpose: Add a task/worker pair to the in-flight log.
+# Args:
+#   $1: Task name (string).
+#   $2: Worker role (string).
+add_in_flight() {
+  local task_name="$1"
+  local worker="$2"
+  printf '%s -> %s\n' "${task_name}" "${worker}" >> "${REPO_DIR}/.governator/in-flight.log"
+}
+
+# add_retry_count
+# Purpose: Add a retry count entry for a task.
+# Args:
+#   $1: Task name (string).
+#   $2: Count (number).
+add_retry_count() {
+  local task_name="$1"
+  local count="$2"
+  printf '%s | %s\n' "${task_name}" "${count}" >> "${REPO_DIR}/.governator/retry-counts.log"
+}
+
+# worktree_dir_for
+# Purpose: Get the worktree directory path for a task/worker.
+# Args:
+#   $1: Task name (string).
+#   $2: Worker role (string).
+# Output: Prints the worktree path.
+worktree_dir_for() {
+  local task_name="$1"
+  local worker="$2"
+  printf '%s/.governator/worktrees/%s-%s' "${REPO_DIR}" "${task_name}" "${worker}"
+}
+
+# create_worktree_dir
+# Purpose: Create a worktree directory for a task/worker.
+# Args:
+#   $1: Task name (string).
+#   $2: Worker role (string).
+# Output: Prints the worktree path.
+create_worktree_dir() {
+  local task_name="$1"
+  local worker="$2"
+  local worktree_dir
+  worktree_dir="$(worktree_dir_for "${task_name}" "${worker}")"
+  mkdir -p "${worktree_dir}"
+  printf '%s' "${worktree_dir}"
+}
+
+# add_worker_process
+# Purpose: Add a worker process entry to the log.
+# Args:
+#   $1: Task name (string).
+#   $2: Worker role (string).
+#   $3: PID (number).
+#   $4: Worktree directory (string, optional - defaults to standard path).
+#   $5: Started at timestamp (number, optional - defaults to 0).
+add_worker_process() {
+  local task_name="$1"
+  local worker="$2"
+  local pid="$3"
+  local worktree_dir="${4:-$(worktree_dir_for "${task_name}" "${worker}")}"
+  local started_at="${5:-0}"
+  local branch="worker/${worker}/${task_name}"
+  printf '%s | %s | %s | %s | %s | %s\n' \
+    "${task_name}" "${worker}" "${pid}" "${worktree_dir}" "${branch}" "${started_at}" \
+    >> "${REPO_DIR}/.governator/worker-processes.log"
+}
+
+# create_upstream_dir
+# Purpose: Create a temp upstream directory containing _governator files.
+# Args: None.
+# Output: Prints the upstream root path.
+# Returns: 0 on success.
 create_upstream_dir() {
   local upstream_root
   upstream_root="$(mktemp -d "${BATS_TMPDIR}/upstream.XXXXXX")"
@@ -113,12 +233,25 @@ create_upstream_dir() {
   printf '%s\n' "${upstream_root}"
 }
 
+# build_upstream_tarball
+# Purpose: Package an upstream directory into a tarball for update tests.
+# Args:
+#   $1: Upstream root path (string).
+#   $2: Output tarball path (string).
+# Output: Writes a tarball to disk.
+# Returns: 0 on success.
 build_upstream_tarball() {
   local upstream_root="$1"
   local tar_path="$2"
   tar -cz -C "${upstream_root}" -f "${tar_path}" governator-main/_governator
 }
 
+# stub_curl_with_tarball
+# Purpose: Stub curl to output a local tarball for update tests.
+# Args:
+#   $1: Tarball path (string).
+# Output: Writes a curl stub into BIN_DIR.
+# Returns: 0 on success.
 stub_curl_with_tarball() {
   local tar_path="$1"
   cat > "${BIN_DIR}/curl" <<EOF_CURL
@@ -128,11 +261,25 @@ EOF_CURL
   chmod +x "${BIN_DIR}/curl"
 }
 
+# set_next_task_id
+# Purpose: Set the next task id in config for tests.
+# Args:
+#   $1: Task id (number).
+# Output: Writes config and commits it.
+# Returns: 0 on success.
 set_next_task_id() {
   set_config_value "next_task_id" "$1" "number"
   commit_paths "Set task id" ".governator/config.json"
 }
 
+# set_config_value
+# Purpose: Update a scalar config value via jq.
+# Args:
+#   $1: Dot-delimited key path (string).
+#   $2: Value to write (string).
+#   $3: Value type ("string" or "number").
+# Output: Writes config.json to disk.
+# Returns: 0 on success.
 set_config_value() {
   local key_path="$1"
   local value="$2"
@@ -159,6 +306,15 @@ set_config_value() {
   mv "${tmp_file}" "${REPO_DIR}/.governator/config.json"
 }
 
+# set_config_map_value
+# Purpose: Update a map entry in config.json via jq.
+# Args:
+#   $1: Map key (string).
+#   $2: Entry key (string).
+#   $3: Value to write (string).
+#   $4: Value type ("string" or "number").
+# Output: Writes config.json to disk.
+# Returns: 0 on success.
 set_config_map_value() {
   local map_key="$1"
   local entry_key="$2"
@@ -186,6 +342,11 @@ set_config_map_value() {
   mv "${tmp_file}" "${REPO_DIR}/.governator/config.json"
 }
 
+# setup
+# Purpose: Initialize a test repo, origin, and tool stubs for bats.
+# Args: None.
+# Output: Sets global vars and writes repo files.
+# Returns: 0 on success.
 setup() {
   REPO_DIR="$(mktemp -d "${BATS_TMPDIR}/repo.XXXXXX")"
   ORIGIN_DIR="$(mktemp -d "${BATS_TMPDIR}/origin.XXXXXX")"

@@ -4,8 +4,8 @@ load ./helpers.bash
 
 @test "process-branches approves worked task and moves to done" {
   write_task "task-worked" "010-review-ruby"
-  echo "010-review-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
-  echo "010-review-ruby | ruby | 999999 | ${REPO_DIR}/.governator/worktrees/010-review-ruby-ruby | worker/ruby/010-review-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  add_in_flight "010-review-ruby" "ruby"
+  add_worker_process "010-review-ruby" "ruby" "999999"
   commit_all "Prepare worked task"
 
   create_worker_branch "010-review-ruby" "ruby"
@@ -29,7 +29,7 @@ EOF_REVIEW
 
 @test "process-branches can spawn reviewer when global cap is reached by the worker" {
   write_task "task-worked" "014-review-ruby"
-  echo "014-review-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+  add_in_flight "014-review-ruby" "ruby"
   commit_all "Prepare worked task for reviewer spawn"
 
   create_worker_branch "014-review-ruby" "ruby"
@@ -45,7 +45,7 @@ EOF_REVIEW
 
 @test "process-branches creates reviewer branch from worker branch" {
   write_task "task-worked" "018-branch-ruby"
-  echo "018-branch-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+  add_in_flight "018-branch-ruby" "ruby"
   commit_all "Prepare worked task for branch verification"
 
   # Create worker branch with identifiable commit
@@ -74,14 +74,12 @@ EOF_REVIEW
 
 @test "process-branches skips reviewer spawn when reviewer already in-flight" {
   write_task "task-worked" "015-review-ruby"
-  echo "015-review-ruby -> reviewer" >> "${REPO_DIR}/.governator/in-flight.log"
+  add_in_flight "015-review-ruby" "reviewer"
   # Create a worker process record so the reviewer isn't detected as a zombie
-  # Use worktree as working dir and create the reviewer branch so it looks like an active worker
-  worktree_dir="${REPO_DIR}/.governator/worktrees/015-review-ruby-reviewer"
-  mkdir -p "${worktree_dir}"
   # Use current timestamp and current shell's PID (guaranteed to be running during test)
+  worktree_dir="$(create_worktree_dir "015-review-ruby" "reviewer")"
   started_at="$(date +%s)"
-  echo "015-review-ruby | reviewer | $$ | ${worktree_dir} | worker/reviewer/015-review-ruby | ${started_at}" >> "${REPO_DIR}/.governator/worker-processes.log"
+  add_worker_process "015-review-ruby" "reviewer" "$$" "${worktree_dir}" "${started_at}"
   commit_all "Prepare reviewer in-flight"
 
   create_worker_branch "015-review-ruby" "ruby"
@@ -97,7 +95,7 @@ EOF_REVIEW
 
 @test "process-branches keeps blocked tasks and queues unblock planner" {
   write_task "task-blocked" "060-blocked-ruby"
-  echo "060-blocked-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+  add_in_flight "060-blocked-ruby" "ruby"
   commit_all "Prepare blocked task"
 
   create_worker_branch "060-blocked-ruby" "ruby"
@@ -116,11 +114,9 @@ EOF_REVIEW
 
 @test "process_worker_branch clears in-flight entry when branch is missing" {
   write_task "task-assigned" "011-missing-ruby"
-  echo "011-missing-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
-
-  worktree_dir="${REPO_DIR}/.governator/worktrees/011-missing-ruby-ruby"
-  mkdir -p "${worktree_dir}"
-  echo "011-missing-ruby | ruby | 999999 | ${worktree_dir} | worker/ruby/011-missing-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  add_in_flight "011-missing-ruby" "ruby"
+  worktree_dir="$(create_worktree_dir "011-missing-ruby" "ruby")"
+  add_worker_process "011-missing-ruby" "ruby" "999999"
   commit_all "Prepare missing branch task"
 
   run bash -c "

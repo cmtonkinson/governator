@@ -4,10 +4,9 @@ load ./helpers.bash
 
 @test "check-zombies retries when branch missing and worker dead" {
   write_task "task-assigned" "007-zombie-ruby"
-  echo "007-zombie-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
-
-  tmp_dir="$(mktemp -d "${BATS_TMPDIR}/worker-tmp.XXXXXX")"
-  echo "007-zombie-ruby | ruby | 999999 | ${tmp_dir} | worker/ruby/007-zombie-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  add_in_flight "007-zombie-ruby" "ruby"
+  create_worktree_dir "007-zombie-ruby" "ruby" >/dev/null
+  add_worker_process "007-zombie-ruby" "ruby" "999999"
   commit_all "Prepare zombie task"
 
   run bash "${REPO_DIR}/_governator/governator.sh" check-zombies
@@ -19,7 +18,7 @@ load ./helpers.bash
 
 @test "check-zombies retries when worker process record is missing" {
   write_task "task-assigned" "026-missing-proc-ruby"
-  echo "026-missing-proc-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+  add_in_flight "026-missing-proc-ruby" "ruby"
   commit_all "Prepare missing worker process record"
 
   run bash "${REPO_DIR}/_governator/governator.sh" check-zombies
@@ -31,11 +30,10 @@ load ./helpers.bash
 
 @test "check-zombies blocks after second failure" {
   write_task "task-assigned" "008-stuck-ruby"
-  echo "008-stuck-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
-  echo "008-stuck-ruby | 1" >> "${REPO_DIR}/.governator/retry-counts.log"
-
-  tmp_dir="$(mktemp -d "${BATS_TMPDIR}/worker-tmp.XXXXXX")"
-  echo "008-stuck-ruby | ruby | 999999 | ${tmp_dir} | worker/ruby/008-stuck-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  add_in_flight "008-stuck-ruby" "ruby"
+  add_retry_count "008-stuck-ruby" "1"
+  create_worktree_dir "008-stuck-ruby" "ruby" >/dev/null
+  add_worker_process "008-stuck-ruby" "ruby" "999999"
   commit_all "Prepare stuck task"
 
   run bash "${REPO_DIR}/_governator/governator.sh" check-zombies
@@ -51,16 +49,14 @@ load ./helpers.bash
 @test "check-zombies blocks multiple tasks in one pass" {
   write_task "task-assigned" "012-zombie-a-ruby"
   write_task "task-assigned" "013-zombie-b-ruby"
-  echo "012-zombie-a-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
-  echo "013-zombie-b-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
-  echo "012-zombie-a-ruby | 1" >> "${REPO_DIR}/.governator/retry-counts.log"
-  echo "013-zombie-b-ruby | 1" >> "${REPO_DIR}/.governator/retry-counts.log"
-
-  worktree_dir_a="${REPO_DIR}/.governator/worktrees/012-zombie-a-ruby-ruby"
-  worktree_dir_b="${REPO_DIR}/.governator/worktrees/013-zombie-b-ruby-ruby"
-  mkdir -p "${worktree_dir_a}" "${worktree_dir_b}"
-  echo "012-zombie-a-ruby | ruby | 999999 | ${worktree_dir_a} | worker/ruby/012-zombie-a-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
-  echo "013-zombie-b-ruby | ruby | 999999 | ${worktree_dir_b} | worker/ruby/013-zombie-b-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  add_in_flight "012-zombie-a-ruby" "ruby"
+  add_in_flight "013-zombie-b-ruby" "ruby"
+  add_retry_count "012-zombie-a-ruby" "1"
+  add_retry_count "013-zombie-b-ruby" "1"
+  create_worktree_dir "012-zombie-a-ruby" "ruby" >/dev/null
+  create_worktree_dir "013-zombie-b-ruby" "ruby" >/dev/null
+  add_worker_process "012-zombie-a-ruby" "ruby" "999999"
+  add_worker_process "013-zombie-b-ruby" "ruby" "999999"
   commit_all "Prepare multiple zombie tasks"
 
   run bash "${REPO_DIR}/_governator/governator.sh" check-zombies
@@ -76,7 +72,7 @@ load ./helpers.bash
 
 @test "check-zombies recovers reviewer output by committing review branch" {
   write_task "task-worked" "016-review-ruby"
-  echo "016-review-ruby -> reviewer" >> "${REPO_DIR}/.governator/in-flight.log"
+  add_in_flight "016-review-ruby" "reviewer"
 
   # Add worktrees to gitignore to prevent dirty repo detection
   echo ".governator/worktrees/" >> "${REPO_DIR}/.gitignore"
@@ -112,14 +108,13 @@ EOF_REVIEW
 }
 
 @test "cleanup-tmp removes stale worktrees but keeps active ones" {
-  worktrees_dir="${REPO_DIR}/.governator/worktrees"
-  active_dir="${worktrees_dir}/009-cleanup-ruby-ruby"
-  stale_dir="${worktrees_dir}/stale-task-ruby"
-  mkdir -p "${active_dir}" "${stale_dir}"
+  active_dir="$(create_worktree_dir "009-cleanup-ruby" "ruby")"
+  stale_dir="${REPO_DIR}/.governator/worktrees/stale-task-ruby"
+  mkdir -p "${stale_dir}"
   touch -t 202001010000 "${stale_dir}"
 
   set_config_value "worker_timeout_seconds" "1" "number"
-  echo "009-cleanup-ruby | ruby | 1234 | ${active_dir} | worker/ruby/009-cleanup-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  add_worker_process "009-cleanup-ruby" "ruby" "1234"
   commit_all "Prepare cleanup dirs"
 
   run bash "${REPO_DIR}/_governator/governator.sh" cleanup-tmp
@@ -130,14 +125,13 @@ EOF_REVIEW
 }
 
 @test "cleanup-tmp dry-run lists stale worktrees only" {
-  worktrees_dir="${REPO_DIR}/.governator/worktrees"
-  active_dir="${worktrees_dir}/017-cleanup-ruby-ruby"
-  stale_dir="${worktrees_dir}/stale-task-sre"
-  mkdir -p "${active_dir}" "${stale_dir}"
+  active_dir="$(create_worktree_dir "017-cleanup-ruby" "ruby")"
+  stale_dir="${REPO_DIR}/.governator/worktrees/stale-task-sre"
+  mkdir -p "${stale_dir}"
   touch -t 202001010000 "${stale_dir}"
 
   set_config_value "worker_timeout_seconds" "1" "number"
-  echo "017-cleanup-ruby | ruby | 1234 | ${active_dir} | worker/ruby/017-cleanup-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  add_worker_process "017-cleanup-ruby" "ruby" "1234"
   commit_all "Prepare cleanup dry-run"
 
   run bash "${REPO_DIR}/_governator/governator.sh" cleanup-tmp --dry-run
@@ -149,8 +143,8 @@ EOF_REVIEW
 }
 
 @test "count-in-flight totals and per-role counts" {
-  printf '%s\n' "014-one-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
-  printf '%s\n' "015-one-sre -> sre" >> "${REPO_DIR}/.governator/in-flight.log"
+  add_in_flight "014-one-ruby" "ruby"
+  add_in_flight "015-one-sre" "sre"
   commit_all "Add in-flight"
 
   run bash "${REPO_DIR}/_governator/governator.sh" count-in-flight

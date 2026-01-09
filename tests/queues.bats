@@ -68,7 +68,7 @@ load ./helpers.bash
 @test "assign-backlog respects global cap" {
   complete_bootstrap
   write_task "task-backlog" "004-cap-ruby"
-  echo "004-busy-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+  add_in_flight "004-busy-ruby" "ruby"
   commit_all "Prepare global cap"
 
   run bash "${REPO_DIR}/_governator/governator.sh" assign-backlog
@@ -81,7 +81,7 @@ load ./helpers.bash
 @test "assign-backlog respects per-worker cap" {
   complete_bootstrap
   write_task "task-backlog" "005-cap-ruby"
-  echo "006-busy-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+  add_in_flight "006-busy-ruby" "ruby"
   set_config_map_value "worker_caps" "global" "2" "number"
   set_config_map_value "worker_caps" "ruby" "1" "number"
   commit_all "Prepare worker cap"
