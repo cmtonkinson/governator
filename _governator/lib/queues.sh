@@ -237,17 +237,18 @@ assign_backlog_tasks() {
     fi
 
     local metadata_text
+    local task_name
+    local worker=""
     if ! metadata_text="$(parse_task_metadata "${task_file}")"; then
-      local task_name
       task_name="$(basename "${task_file}" .md)"
-      log_warn "Missing required role for ${task_name}, blocking."
-      move_task_to_blocked "${task_file}" "Missing required role in filename suffix."
-      continue
+      worker="generalist"
+      log_warn "Missing role suffix for ${task_name}; assigning to ${worker}."
+    else
+      local metadata=()
+      mapfile -t metadata <<< "${metadata_text}"
+      task_name="${metadata[0]}"
+      worker="${metadata[2]}"
     fi
-    local metadata=()
-    mapfile -t metadata <<< "${metadata_text}"
-    local task_name="${metadata[0]}"
-    local worker="${metadata[2]}"
 
     if in_flight_has_task "${task_name}"; then
       continue
@@ -266,9 +267,8 @@ assign_backlog_tasks() {
     fi
 
     if ! role_exists "${worker}"; then
-      log_warn "Unknown role ${worker} for ${task_name}, blocking."
-      move_task_to_blocked "${task_file}" "Unknown role ${worker} referenced in filename suffix."
-      continue
+      log_warn "Unknown role ${worker} for ${task_name}; assigning to generalist."
+      worker="generalist"
     fi
 
     local cap_note
@@ -365,17 +365,18 @@ resume_assigned_tasks() {
     fi
 
     local metadata_text
+    local task_name
+    local worker=""
     if ! metadata_text="$(parse_task_metadata "${task_file}")"; then
-      local task_name
       task_name="$(basename "${task_file}" .md)"
-      log_warn "Missing required role for ${task_name}, blocking."
-      move_task_to_blocked "${task_file}" "Missing required role in filename suffix."
-      continue
+      worker="generalist"
+      log_warn "Missing role suffix for ${task_name}; assigning to ${worker}."
+    else
+      local metadata=()
+      mapfile -t metadata <<< "${metadata_text}"
+      task_name="${metadata[0]}"
+      worker="${metadata[2]}"
     fi
-    local metadata=()
-    mapfile -t metadata <<< "${metadata_text}"
-    local task_name="${metadata[0]}"
-    local worker="${metadata[2]}"
 
     if in_flight_has_task "${task_name}"; then
       log_verbose "Skipping in-flight task ${task_name}"
@@ -405,9 +406,8 @@ resume_assigned_tasks() {
     fi
 
     if ! role_exists "${worker}"; then
-      log_warn "Unknown role ${worker} for ${task_name}, blocking."
-      move_task_to_blocked "${task_file}" "Unknown role ${worker} referenced in filename suffix."
-      continue
+      log_warn "Unknown role ${worker} for ${task_name}; assigning to generalist."
+      worker="generalist"
     fi
 
     local cap_note

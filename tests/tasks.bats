@@ -11,7 +11,7 @@ load ./helpers.bash
   [ "$status" -eq 0 ]
 }
 
-@test "extract-role returns suffix and rejects missing hyphen" {
+@test "extract-role returns suffix and defaults missing to generalist" {
   write_task "task-backlog" "012-sample-ruby"
   write_task "task-backlog" "013norole"
   commit_all "Add extract-role tasks"
@@ -21,7 +21,8 @@ load ./helpers.bash
   [ "${output}" = "ruby" ]
 
   run bash "${REPO_DIR}/_governator/governator.sh" extract-role "${REPO_DIR}/_governator/task-backlog/013norole.md"
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 0 ]
+  [ "${output}" = "generalist" ]
 }
 
 @test "format-task-id pads to three digits" {

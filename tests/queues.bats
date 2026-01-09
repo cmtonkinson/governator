@@ -39,7 +39,7 @@ load ./helpers.bash
   [ ! -f "${REPO_DIR}/_governator/task-assigned/000-gap-analysis-planner.md" ]
 }
 
-@test "assign-backlog blocks tasks missing a role suffix" {
+@test "assign-backlog assigns generalist for missing role suffix" {
   complete_bootstrap
   write_task "task-backlog" "002norole"
   commit_all "Add missing role task"
@@ -47,12 +47,12 @@ load ./helpers.bash
   run bash "${REPO_DIR}/_governator/governator.sh" assign-backlog
   [ "$status" -eq 0 ]
 
-  [ -f "${REPO_DIR}/_governator/task-blocked/002norole.md" ]
-  run grep -F "Missing required role" "${REPO_DIR}/_governator/task-blocked/002norole.md"
+  [ -f "${REPO_DIR}/_governator/task-assigned/002norole.md" ]
+  run grep -F "002norole -> generalist" "${REPO_DIR}/.governator/in-flight.log"
   [ "$status" -eq 0 ]
 }
 
-@test "assign-backlog blocks tasks with unknown roles" {
+@test "assign-backlog assigns generalist for unknown roles" {
   complete_bootstrap
   write_task "task-backlog" "003-unknown-ghost"
   commit_all "Add unknown role task"
@@ -60,8 +60,8 @@ load ./helpers.bash
   run bash "${REPO_DIR}/_governator/governator.sh" assign-backlog
   [ "$status" -eq 0 ]
 
-  [ -f "${REPO_DIR}/_governator/task-blocked/003-unknown-ghost.md" ]
-  run grep -F "Unknown role ghost" "${REPO_DIR}/_governator/task-blocked/003-unknown-ghost.md"
+  [ -f "${REPO_DIR}/_governator/task-assigned/003-unknown-ghost.md" ]
+  run grep -F "003-unknown-ghost -> generalist" "${REPO_DIR}/.governator/in-flight.log"
   [ "$status" -eq 0 ]
 }
 

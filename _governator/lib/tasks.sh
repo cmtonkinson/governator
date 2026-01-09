@@ -1140,11 +1140,18 @@ extract_worker_from_task() {
   local task_file="$1"
   local metadata_text
   if ! metadata_text="$(parse_task_metadata "${task_file}")"; then
-    return 1
+    printf '%s' "generalist"
+    return 0
   fi
   local metadata=()
   mapfile -t metadata <<< "${metadata_text}"
-  printf '%s' "${metadata[2]}"
+  local role="${metadata[2]}"
+  if role_exists "${role}"; then
+    printf '%s' "${role}"
+    return 0
+  fi
+  printf '%s' "generalist"
+  return 0
 }
 
 # read_next_task_id
