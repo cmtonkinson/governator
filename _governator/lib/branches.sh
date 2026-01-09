@@ -58,28 +58,27 @@ worker_elapsed_seconds() {
   printf '%s\n' "$((finished_at - started_at))"
 }
 
-# ensure_remote_worker_branch_present
-# Purpose: Ensure the remote worker branch exists and sync a local ref.
+# ensure_worker_branch_present
+# Purpose: Ensure the local worker branch exists.
 # Args:
 #   $1: Task name (string).
 #   $2: Worker name (string).
-#   $3: Remote branch ref (string).
-#   $4: Local branch name (string).
+#   $3: Branch name (string).
 # Output: Logs missing branch warnings and cleanup.
 # Returns: 0 if branch exists; 1 if missing.
-ensure_remote_worker_branch_present() {
+ensure_worker_branch_present() {
   local task_name="$1"
   local worker_name="$2"
-  local remote_branch="$3"
-  local local_branch="$4"
+  local branch="$3"
 
-  if ! git -C "${ROOT_DIR}" show-ref --verify --quiet "refs/remotes/${remote_branch}"; then
-    log_warn "Worker branch missing at ${remote_branch}, skipping."
+  if ! git -C "${ROOT_DIR}" show-ref --verify --quiet "refs/heads/${branch}"; then
+    log_warn "Worker branch missing at ${branch}, skipping."
     in_flight_remove "${task_name}" "${worker_name}"
+    remove_worktree "${task_name}" "${worker_name}"
+    worker_process_clear "${task_name}" "${worker_name}"
     cleanup_worker_tmp_dirs "${worker_name}" "${task_name}"
     return 1
   fi
-  git -C "${ROOT_DIR}" branch -f "${local_branch}" "${remote_branch}" > /dev/null 2>&1
   return 0
 }
 
@@ -88,26 +87,24 @@ ensure_remote_worker_branch_present() {
 # Args:
 #   $1: Task name (string).
 #   $2: Worker name (string).
-#   $3: Remote branch ref (string).
-#   $4: Local branch name (string).
+#   $3: Branch name (string).
 # Output: Prints task directory on success; logs missing task cleanup.
 # Returns: 0 if task dir found; 1 if missing.
 resolve_task_dir_or_cleanup() {
   local task_name="$1"
   local worker_name="$2"
-  local remote_branch="$3"
-  local local_branch="$4"
+  local branch="$3"
 
   local task_dir
-  if ! task_dir="$(task_dir_for_branch "${remote_branch}" "${task_name}")"; then
+  if ! task_dir="$(task_dir_for_branch "${branch}" "${task_name}")"; then
     # No task to annotate; record and drop the branch.
-    log_warn "No task file found for ${task_name} on ${remote_branch}, skipping merge."
+    log_warn "No task file found for ${task_name} on ${branch}, skipping merge."
     local missing_sha
-    missing_sha="$(git -C "${ROOT_DIR}" rev-parse "${remote_branch}" 2> /dev/null || true)"
-    printf '%s %s %s missing task file\n' "$(timestamp_utc_seconds)" "${remote_branch}" "${missing_sha:-unknown}" >> "${FAILED_MERGES_LOG}"
+    missing_sha="$(git -C "${ROOT_DIR}" rev-parse "${branch}" 2> /dev/null || true)"
+    printf '%s %s %s missing task file\n' "$(timestamp_utc_seconds)" "${branch}" "${missing_sha:-unknown}" >> "${FAILED_MERGES_LOG}"
     in_flight_remove "${task_name}" "${worker_name}"
-    delete_worker_branch "${local_branch}"
-    cleanup_worker_tmp_dirs "${worker_name}" "${task_name}"
+    delete_worker_branch "${branch}"
+    remove_worktree "${task_name}" "${worker_name}"
     return 1
   fi
   printf '%s\n' "${task_dir}"
@@ -138,35 +135,35 @@ log_worker_elapsed_if_known() {
 #   $1: Task name (string).
 #   $2: Worker name (string).
 #   $3: Task dir name (string).
-#   $4: Local branch name (string).
+#   $4: Branch name (string).
 #   $5: Task file path (string).
-#   $6: Remote name (string).
 # Output: Logs and spawns reviewers as needed.
 # Returns: 0 if handled and should stop; 1 if processing should continue.
 handle_non_reviewer_branch_state() {
   local task_name="$1"
   local worker_name="$2"
   local task_dir="$3"
-  local local_branch="$4"
+  local branch="$4"
   local task_relpath="$5"
-  local remote="$6"
 
   if [[ "${task_dir}" == "task-worked" ]]; then
     in_flight_remove "${task_name}" "${worker_name}"
-    cleanup_worker_tmp_dirs "${worker_name}" "${task_name}"
+    remove_worktree "${task_name}" "${worker_name}"
 
     local review_branch="worker/reviewer/${task_name}"
     if in_flight_has_task_worker "${task_name}" "reviewer"; then
       log_verbose "Reviewer already in-flight for ${task_name}; skipping spawn"
       return 0
     fi
-    if ! git -C "${ROOT_DIR}" show-ref --verify --quiet "refs/remotes/${remote}/${review_branch}"; then
+    # Check if reviewer branch already exists (reviewer already completed)
+    if ! git -C "${ROOT_DIR}" show-ref --verify --quiet "refs/heads/${review_branch}"; then
       local cap_note
       if ! cap_note="$(can_assign_task "reviewer" "${task_name}")"; then
         log_warn "${cap_note}"
       else
         in_flight_add "${task_name}" "reviewer"
-        spawn_worker_for_task "${task_relpath}" "reviewer" "starting review for ${task_name}" "${remote}/${local_branch}"
+        # Reviewer branches from the worker's local branch
+        spawn_worker_for_task "${task_relpath}" "reviewer" "starting review for ${task_name}" "${branch}"
       fi
     fi
     return 0
@@ -175,8 +172,8 @@ handle_non_reviewer_branch_state() {
   if [[ "${task_dir}" == "task-blocked" ]]; then
     log_warn "Worker marked ${task_name} blocked; skipping merge."
     in_flight_remove "${task_name}" "${worker_name}"
-    delete_worker_branch "${local_branch}"
-    cleanup_worker_tmp_dirs "${worker_name}" "${task_name}"
+    delete_worker_branch "${branch}"
+    remove_worktree "${task_name}" "${worker_name}"
     ensure_unblock_planner_task || true
     return 0
   fi
@@ -338,18 +335,16 @@ merge_branch_into_default() {
 #   $1: Task name (string).
 #   $2: Worker name (string).
 #   $3: Merge worker name (string).
-#   $4: Local branch name (string).
+#   $4: Branch name (string).
 #   $5: Merge branch name (string).
-#   $6: Merge remote branch ref (string).
 # Output: Logs failures, updates tasks, and cleans up.
 # Returns: 0 always.
 handle_merge_failure() {
   local task_name="$1"
   local worker_name="$2"
   local merge_worker="$3"
-  local local_branch="$4"
+  local branch="$4"
   local merge_branch="$5"
-  local merge_remote_branch="$6"
 
   local main_task_file
   if main_task_file="$(task_file_for_name "${task_name}")"; then
@@ -362,35 +357,31 @@ handle_merge_failure() {
   fi
 
   local failed_sha
-  failed_sha="$(git -C "${ROOT_DIR}" rev-parse "${merge_remote_branch}" 2> /dev/null || true)"
-  printf '%s %s %s\n' "$(timestamp_utc_seconds)" "${merge_remote_branch}" "${failed_sha:-unknown}" >> "${FAILED_MERGES_LOG}"
-  cleanup_worker_artifacts "${task_name}" "${worker_name}" "${merge_worker}" "${local_branch}" "${merge_branch}"
+  failed_sha="$(git -C "${ROOT_DIR}" rev-parse "${merge_branch}" 2> /dev/null || true)"
+  printf '%s %s %s\n' "$(timestamp_utc_seconds)" "${merge_branch}" "${failed_sha:-unknown}" >> "${FAILED_MERGES_LOG}"
+  cleanup_worker_artifacts "${task_name}" "${worker_name}" "${merge_worker}" "${branch}" "${merge_branch}"
 }
 
 # process_worker_branch
 # Purpose: Handle review and merge decisions for a worker branch, then clean up.
 # Args:
-#   $1: Remote branch ref (string).
+#   $1: Branch name (string, format: worker/{role}/{task}).
 # Output: Logs state transitions, merge issues, and audit events.
 # Returns: 0 on completion; exits on fatal git errors.
 process_worker_branch() {
-  local remote_branch="$1"
-  local remote
-  remote="$(read_remote_name)"
-  local local_branch="${remote_branch#"${remote}"/}"
-  local worker_name="${local_branch#worker/}"
+  local branch="$1"
+  local worker_name="${branch#worker/}"
   worker_name="${worker_name%%/*}"
 
   local task_name
-  task_name="${local_branch##*/}"
+  task_name="${branch##*/}"
 
-  git_fetch_remote
-  if ! ensure_remote_worker_branch_present "${task_name}" "${worker_name}" "${remote_branch}" "${local_branch}"; then
+  if ! ensure_worker_branch_present "${task_name}" "${worker_name}" "${branch}"; then
     return 0
   fi
 
   local task_dir
-  if ! task_dir="$(resolve_task_dir_or_cleanup "${task_name}" "${worker_name}" "${remote_branch}" "${local_branch}")"; then
+  if ! task_dir="$(resolve_task_dir_or_cleanup "${task_name}" "${worker_name}" "${branch}")"; then
     return 0
   fi
 
@@ -398,20 +389,18 @@ process_worker_branch() {
   local decision="block"
   local review_lines=()
   local block_reason=""
-  local merge_branch="${local_branch}"
-  local merge_remote_branch="${remote_branch}"
+  local merge_branch="${branch}"
   local merge_worker="${worker_name}"
 
-  log_worker_elapsed_if_known "${task_name}" "${worker_name}" "${local_branch}"
+  log_worker_elapsed_if_known "${task_name}" "${worker_name}" "${branch}"
 
   if [[ "${worker_name}" == "reviewer" ]]; then
-    mapfile -t review_lines < <(read_review_output_from_branch "${local_branch}")
+    mapfile -t review_lines < <(read_review_output_from_branch "${branch}")
     decision="${review_lines[0]:-block}"
     local task_role=""
     if task_role="$(extract_worker_from_task "${task_relpath}" 2> /dev/null)"; then
       if [[ "${task_role}" != "reviewer" ]]; then
         merge_branch="worker/${task_role}/${task_name}"
-        merge_remote_branch="${remote}/${merge_branch}"
         merge_worker="${task_role}"
       fi
     else
@@ -419,7 +408,7 @@ process_worker_branch() {
       block_reason="Missing role suffix for ${task_name}."
     fi
   else
-    if handle_non_reviewer_branch_state "${task_name}" "${worker_name}" "${task_dir}" "${local_branch}" "${task_relpath}" "${remote}"; then
+    if handle_non_reviewer_branch_state "${task_name}" "${worker_name}" "${task_dir}" "${branch}" "${task_relpath}"; then
       return 0
     fi
   fi
@@ -427,13 +416,11 @@ process_worker_branch() {
   validate_task_state_for_processing "${task_name}" "${worker_name}" "${task_dir}" "decision" "block_reason"
 
   local merge_ready=1
-  git_fetch_remote
-  if ! git -C "${ROOT_DIR}" show-ref --verify --quiet "refs/remotes/${merge_remote_branch}"; then
+  # Check if the merge branch exists locally
+  if ! git -C "${ROOT_DIR}" show-ref --verify --quiet "refs/heads/${merge_branch}"; then
     decision="block"
-    block_reason="Missing worker branch ${merge_remote_branch} for ${task_name}."
+    block_reason="Missing worker branch ${merge_branch} for ${task_name}."
     merge_ready=0
-  else
-    git -C "${ROOT_DIR}" branch -f "${merge_branch}" "${merge_remote_branch}" > /dev/null 2>&1
   fi
 
   git_checkout_default_branch
@@ -445,13 +432,13 @@ process_worker_branch() {
       "${decision}" \
       "${block_reason}" \
       "${merge_worker}" \
-      "${local_branch}" \
+      "${branch}" \
       "${merge_branch}" \
       "${review_lines[@]:1}"
     return 0
   fi
   if ! merge_branch_into_default "${task_name}" "${merge_branch}"; then
-    handle_merge_failure "${task_name}" "${worker_name}" "${merge_worker}" "${local_branch}" "${merge_branch}" "${merge_remote_branch}"
+    handle_merge_failure "${task_name}" "${worker_name}" "${merge_worker}" "${branch}" "${merge_branch}"
     return 0
   fi
 
@@ -461,22 +448,21 @@ process_worker_branch() {
     "${decision}" \
     "${block_reason}" \
     "${merge_worker}" \
-    "${local_branch}" \
+    "${branch}" \
     "${merge_branch}" \
     "${review_lines[@]:1}"
 }
 
 # process_worker_branches
-# Purpose: Process all remote worker branches while skipping known failed merges.
+# Purpose: Process all local worker branches while skipping known failed merges.
 # Args: None.
 # Output: Logs scanning and per-branch processing messages.
 # Returns: 0 on completion.
 process_worker_branches() {
   touch_logs
-  git_fetch_remote
 
   check_zombie_workers
-  cleanup_stale_worker_dirs
+  cleanup_stale_worktrees
 
   log_verbose "Scanning worker branches"
   local branch

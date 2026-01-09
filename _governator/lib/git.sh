@@ -83,26 +83,17 @@ git_fetch_remote() {
 }
 
 # delete_worker_branch
-# Purpose: Delete a worker branch locally and remotely (best effort).
+# Purpose: Delete a local worker branch.
 # Args:
 #   $1: Branch name (string).
-# Output: Logs warnings if remote deletion fails.
+# Output: None.
 # Returns: 0 on completion.
 delete_worker_branch() {
   local branch="$1"
-  local remote
   local base_branch
-  remote="$(read_remote_name)"
   base_branch="$(read_default_branch)"
-  if [[ -z "${branch}" || "${branch}" == "${base_branch}" || "${branch}" == "${remote}/${base_branch}" ]]; then
+  if [[ -z "${branch}" || "${branch}" == "${base_branch}" ]]; then
     return 0
   fi
   git -C "${ROOT_DIR}" branch -D "${branch}" > /dev/null 2>&1 || true
-  if ! git -C "${ROOT_DIR}" push "${remote}" --delete "${branch}" > /dev/null 2>&1; then
-    log_warn "Failed to delete remote branch ${branch} with --delete"
-  fi
-  if ! git -C "${ROOT_DIR}" push "${remote}" :"refs/heads/${branch}" > /dev/null 2>&1; then
-    log_warn "Failed to delete remote branch ${branch} with explicit refs/heads"
-  fi
-  git -C "${ROOT_DIR}" fetch "${remote}" --prune > /dev/null 2>&1 || true
 }

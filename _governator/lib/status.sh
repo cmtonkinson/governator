@@ -226,8 +226,6 @@ print_blocked_tasks_summary() {
 # Returns: 0 on completion.
 print_pending_reviewer_branches() {
   printf 'Reviews awaiting reviewer branch:\n'
-  local remote
-  remote="$(read_remote_name)"
   local printed=0
   local task_file
   while IFS= read -r task_file; do
@@ -236,7 +234,7 @@ print_pending_reviewer_branches() {
     fi
     local task_name
     task_name="$(basename "${task_file}" .md)"
-    local reviewer_ref="refs/remotes/${remote}/worker/reviewer/${task_name}"
+    local reviewer_ref="refs/heads/worker/reviewer/${task_name}"
     if ! git -C "${ROOT_DIR}" show-ref --verify --quiet "${reviewer_ref}"; then
       printf '  - %s\n' "${task_name}"
       printed=1
@@ -254,8 +252,6 @@ print_pending_reviewer_branches() {
 # Returns: 0 on completion.
 print_pending_branches() {
   printf 'Pending worker branches:\n'
-  local remote
-  remote="$(read_remote_name)"
   local printed=0
   local task
   local worker
@@ -265,7 +261,7 @@ print_pending_branches() {
     fi
     local branch
     branch="worker/${worker}/${task}"
-    printf '  - %s/%s\n' "${remote}" "${branch}"
+    printf '  - %s\n' "${branch}"
     printed=1
   done < <(in_flight_entries)
   if [[ "${printed}" -eq 0 ]]; then
@@ -348,11 +344,6 @@ status_dashboard() {
     fi
   fi
   printf 'Governator Status%s\n' "${locked_note}"
-  if git_fetch_remote > /dev/null 2>&1; then
-    :
-  else
-    log_warn 'Failed to fetch remote refs for status'
-  fi
   print_project_status
   printf '\n'
   print_task_queue_summary

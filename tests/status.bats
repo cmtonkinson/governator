@@ -22,9 +22,10 @@ load ./helpers.bash
   [ "$status" -eq 0 ]
   run grep -F "Pending worker branches:" <<< "${status_output}"
   [ "$status" -eq 0 ]
-  run grep -F "origin/worker/ruby/020-status-ruby" <<< "${status_output}"
+  # Local branches no longer have origin/ prefix
+  run grep -F "worker/ruby/020-status-ruby" <<< "${status_output}"
   [ "$status" -eq 0 ]
-  run grep -F "origin/worker/ruby/021-other-ruby" <<< "${status_output}"
+  run grep -F "worker/ruby/021-other-ruby" <<< "${status_output}"
   [ "$status" -ne 0 ]
 }
 

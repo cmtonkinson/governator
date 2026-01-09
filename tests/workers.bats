@@ -74,27 +74,41 @@ load ./helpers.bash
   [ "$status" -ne 0 ]
 }
 
-@test "check-zombies recovers reviewer output by pushing review branch" {
+@test "check-zombies recovers reviewer output by committing review branch" {
   write_task "task-worked" "016-review-ruby"
   echo "016-review-ruby -> reviewer" >> "${REPO_DIR}/.governator/in-flight.log"
 
-  project_name="$(basename "${REPO_DIR}")"
-  tmp_dir="$(mktemp -d "/tmp/governator-${project_name}-reviewer-016-review-ruby-XXXXXX")"
-  git clone "${ORIGIN_DIR}" "${tmp_dir}" >/dev/null
-  git -C "${tmp_dir}" checkout -b "worker/reviewer/016-review-ruby" "origin/main" >/dev/null
-  git -C "${tmp_dir}" config user.email "test@example.com"
-  git -C "${tmp_dir}" config user.name "Test User"
-  cat > "${tmp_dir}/review.json" <<'EOF_REVIEW'
+  # Add worktrees to gitignore to prevent dirty repo detection
+  echo ".governator/worktrees/" >> "${REPO_DIR}/.gitignore"
+
+  # Commit task file, in-flight log, and gitignore (before creating worktree)
+  commit_paths "Prepare reviewer recovery task" GOVERNATOR.md _governator .governator .gitignore
+
+  # Create worktree for the reviewer
+  worktree_dir="${REPO_DIR}/.governator/worktrees/016-review-ruby-reviewer"
+  mkdir -p "${REPO_DIR}/.governator/worktrees"
+  git -C "${REPO_DIR}" worktree add -b "worker/reviewer/016-review-ruby" "${worktree_dir}" "main" >/dev/null 2>&1
+  git -C "${worktree_dir}" config user.email "test@example.com"
+  git -C "${worktree_dir}" config user.name "Test User"
+
+  # Create review.json in the worktree (simulating reviewer crash before commit)
+  cat > "${worktree_dir}/review.json" <<'EOF_REVIEW'
 {"result":"reject","comments":["needs work"]}
 EOF_REVIEW
 
-  echo "016-review-ruby | reviewer | 999999 | ${tmp_dir} | worker/reviewer/016-review-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
-  commit_all "Prepare reviewer recovery"
+  # Add worker process record (don't commit to avoid embedded repo warning)
+  echo "016-review-ruby | reviewer | 999999 | ${worktree_dir} | worker/reviewer/016-review-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+
+  # Get the base commit to compare against
+  base_commit="$(git -C "${REPO_DIR}" rev-parse main)"
 
   run bash "${REPO_DIR}/_governator/governator.sh" check-zombies
   [ "$status" -eq 0 ]
 
-  [ -f "${ORIGIN_DIR}/refs/heads/worker/reviewer/016-review-ruby" ]
+  # Verify the local branch exists and has commits beyond the base
+  run git -C "${REPO_DIR}" rev-list --count "${base_commit}..worker/reviewer/016-review-ruby"
+  [ "$status" -eq 0 ]
+  [ "$output" -gt 0 ]
 }
 
 @test "cleanup-tmp removes stale directories but keeps active ones" {

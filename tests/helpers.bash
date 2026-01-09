@@ -102,7 +102,6 @@ create_worker_branch() {
   printf '%s\n' "work ${task_name}" > "${REPO_DIR}/work-${task_name}.txt"
   repo_git add "work-${task_name}.txt"
   repo_git commit -m "Work ${task_name}" >/dev/null
-  repo_git push -u origin "worker/${worker}/${task_name}" >/dev/null
   repo_git checkout main >/dev/null
 }
 

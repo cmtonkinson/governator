@@ -9,13 +9,12 @@ load ./helpers.bash
   commit_all "Prepare worked task"
 
   create_worker_branch "010-review-ruby" "ruby"
-  repo_git checkout -b "worker/reviewer/010-review-ruby" "origin/worker/ruby/010-review-ruby" >/dev/null
+  repo_git checkout -b "worker/reviewer/010-review-ruby" "worker/ruby/010-review-ruby" >/dev/null
   cat > "${REPO_DIR}/review.json" <<'EOF_REVIEW'
 {"result":"approve","comments":["looks good"]}
 EOF_REVIEW
   repo_git add "review.json"
   repo_git commit -m "Review 010-review-ruby" >/dev/null
-  repo_git push -u origin "worker/reviewer/010-review-ruby" >/dev/null
   repo_git checkout main >/dev/null
 
   run bash "${REPO_DIR}/_governator/governator.sh" process-branches
@@ -47,6 +46,13 @@ EOF_REVIEW
 @test "process-branches skips reviewer spawn when reviewer already in-flight" {
   write_task "task-worked" "015-review-ruby"
   echo "015-review-ruby -> reviewer" >> "${REPO_DIR}/.governator/in-flight.log"
+  # Create a worker process record so the reviewer isn't detected as a zombie
+  # Use worktree as working dir and create the reviewer branch so it looks like an active worker
+  worktree_dir="${REPO_DIR}/.governator/worktrees/015-review-ruby-reviewer"
+  mkdir -p "${worktree_dir}"
+  # Use current timestamp and current shell's PID (guaranteed to be running during test)
+  started_at="$(date +%s)"
+  echo "015-review-ruby | reviewer | $$ | ${worktree_dir} | worker/reviewer/015-review-ruby | ${started_at}" >> "${REPO_DIR}/.governator/worker-processes.log"
   commit_all "Prepare reviewer in-flight"
 
   create_worker_branch "015-review-ruby" "ruby"
@@ -74,7 +80,9 @@ EOF_REVIEW
   [ -f "${REPO_DIR}/_governator/task-assigned/000-unblock-planner.md" ]
   run grep -F "060-blocked-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
   [ "$status" -ne 0 ]
-  [ ! -f "${ORIGIN_DIR}/refs/heads/worker/ruby/060-blocked-ruby" ]
+  # Verify local branch was deleted after processing
+  run repo_git show-ref --verify "refs/heads/worker/ruby/060-blocked-ruby"
+  [ "$status" -ne 0 ]
 }
 
 @test "process_worker_branch clears in-flight entry when branch is missing" {
@@ -92,6 +100,7 @@ EOF_REVIEW
     STATE_DIR=\"${REPO_DIR}/_governator\"
     DB_DIR=\"${REPO_DIR}/.governator\"
     PROJECT_NAME=\"${project_name}\"
+    WORKTREES_DIR=\"\${DB_DIR}/worktrees\"
     DEFAULT_REMOTE_NAME=\"origin\"
     DEFAULT_BRANCH_NAME=\"main\"
     CONFIG_FILE=\"\${DB_DIR}/config.json\"
@@ -106,10 +115,11 @@ EOF_REVIEW
     source \"\${STATE_DIR}/lib/logging.sh\"
     source \"\${STATE_DIR}/lib/config.sh\"
     source \"\${STATE_DIR}/lib/git.sh\"
+    source \"\${STATE_DIR}/lib/worktrees.sh\"
     source \"\${STATE_DIR}/lib/tasks.sh\"
     source \"\${STATE_DIR}/lib/workers.sh\"
     source \"\${STATE_DIR}/lib/branches.sh\"
-    process_worker_branch \"origin/worker/ruby/011-missing-ruby\"
+    process_worker_branch \"worker/ruby/011-missing-ruby\"
   "
   [ "$status" -eq 0 ]
 

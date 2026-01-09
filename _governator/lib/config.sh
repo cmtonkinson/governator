@@ -567,6 +567,43 @@ read_worker_cap() {
   printf '%s\n' "${cap}"
 }
 
+# worktree_path_for_task
+# Purpose: Generate the worktree directory path for a task/worker combination.
+# Args:
+#   $1: Task name (string).
+#   $2: Worker role (string).
+# Output: Prints the worktree path to stdout.
+# Returns: 0 always.
+worktree_path_for_task() {
+  local task_name="$1"
+  local worker="$2"
+  printf '%s\n' "${WORKTREES_DIR}/${task_name}-${worker}"
+}
+
+# worktree_branch_name
+# Purpose: Generate the branch name for a task/worker combination.
+# Args:
+#   $1: Task name (string).
+#   $2: Worker role (string).
+# Output: Prints the branch name to stdout.
+# Returns: 0 always.
+worktree_branch_name() {
+  local task_name="$1"
+  local worker="$2"
+  printf '%s\n' "worker/${worker}/${task_name}"
+}
+
+# ensure_worktrees_dir
+# Purpose: Create the worktrees directory if it does not exist.
+# Args: None.
+# Output: None.
+# Returns: 0 on success.
+ensure_worktrees_dir() {
+  if [[ ! -d "${WORKTREES_DIR}" ]]; then
+    mkdir -p "${WORKTREES_DIR}"
+  fi
+}
+
 # ensure_db_dir
 # Purpose: Create the state DB directory and initialize default files.
 # Args: None.
@@ -577,6 +614,7 @@ ensure_db_dir() {
     mkdir -p "${DB_DIR}"
   fi
   mkdir -p "${DB_DIR}/logs"
+  ensure_worktrees_dir
   touch "${AUDIT_LOG}"
   touch "${WORKER_PROCESSES_LOG}" "${RETRY_COUNTS_LOG}"
   ensure_migrations_state_file

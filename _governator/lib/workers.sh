@@ -120,14 +120,12 @@ build_worker_prompt() {
 
 
 # list_worker_branches
-# Purpose: List remote worker branch refs.
+# Purpose: List local worker branch refs.
 # Args: None.
-# Output: Prints branch refs to stdout, one per line.
+# Output: Prints branch names to stdout, one per line.
 # Returns: 0 always.
 list_worker_branches() {
-  local remote
-  remote="$(read_remote_name)"
-  git -C "${ROOT_DIR}" for-each-ref --format='%(refname:short)' "refs/remotes/${remote}/worker/*/*" || true
+  git -C "${ROOT_DIR}" for-each-ref --format='%(refname:short)' "refs/heads/worker/*/*" || true
 }
 
 # in_flight_entries
@@ -237,53 +235,51 @@ in_flight_has_task_worker() {
 }
 
 # recover_reviewer_output
-# Purpose: Commit and push reviewer output when review.json exists but no branch was pushed.
+# Purpose: Commit reviewer output when review.json exists but no commit was made.
 # Args:
 #   $1: Task name (string).
-#   $2: Temp dir path (string).
+#   $2: Worktree dir path (string).
 # Output: None.
-# Returns: 0 if a reviewer branch was created and pushed; 1 otherwise.
+# Returns: 0 if a reviewer commit was created; 1 otherwise.
 recover_reviewer_output() {
   local task_name="$1"
-  local tmp_dir="$2"
-  if [[ -z "${tmp_dir}" || ! -d "${tmp_dir}" ]]; then
+  local worktree_dir="$2"
+  if [[ -z "${worktree_dir}" || ! -d "${worktree_dir}" ]]; then
     return 1
   fi
-  if [[ ! -f "${tmp_dir}/review.json" ]]; then
+  if [[ ! -f "${worktree_dir}/review.json" ]]; then
     return 1
   fi
-  if ! git -C "${tmp_dir}" rev-parse --git-dir > /dev/null 2>&1; then
+  if ! git -C "${worktree_dir}" rev-parse --git-dir > /dev/null 2>&1; then
     return 1
   fi
 
   local branch="worker/reviewer/${task_name}"
-  git -C "${tmp_dir}" checkout -q "${branch}" > /dev/null 2>&1 || true
-  git -C "${tmp_dir}" add "review.json"
-  if git -C "${tmp_dir}" diff --cached --quiet; then
+  git -C "${worktree_dir}" checkout -q "${branch}" > /dev/null 2>&1 || true
+  git -C "${worktree_dir}" add "review.json"
+  if git -C "${worktree_dir}" diff --cached --quiet; then
     return 1
   fi
 
-  if [[ -z "$(git -C "${tmp_dir}" config user.email || true)" ]]; then
+  if [[ -z "$(git -C "${worktree_dir}" config user.email || true)" ]]; then
     local email
     email="$(git -C "${ROOT_DIR}" config user.email || true)"
     if [[ -n "${email}" ]]; then
-      git -C "${tmp_dir}" config user.email "${email}"
+      git -C "${worktree_dir}" config user.email "${email}"
     fi
   fi
-  if [[ -z "$(git -C "${tmp_dir}" config user.name || true)" ]]; then
+  if [[ -z "$(git -C "${worktree_dir}" config user.name || true)" ]]; then
     local name
     name="$(git -C "${ROOT_DIR}" config user.name || true)"
     if [[ -n "${name}" ]]; then
-      git -C "${tmp_dir}" config user.name "${name}"
+      git -C "${worktree_dir}" config user.name "${name}"
     fi
   fi
 
-  if ! git -C "${tmp_dir}" commit -q -m "Review ${task_name}" > /dev/null 2>&1; then
+  if ! git -C "${worktree_dir}" commit -q -m "Review ${task_name}" > /dev/null 2>&1; then
     return 1
   fi
-  if ! git -C "${tmp_dir}" push -q origin "${branch}" > /dev/null 2>&1; then
-    return 1
-  fi
+  # With worktrees, the commit is directly on the local branch - no push needed
   return 0
 }
 
@@ -665,9 +661,10 @@ spawn_worker_for_task() {
   local task_name
   task_name="$(basename "${task_file}" .md)"
 
-  local tmp_dir
-  tmp_dir="$(mktemp -d "/tmp/governator-${PROJECT_NAME}-${worker}-${task_name}-XXXXXX")"
-  log_verbose "Worker tmp dir: ${tmp_dir}"
+  # Create worktree directory for the worker
+  local worktree_dir
+  worktree_dir="$(worktree_path_for_task "${task_name}" "${worker}")"
+  log_verbose "Worker worktree dir: ${worktree_dir}"
 
   local log_dir
   log_dir="${DB_DIR}/logs"
@@ -680,31 +677,33 @@ spawn_worker_for_task() {
   fi
   append_worker_log_separator "${log_file}"
 
-  local remote
-  local branch
-  remote="$(read_remote_name)"
-  branch="$(read_default_branch)"
-  git clone "$(git -C "${ROOT_DIR}" remote get-url "${remote}")" "${tmp_dir}" > /dev/null 2>&1
+  # Set default base_ref to the default branch if not provided
   if [[ -z "${base_ref}" ]]; then
-    base_ref="${remote}/${branch}"
+    base_ref="$(read_default_branch)"
   fi
-  git -C "${tmp_dir}" checkout -b "worker/${worker}/${task_name}" "${base_ref}" > /dev/null 2>&1
+
+  # Create the worktree with a new branch
+  if ! create_worktree "${task_name}" "${worker}" "${base_ref}"; then
+    log_task_warn "${task_name}" "failed to create worktree"
+    return 1
+  fi
 
   local task_relpath="${task_file#"${ROOT_DIR}/"}"
   local prompt
   prompt="$(build_worker_prompt "${worker}" "${task_relpath}")"
 
-  if [[ "${worker}" == "reviewer" && -f "${TEMPLATES_DIR}/review.json" && ! -f "${tmp_dir}/review.json" ]]; then
-    cp "${TEMPLATES_DIR}/review.json" "${tmp_dir}/review.json"
+  if [[ "${worker}" == "reviewer" && -f "${TEMPLATES_DIR}/review.json" && ! -f "${worktree_dir}/review.json" ]]; then
+    cp "${TEMPLATES_DIR}/review.json" "${worktree_dir}/review.json"
   fi
 
-  local branch_name="worker/${worker}/${task_name}"
+  local branch_name
+  branch_name="$(worktree_branch_name "${task_name}" "${worker}")"
   local pid
   local started_at
   started_at="$(date +%s)"
-  pid="$(run_worker_detached "${tmp_dir}" "${prompt}" "${log_file}" "${worker}")"
+  pid="$(run_worker_detached "${worktree_dir}" "${prompt}" "${log_file}" "${worker}")"
   if [[ -n "${pid}" ]]; then
-    worker_process_set "${task_name}" "${worker}" "${pid}" "${tmp_dir}" "${branch_name}" "${started_at}"
+    worker_process_set "${task_name}" "${worker}" "${pid}" "${worktree_dir}" "${branch_name}" "${started_at}"
     if [[ -n "${audit_message}" ]]; then
       log_task_event "${task_name}" "${audit_message}"
     fi
@@ -715,7 +714,7 @@ spawn_worker_for_task() {
 }
 
 # check_zombie_workers
-# Purpose: Detect in-flight workers missing branches and retry or block tasks across all entries.
+# Purpose: Detect in-flight workers missing branches/commits and retry or block tasks.
 # Args: None.
 # Output: Logs warnings and task transitions.
 # Returns: 0 on completion.
@@ -731,10 +730,12 @@ check_zombie_workers() {
   while IFS='|' read -r task_name worker; do
     local branch="worker/${worker}/${task_name}"
 
-    local remote
-    remote="$(read_remote_name)"
-    if git -C "${ROOT_DIR}" show-ref --verify --quiet "refs/remotes/${remote}/${branch}"; then
-      continue
+    # Check if local branch exists and has commits (worker completed)
+    if git -C "${ROOT_DIR}" show-ref --verify --quiet "refs/heads/${branch}"; then
+      # Branch exists - check if it has commits beyond the base
+      if worktree_has_completed "${task_name}" "${worker}"; then
+        continue
+      fi
     fi
 
     local proc_info=()
@@ -745,7 +746,7 @@ check_zombie_workers() {
     fi
 
     local pid="${proc_info[0]:-}"
-    local tmp_dir="${proc_info[1]:-}"
+    local worktree_dir="${proc_info[1]:-}"
     local started_at="${proc_info[3]:-}"
     local timeout
     timeout="$(read_worker_timeout_seconds)"
@@ -766,15 +767,14 @@ check_zombie_workers() {
     fi
 
     if [[ "${worker}" == "reviewer" ]]; then
-      if recover_reviewer_output "${task_name}" "${tmp_dir}"; then
-        log_task_event "${task_name}" "recovered reviewer output and pushed branch"
-        git_fetch_remote
+      if recover_reviewer_output "${task_name}" "${worktree_dir}"; then
+        log_task_event "${task_name}" "recovered reviewer output"
         continue
       fi
     fi
 
-    log_task_warn "${task_name}" "worker ${worker} exited before pushing branch"
+    log_task_warn "${task_name}" "worker ${worker} exited without completing"
 
-    handle_zombie_failure "${task_name}" "${worker}" "${tmp_dir}"
+    handle_zombie_failure "${task_name}" "${worker}" "${worktree_dir}"
   done < <(in_flight_entries)
 }

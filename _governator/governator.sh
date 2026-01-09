@@ -33,6 +33,7 @@ MIGRATIONS_DIR="${STATE_DIR}/migrations"
 LOCK_FILE="${DB_DIR}/governator.lock"
 FAILED_MERGES_LOG="${DB_DIR}/failed-merges.log"
 IN_FLIGHT_LOG="${DB_DIR}/in-flight.log"
+WORKTREES_DIR="${DB_DIR}/worktrees"
 SYSTEM_LOCK_FILE="${DB_DIR}/governator.locked"
 SYSTEM_LOCK_PATH="${SYSTEM_LOCK_FILE#"${ROOT_DIR}/"}"
 GITIGNORE_PATH="${ROOT_DIR}/.gitignore"
@@ -89,6 +90,8 @@ source "${LIB_DIR}/logging.sh"
 source "${LIB_DIR}/config.sh"
 # shellcheck source=_governator/lib/git.sh
 source "${LIB_DIR}/git.sh"
+# shellcheck source=_governator/lib/worktrees.sh
+source "${LIB_DIR}/worktrees.sh"
 # shellcheck source=_governator/lib/core.sh
 source "${LIB_DIR}/core.sh"
 # shellcheck source=_governator/lib/locks.sh
