@@ -6,7 +6,7 @@
 #   $1: Role name (string).
 #   $2: Prompt text (string).
 # Output: Sets WORKER_COMMAND (array) and WORKER_COMMAND_LOG (string).
-# Returns: 0 always.
+# Returns: 0 on success; returns 1 when provider/bin lookup fails.
 build_worker_command() {
   local role="$1"
   local prompt="$2"
@@ -51,7 +51,7 @@ build_worker_command() {
 #   $3: Log file path (string).
 #   $4: Role name (string).
 # Output: Prints the spawned PID to stdout.
-# Returns: 0 on success; propagates errors from child command.
+# Returns: 0 on success; returns 1 when worker command build or spawn fails.
 run_worker_detached() {
   local dir="$1"
   local prompt="$2"
@@ -514,7 +514,7 @@ retry_count_clear() {
 #   $1: Task name (string).
 #   $2: Worker name (string).
 # Output: Logs warnings and task transitions.
-# Returns: 0 on completion.
+# Returns: 0 on completion; returns 1 when worktree creation fails.
 handle_zombie_failure() {
   local task_name="$1"
   local worker="$2"

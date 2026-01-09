@@ -104,7 +104,7 @@ config_json_write_value() {
 # Purpose: Ensure the config.json file exists, copying the template if missing.
 # Args: None.
 # Output: None.
-# Returns: 0 on completion.
+# Returns: 0 on completion; returns 1 if the template is missing.
 ensure_config_file() {
   if [[ -f "${CONFIG_FILE}" ]]; then
     return 0
@@ -499,7 +499,7 @@ read_agent_provider() {
 # Args:
 #   $1: Provider name (string).
 # Output: Prints the binary name to stdout.
-# Returns: 0 always; falls back to provider name when unset.
+# Returns: 0 on success; returns 1 when provider/bin is missing or invalid.
 read_agent_provider_bin() {
   local provider="$1"
   if [[ -z "${provider}" ]]; then
