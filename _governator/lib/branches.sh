@@ -147,7 +147,8 @@ handle_non_reviewer_branch_state() {
 
   if [[ "${task_dir}" == "task-worked" ]]; then
     in_flight_remove "${task_name}" "${worker_name}"
-    remove_worktree "${task_name}" "${worker_name}"
+    # Only remove the worktree directory, keep the branch for the reviewer to branch from
+    remove_worktree_dir "${task_name}" "${worker_name}"
 
     local review_branch="worker/reviewer/${task_name}"
     if in_flight_has_task_worker "${task_name}" "reviewer"; then

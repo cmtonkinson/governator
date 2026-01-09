@@ -44,6 +44,33 @@ create_worktree() {
   return 0
 }
 
+# remove_worktree_dir
+# Purpose: Remove a git worktree directory but keep the branch.
+# Args:
+#   $1: Task name (string).
+#   $2: Worker role (string).
+# Output: Logs verbose info.
+# Returns: 0 on success (or if already removed).
+# Note: Use this when the branch is still needed (e.g., for reviewer to branch from).
+remove_worktree_dir() {
+  local task_name="$1"
+  local worker="$2"
+
+  local worktree_path
+  worktree_path="$(worktree_path_for_task "${task_name}" "${worker}")"
+
+  # Remove the worktree directory only
+  if [[ -d "${worktree_path}" ]]; then
+    git -C "${ROOT_DIR}" worktree remove --force "${worktree_path}" 2>/dev/null || rm -rf "${worktree_path}"
+    log_verbose "Removed worktree directory at ${worktree_path}"
+  fi
+
+  # Prune stale worktree references
+  git -C "${ROOT_DIR}" worktree prune 2>/dev/null || true
+
+  return 0
+}
+
 # remove_worktree
 # Purpose: Remove a git worktree and its associated branch.
 # Args:
@@ -55,25 +82,17 @@ remove_worktree() {
   local task_name="$1"
   local worker="$2"
 
-  local worktree_path
   local branch_name
-  worktree_path="$(worktree_path_for_task "${task_name}" "${worker}")"
   branch_name="$(worktree_branch_name "${task_name}" "${worker}")"
 
   # Remove the worktree directory
-  if [[ -d "${worktree_path}" ]]; then
-    git -C "${ROOT_DIR}" worktree remove --force "${worktree_path}" 2>/dev/null || rm -rf "${worktree_path}"
-    log_verbose "Removed worktree at ${worktree_path}"
-  fi
+  remove_worktree_dir "${task_name}" "${worker}"
 
   # Delete the branch
   if git -C "${ROOT_DIR}" show-ref --verify --quiet "refs/heads/${branch_name}"; then
     git -C "${ROOT_DIR}" branch -D "${branch_name}" 2>/dev/null || true
     log_verbose "Deleted branch ${branch_name}"
   fi
-
-  # Prune stale worktree references
-  git -C "${ROOT_DIR}" worktree prune 2>/dev/null || true
 
   return 0
 }
