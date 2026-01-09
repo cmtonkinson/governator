@@ -236,14 +236,7 @@ EOF_BIN
     .agents.providers.unit.args = ["--foo", "{REASONING_EFFORT}", "--bar"]
   ' "${REPO_DIR}/.governator/config.json" > "${tmp_file}"
   mv "${tmp_file}" "${REPO_DIR}/.governator/config.json"
-  echo "DEBUG: reasoning_effort BEFORE set_config_map_value:" >&2
-  jq '.reasoning_effort' "${REPO_DIR}/.governator/config.json" >&2
-
   set_config_map_value "reasoning_effort" "default" "high" "string"
-
-  echo "DEBUG: reasoning_effort AFTER set_config_map_value:" >&2
-  jq '.reasoning_effort' "${REPO_DIR}/.governator/config.json" >&2
-  echo "DEBUG: jq version: $(jq --version)" >&2
 
   ROOT_DIR="${REPO_DIR}"
   STATE_DIR="${REPO_DIR}/_governator"
