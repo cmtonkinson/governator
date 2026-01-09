@@ -49,25 +49,23 @@ config_json_read_map_value() {
     printf '%s\n' "${fallback}"
     return 0
   fi
+  # Try entry key first, then default key, using simple object access.
   local value
-  # Use explicit null checks and getpath for jq compatibility across versions.
-  if ! value="$(
-    jq -r --arg map "${map_key}" --arg entry "${entry_key}" \
-      --arg def "${default_key}" --arg fallback "${fallback}" \
-      'getpath([$map, $entry]) as $entry_val
-       | getpath([$map, $def]) as $def_val
-       | (if $entry_val != null then $entry_val
-          elif $def_val != null then $def_val
-          else $fallback end) as $result
-       | if ($result | type) == "string" then $result
-         elif ($result | type) == "number" then $result
-         else $fallback end' \
-      "${CONFIG_FILE}" 2> /dev/null
-  )"; then
-    printf '%s\n' "${fallback}"
+  value="$(jq -r --arg entry "${entry_key}" \
+    ".${map_key}[\$entry] | select(type == \"string\" or type == \"number\")" \
+    "${CONFIG_FILE}" 2> /dev/null)"
+  if [[ -n "${value}" ]]; then
+    printf '%s\n' "${value}"
     return 0
   fi
-  printf '%s\n' "${value}"
+  value="$(jq -r --arg def "${default_key}" \
+    ".${map_key}[\$def] | select(type == \"string\" or type == \"number\")" \
+    "${CONFIG_FILE}" 2> /dev/null)"
+  if [[ -n "${value}" ]]; then
+    printf '%s\n' "${value}"
+    return 0
+  fi
+  printf '%s\n' "${fallback}"
 }
 
 # config_json_write_value
