@@ -1,35 +1,50 @@
 # shellcheck shell=bash
 
-# build_codex_command
-# Purpose: Assemble the Codex CLI command array and log string for a worker.
+# build_worker_command
+# Purpose: Assemble the worker CLI command array and log string for a worker.
 # Args:
 #   $1: Role name (string).
 #   $2: Prompt text (string).
-# Output: Sets CODEX_COMMAND (array) and CODEX_COMMAND_LOG (string).
+# Output: Sets WORKER_COMMAND (array) and WORKER_COMMAND_LOG (string).
 # Returns: 0 always.
-build_codex_command() {
+build_worker_command() {
   local role="$1"
   local prompt="$2"
+  local provider
+  if ! provider="$(read_agent_provider "${role}")"; then
+    return 1
+  fi
   local reasoning
   reasoning="$(read_reasoning_effort "${role}")"
-  local escaped_prompt
-  escaped_prompt="$(escape_log_value "${prompt}")"
+  local bin
+  if ! bin="$(read_agent_provider_bin "${provider}")"; then
+    return 1
+  fi
 
-  CODEX_COMMAND=(
-    codex
-    --full-auto
-    --search
-    -c sandbox_workspace_write.network_access=true
-    -c model_reasoning_effort="${reasoning}"
-    exec
-    --sandbox=workspace-write
-    "${prompt}"
-  )
-  CODEX_COMMAND_LOG="codex --full-auto --search -c sandbox_workspace_write.network_access=true -c model_reasoning_effort=\"${reasoning}\" exec --sandbox=workspace-write \"${escaped_prompt}\""
+  local args=()
+  if mapfile -t args < <(read_agent_provider_args "${provider}"); then
+    :
+  fi
+
+  local i
+  for i in "${!args[@]}"; do
+    args[i]="${args[i]//\{REASONING_EFFORT\}/${reasoning}}"
+  done
+
+  WORKER_COMMAND=("${bin}" "${args[@]}" "${prompt}")
+
+  local log_parts=()
+  local part
+  for part in "${WORKER_COMMAND[@]}"; do
+    local escaped
+    escaped="$(escape_log_value "${part}")"
+    log_parts+=("\"${escaped}\"")
+  done
+  WORKER_COMMAND_LOG="$(join_by " " "${log_parts[@]}")"
 }
 
-# run_codex_worker_detached
-# Purpose: Launch a Codex worker in the background and return its PID.
+# run_worker_detached
+# Purpose: Launch a worker in the background and return its PID.
 # Args:
 #   $1: Working directory (string).
 #   $2: Prompt text (string).
@@ -37,27 +52,20 @@ build_codex_command() {
 #   $4: Role name (string).
 # Output: Prints the spawned PID to stdout.
 # Returns: 0 on success; propagates errors from child command.
-run_codex_worker_detached() {
+run_worker_detached() {
   local dir="$1"
   local prompt="$2"
   local log_file="$3"
   local role="$4"
-  if [[ -n "${CODEX_WORKER_CMD:-}" ]]; then
-    log_verbose "Worker command: GOV_PROMPT=${prompt} nohup bash -c ${CODEX_WORKER_CMD}"
-    (
-      cd "${dir}"
-      GOV_PROMPT="${prompt}" nohup bash -c "${CODEX_WORKER_CMD}" >> "${log_file}" 2>&1 &
-      echo $!
-    )
-    return 0
-  fi
 
   # Use nohup to prevent worker exit from being tied to this process.
-  build_codex_command "${role}" "${prompt}"
+  if ! build_worker_command "${role}" "${prompt}"; then
+    return 1
+  fi
   (
     cd "${dir}"
-    log_verbose "Worker command: ${CODEX_COMMAND_LOG}"
-    nohup "${CODEX_COMMAND[@]}" >> "${log_file}" 2>&1 &
+    log_verbose "Worker command: ${WORKER_COMMAND_LOG}"
+    nohup "${WORKER_COMMAND[@]}" >> "${log_file}" 2>&1 &
     echo $!
   )
 }
@@ -92,6 +100,13 @@ build_worker_prompt() {
   local role="$1"
   local task_relpath="$2"
   local prompt_files=()
+  local provider
+  provider="$(read_agent_provider "${role}")"
+  if [[ "${provider}" != "codex" ]]; then
+    local reasoning
+    reasoning="$(read_reasoning_effort "${role}")"
+    prompt_files+=("_governator/reasoning/${reasoning}.md")
+  fi
   prompt_files+=("_governator/worker-contract.md")
   prompt_files+=("${ROLES_DIR#"${ROOT_DIR}/"}/${role}.md")
   prompt_files+=("_governator/custom-prompts/_global.md")
@@ -687,7 +702,7 @@ spawn_worker_for_task() {
   local pid
   local started_at
   started_at="$(date +%s)"
-  pid="$(run_codex_worker_detached "${tmp_dir}" "${prompt}" "${log_file}" "${worker}")"
+  pid="$(run_worker_detached "${tmp_dir}" "${prompt}" "${log_file}" "${worker}")"
   if [[ -n "${pid}" ]]; then
     worker_process_set "${task_name}" "${worker}" "${pid}" "${tmp_dir}" "${branch_name}" "${started_at}"
     if [[ -n "${audit_message}" ]]; then

@@ -164,18 +164,18 @@ There is no conversational back-and-forth.
 ## High-Level Workflow
 1. You copy the `_governator/` directory into the project root.
 2. You write `GOVERNATOR.md` for your project.
-   - this is the only authoritative description of intent
-   - workers never modify it
+  - this is the only authoritative description of intent
+  - workers never modify it
 3. You run `governator.sh init` to configure the tool.
 4. You set up a cron job that periodically runs `governator.sh run`.
 5. Governator:
-   - reads the repository state
-   - manages project architecture & planning documentation
-   - creates or updates tasks
-   - assigns tasks to specific roles
-   - spawns isolated Codex CLI workers to complete tasks
-   - reviews results against requirements
-   - merges approved work into `main`
+  - reads the repository state
+  - manages project architecture & planning documentation
+  - creates or updates tasks
+  - assigns tasks to specific roles
+  - spawns isolated CLI agent workers to complete tasks
+  - reviews results against requirements
+  - merges approved work into `main`
 6. You come back later to a working system.
 7. Profit?
 
@@ -293,13 +293,14 @@ to generate the actual tasks that get carried out by worker processes.
 
 ## Worker Execution Model
 Each worker execution:
-- Runs non-interactively (e.g. `codex exec`)
+- Runs non-interactively (e.g. `codex exec`, `claude --print`, etc.)
 - Reads inputs in order:
-  1. `_governator/worker-contract.md`
-  2. `_governator/roles/<role>.md`
-  3. `_governator/custom-prompts/_global.md`
-  4. `_governator/custom-prompts/<role>.md`
-  5. `_governator/<task-path>/<task>.md`
+  1. `_governator/reasoning/<level>.md` (when needed\*)
+  2. `_governator/worker-contract.md`
+  3. `_governator/roles/<role>.md`
+  4. `_governator/custom-prompts/_global.md`
+  5. `_governator/custom-prompts/<role>.md`
+  6. `_governator/<task-path>/<task>.md`
 - Operates in a fresh clone on a dedicated branch
 - Pushes its branch exactly once
 - Exits
@@ -315,6 +316,15 @@ Workers never:
 - merge to `main`
 - create or modify tasks outside their scope
 - retain memory between runs
+
+\* _Note: Codex CLI natively exposes a `--reasoning-effort` flag to help control
+quota use, but it's not as straightforward with other agents, and it would be
+both ethically and technically wrong to attempt to modify a global config file
+(e.g. `~/.claude/settings.json`) for this purpose. So for agents that lack this
+kind of native flag, instead we inject a custom prompt file to the front of the
+"prompt queue" to approxomate the behavior. The `medium.md` prompt is empty on
+purpose as we assume "medium" effort by default, and only nudging the model
+explicitly in low & high cases, but the file is there if you want it._
 
 ## Review Flow
 When a worker completes a task, it is pushed to the repository under a dedicated
@@ -360,12 +370,11 @@ The Governator itself is a CLI application written in bash. It will check to
 ensure all of the prereqs met, and whine stubbornly if not.
 
 It requires:
+- a working coding agent (Codex, Claude Code, Gemini CLI)
 - git
 - jq
 - a SHA256 tool (shasum, sha256sum, or openssl)
 - cron (or some other means of invocation)
-- one or more non-interactive LLM CLIs
-    - _NOTE: Governator currently only supports Codex CLI_
 - a fully-baked `GOVERNATOR.md`
   - overview/summary
   - goals & non-goals

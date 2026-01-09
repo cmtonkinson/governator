@@ -13,12 +13,25 @@ ensure_dependencies() {
       missing+=("${dep}")
     fi
   done
-  if ! command -v codex > /dev/null 2>&1; then
-    missing+=("codex")
-  fi
   if [[ "${#missing[@]}" -gt 0 ]]; then
     log_error "Missing dependencies: ${missing[*]}"
     exit 1
+  fi
+  if [[ -f "${CONFIG_FILE}" ]]; then
+    local providers=()
+    if mapfile -t providers < <(
+      jq -r '.agents.providers // {} | keys[]' "${CONFIG_FILE}" 2> /dev/null
+    ); then
+      :
+    fi
+    if [[ "${#providers[@]}" -gt 0 ]]; then
+      local provider
+      for provider in "${providers[@]}"; do
+        if ! read_agent_provider_bin "${provider}" > /dev/null; then
+          exit 1
+        fi
+      done
+    fi
   fi
   ensure_sha256_tool
 }

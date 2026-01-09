@@ -472,6 +472,75 @@ read_reasoning_effort() {
   esac
 }
 
+# read_agent_provider
+# Purpose: Read the provider name for the given worker role.
+# Args:
+#   $1: Role name (string).
+# Output: Prints the provider name to stdout.
+# Returns: 0 on success; returns 1 when default provider is missing.
+read_agent_provider() {
+  local role="$1"
+  local provider
+  provider="$(config_json_read_value "agents.provider_by_role.${role}" "")"
+  provider="$(trim_whitespace "${provider}")"
+  if [[ -z "${provider}" ]]; then
+    provider="$(config_json_read_value "agents.provider_by_role.default" "")"
+    provider="$(trim_whitespace "${provider}")"
+  fi
+  if [[ -z "${provider}" ]]; then
+    log_error "Missing agents.provider_by_role.default in config.json; cannot select provider for ${role}."
+    return 1
+  fi
+  printf '%s\n' "${provider}"
+}
+
+# read_agent_provider_bin
+# Purpose: Read the provider binary name for a given provider.
+# Args:
+#   $1: Provider name (string).
+# Output: Prints the binary name to stdout.
+# Returns: 0 always; falls back to provider name when unset.
+read_agent_provider_bin() {
+  local provider="$1"
+  if [[ -z "${provider}" ]]; then
+    log_error "Missing provider name; cannot resolve agent binary."
+    return 1
+  fi
+  local bin
+  bin="$(config_json_read_value "agents.providers.${provider}.bin" "${provider}")"
+  bin="$(trim_whitespace "${bin}")"
+  if [[ -z "${bin}" ]]; then
+    log_error "Missing binary for provider ${provider}."
+    return 1
+  fi
+  if [[ "${bin}" == */* ]]; then
+    if [[ ! -x "${bin}" ]]; then
+      log_error "Agent provider binary not executable: ${bin}"
+      return 1
+    fi
+  elif ! command -v "${bin}" > /dev/null 2>&1; then
+    log_error "Agent provider binary not found in PATH: ${bin}"
+    return 1
+  fi
+  printf '%s\n' "${bin}"
+}
+
+# read_agent_provider_args
+# Purpose: Read the provider args array for a given provider.
+# Args:
+#   $1: Provider name (string).
+# Output: Prints each argument on its own line.
+# Returns: 0 always.
+read_agent_provider_args() {
+  local provider="$1"
+  if [[ ! -f "${CONFIG_FILE}" ]]; then
+    return 0
+  fi
+  jq -r --arg provider "${provider}" \
+    '(.agents.providers[$provider].args // []) | .[]? | select(type == "string")' \
+    "${CONFIG_FILE}" 2> /dev/null || true
+}
+
 # read_worker_cap
 # Purpose: Read the per-role worker concurrency cap, falling back to global.
 # Args:

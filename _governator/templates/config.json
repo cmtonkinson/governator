@@ -19,5 +19,34 @@
     "architect": "high",
     "planner": "high",
     "test_engineer": "low"
+  },
+  "agents": {
+    "provider_by_role": {
+      "default": "codex"
+    },
+    "providers": {
+      "codex": {
+        "bin": "codex",
+        "args": [
+          "--full-auto",
+          "--search",
+          "-c sandbox_workspace_write.network_access=true",
+          "-c model_reasoning_effort={REASONING_EFFORT}",
+          "exec",
+          "--sandbox=workspace-write"
+        ]
+      },
+      "claude": {
+        "bin": "claude",
+        "args": [
+          "--print"
+        ]
+      },
+      "gemini": {
+        "bin": "gemini",
+        "args": [
+        ]
+      }
+    }
   }
 }
