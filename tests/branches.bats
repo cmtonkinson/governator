@@ -5,7 +5,7 @@ load ./helpers.bash
 @test "process-branches approves worked task and moves to done" {
   write_task "task-worked" "010-review-ruby"
   echo "010-review-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
-  echo "010-review-ruby | ruby | 999999 | /tmp/governator-test | worker/ruby/010-review-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  echo "010-review-ruby | ruby | 999999 | ${REPO_DIR}/.governator/worktrees/010-review-ruby-ruby | worker/ruby/010-review-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
   commit_all "Prepare worked task"
 
   create_worker_branch "010-review-ruby" "ruby"
@@ -40,6 +40,35 @@ EOF_REVIEW
   run grep -F "014-review-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
   [ "$status" -ne 0 ]
   run grep -F "014-review-ruby -> reviewer" "${REPO_DIR}/.governator/in-flight.log"
+  [ "$status" -eq 0 ]
+}
+
+@test "process-branches creates reviewer branch from worker branch" {
+  write_task "task-worked" "018-branch-ruby"
+  echo "018-branch-ruby -> ruby" >> "${REPO_DIR}/.governator/in-flight.log"
+  commit_all "Prepare worked task for branch verification"
+
+  # Create worker branch with identifiable commit
+  create_worker_branch "018-branch-ruby" "ruby"
+  worker_commit="$(repo_git rev-parse worker/ruby/018-branch-ruby)"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" process-branches
+  [ "$status" -eq 0 ]
+
+  # Verify reviewer is in-flight
+  run grep -F "018-branch-ruby -> reviewer" "${REPO_DIR}/.governator/in-flight.log"
+  [ "$status" -eq 0 ]
+
+  # Verify worker branch still exists (not deleted before reviewer could use it)
+  run repo_git show-ref --verify "refs/heads/worker/ruby/018-branch-ruby"
+  [ "$status" -eq 0 ]
+
+  # Verify reviewer branch exists
+  run repo_git show-ref --verify "refs/heads/worker/reviewer/018-branch-ruby"
+  [ "$status" -eq 0 ]
+
+  # Verify reviewer branch is based on worker branch (contains worker's commit)
+  run repo_git merge-base --is-ancestor "${worker_commit}" "worker/reviewer/018-branch-ruby"
   [ "$status" -eq 0 ]
 }
 

@@ -56,11 +56,11 @@ load ./helpers.bash
   echo "012-zombie-a-ruby | 1" >> "${REPO_DIR}/.governator/retry-counts.log"
   echo "013-zombie-b-ruby | 1" >> "${REPO_DIR}/.governator/retry-counts.log"
 
-  project_name="$(basename "${REPO_DIR}")"
-  tmp_dir_a="$(mktemp -d "/tmp/governator-${project_name}-ruby-012-zombie-a-ruby-XXXXXX")"
-  tmp_dir_b="$(mktemp -d "/tmp/governator-${project_name}-ruby-013-zombie-b-ruby-XXXXXX")"
-  echo "012-zombie-a-ruby | ruby | 999999 | ${tmp_dir_a} | worker/ruby/012-zombie-a-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
-  echo "013-zombie-b-ruby | ruby | 999999 | ${tmp_dir_b} | worker/ruby/013-zombie-b-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  worktree_dir_a="${REPO_DIR}/.governator/worktrees/012-zombie-a-ruby-ruby"
+  worktree_dir_b="${REPO_DIR}/.governator/worktrees/013-zombie-b-ruby-ruby"
+  mkdir -p "${worktree_dir_a}" "${worktree_dir_b}"
+  echo "012-zombie-a-ruby | ruby | 999999 | ${worktree_dir_a} | worker/ruby/012-zombie-a-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  echo "013-zombie-b-ruby | ruby | 999999 | ${worktree_dir_b} | worker/ruby/013-zombie-b-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
   commit_all "Prepare multiple zombie tasks"
 
   run bash "${REPO_DIR}/_governator/governator.sh" check-zombies

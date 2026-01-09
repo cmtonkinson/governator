@@ -171,7 +171,7 @@ keep annotation
 EOF_TASK
 
   printf '%s | %s | %s | %s | %s | %s\n' \
-    "032-restart-ruby" "ruby" "99999" "/tmp/governator-test" "worker/ruby/032-restart-ruby" "0" \
+    "032-restart-ruby" "ruby" "99999" "${REPO_DIR}/.governator/worktrees/032-restart-ruby-ruby" "worker/ruby/032-restart-ruby" "0" \
     >> "${REPO_DIR}/.governator/worker-processes.log"
   printf '%s -> %s\n' "032-restart-ruby" "ruby" >> "${REPO_DIR}/.governator/in-flight.log"
 
