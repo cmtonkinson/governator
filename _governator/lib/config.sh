@@ -49,19 +49,20 @@ config_json_read_map_value() {
     printf '%s\n' "${fallback}"
     return 0
   fi
-  # Try entry key first, then default key, using pure jq variables.
+  # Try entry key first, then default key.
+  # jq -r outputs "null" string for JSON null values.
   local value
   value="$(jq -r --arg map "${map_key}" --arg entry "${entry_key}" \
-    '.[$map][$entry] | select(type == "string" or type == "number")' \
+    '.[$map][$entry]' \
     "${CONFIG_FILE}" 2> /dev/null)"
-  if [[ -n "${value}" ]]; then
+  if [[ -n "${value}" && "${value}" != "null" ]]; then
     printf '%s\n' "${value}"
     return 0
   fi
   value="$(jq -r --arg map "${map_key}" --arg def "${default_key}" \
-    '.[$map][$def] | select(type == "string" or type == "number")' \
+    '.[$map][$def]' \
     "${CONFIG_FILE}" 2> /dev/null)"
-  if [[ -n "${value}" ]]; then
+  if [[ -n "${value}" && "${value}" != "null" ]]; then
     printf '%s\n' "${value}"
     return 0
   fi

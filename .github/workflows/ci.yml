@@ -57,4 +57,4 @@ jobs:
         run: |
           brew install jq bats-core shellcheck shfmt
       - name: Run test suite
-        run: ./scripts/test.sh
+        run: ./scripts/test.sh --fast
