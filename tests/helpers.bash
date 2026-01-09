@@ -279,7 +279,7 @@ set_next_task_id() {
 #   $2: Value to write (string).
 #   $3: Value type ("string" or "number").
 # Output: Writes config.json to disk.
-# Returns: 0 on success.
+# Returns: 0 on success; 1 on jq failure.
 set_config_value() {
   local key_path="$1"
   local value="$2"
@@ -300,9 +300,13 @@ set_config_value() {
     jq_value_expr='$value'
   fi
 
-  jq -S --arg path "${key_path}" "${jq_args[@]}" \
+  if ! jq -S --arg path "${key_path}" "${jq_args[@]}" \
     "setpath(\$path | split(\".\"); ${jq_value_expr})" \
-    "${REPO_DIR}/.governator/config.json" > "${tmp_file}"
+    "${REPO_DIR}/.governator/config.json" > "${tmp_file}"; then
+    echo "set_config_value: jq failed for path '${key_path}'" >&2
+    rm -f "${tmp_file}"
+    return 1
+  fi
   mv "${tmp_file}" "${REPO_DIR}/.governator/config.json"
 }
 
@@ -314,7 +318,7 @@ set_config_value() {
 #   $3: Value to write (string).
 #   $4: Value type ("string" or "number").
 # Output: Writes config.json to disk.
-# Returns: 0 on success.
+# Returns: 0 on success; 1 on jq failure.
 set_config_map_value() {
   local map_key="$1"
   local entry_key="$2"
@@ -336,9 +340,13 @@ set_config_map_value() {
     jq_value_expr='$value'
   fi
 
-  jq -S --arg map "${map_key}" --arg entry "${entry_key}" "${jq_args[@]}" \
+  if ! jq -S --arg map "${map_key}" --arg entry "${entry_key}" "${jq_args[@]}" \
     "setpath([\$map, \$entry]; ${jq_value_expr})" \
-    "${REPO_DIR}/.governator/config.json" > "${tmp_file}"
+    "${REPO_DIR}/.governator/config.json" > "${tmp_file}"; then
+    echo "set_config_map_value: jq failed for map '${map_key}' entry '${entry_key}'" >&2
+    rm -f "${tmp_file}"
+    return 1
+  fi
   mv "${tmp_file}" "${REPO_DIR}/.governator/config.json"
 }
 

@@ -15,10 +15,14 @@ config_json_read_value() {
     return 0
   fi
   local value
+  # Use explicit null/type checks for jq compatibility across versions.
   if ! value="$(
     jq -r --arg path "${key_path}" --arg fallback "${fallback}" \
-      'getpath($path | split(".")) // $fallback
-       | if (type == "string" or type == "number") then . else $fallback end' \
+      'getpath($path | split(".")) as $v
+       | if $v == null then $fallback
+         elif ($v | type) == "string" then $v
+         elif ($v | type) == "number" then $v
+         else $fallback end' \
       "${CONFIG_FILE}" 2> /dev/null
   )"; then
     printf '%s\n' "${fallback}"
@@ -46,12 +50,18 @@ config_json_read_map_value() {
     return 0
   fi
   local value
+  # Use explicit null checks and getpath for jq compatibility across versions.
   if ! value="$(
     jq -r --arg map "${map_key}" --arg entry "${entry_key}" \
       --arg def "${default_key}" --arg fallback "${fallback}" \
-      '(.[$map] // {}) as $m
-       | ($m[$entry] // $m[$def] // $fallback)
-       | if (type == "string" or type == "number") then . else $fallback end' \
+      'getpath([$map, $entry]) as $entry_val
+       | getpath([$map, $def]) as $def_val
+       | (if $entry_val != null then $entry_val
+          elif $def_val != null then $def_val
+          else $fallback end) as $result
+       | if ($result | type) == "string" then $result
+         elif ($result | type) == "number" then $result
+         else $fallback end' \
       "${CONFIG_FILE}" 2> /dev/null
   )"; then
     printf '%s\n' "${fallback}"
