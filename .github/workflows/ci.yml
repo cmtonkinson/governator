@@ -55,7 +55,8 @@ jobs:
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install bash jq bats-core shellcheck shfmt
+          # jq is already installed on the macos-latest runner
+          brew install bash bats-core shellcheck shfmt
           echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
       - name: Run test suite
         run: ./scripts/test.sh --fast
