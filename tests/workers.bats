@@ -243,6 +243,10 @@ EOF_BIN
   [ "$status" -eq 0 ]
   [ "$output" = "high" ]
 
+  # Additional debug: show reasoning_effort section
+  echo "DEBUG: reasoning_effort section:" >&2
+  jq '.reasoning_effort' "${REPO_DIR}/.governator/config.json" >&2
+
   ROOT_DIR="${REPO_DIR}"
   STATE_DIR="${REPO_DIR}/_governator"
   DB_DIR="${REPO_DIR}/.governator"
@@ -258,6 +262,11 @@ EOF_BIN
   [ "$?" -eq 0 ]
   [ "${WORKER_COMMAND[0]}" = "${bin_path}" ]
   [ "${WORKER_COMMAND[1]}" = "--foo" ]
+  # Debug: print actual value if assertion would fail
+  if [ "${WORKER_COMMAND[2]}" != "high" ]; then
+    echo "DEBUG: WORKER_COMMAND[2]='${WORKER_COMMAND[2]}' (expected 'high')" >&2
+    echo "DEBUG: Full WORKER_COMMAND: ${WORKER_COMMAND[*]}" >&2
+  fi
   [ "${WORKER_COMMAND[2]}" = "high" ]
   [ "${WORKER_COMMAND[3]}" = "--bar" ]
   [ "${WORKER_COMMAND[4]}" = "Prompt text" ]
