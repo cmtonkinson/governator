@@ -222,40 +222,36 @@ EOF_REVIEW
 }
 
 @test "build_worker_command uses provider args and reasoning substitution" {
-  bin_path="$(mktemp "${BATS_TMPDIR}/worker-bin.XXXXXX")"
-  cat > "${bin_path}" <<'EOF_BIN'
-#!/usr/bin/env bash
-exit 0
-EOF_BIN
-  chmod +x "${bin_path}"
+  set_config_value "reasoning_effort.test_engineer" "high" "string"
 
-  set_config_value "agents.provider_by_role.default" "unit" "string"
-  set_config_value "agents.providers.unit.bin" "${bin_path}" "string"
-  tmp_file="$(mktemp "${BATS_TMPDIR}/config.XXXXXX")"
-  jq '
-    .agents.providers.unit.args = ["--foo", "{REASONING_EFFORT}", "--bar"]
-  ' "${REPO_DIR}/.governator/config.json" > "${tmp_file}"
-  mv "${tmp_file}" "${REPO_DIR}/.governator/config.json"
-  set_config_map_value "reasoning_effort" "default" "high" "string"
-
-  ROOT_DIR="${REPO_DIR}"
-  STATE_DIR="${REPO_DIR}/_governator"
-  DB_DIR="${REPO_DIR}/.governator"
-  CONFIG_FILE="${DB_DIR}/config.json"
-  GOV_QUIET=1
-  GOV_VERBOSE=0
-  source "${STATE_DIR}/lib/utils.sh"
-  source "${STATE_DIR}/lib/logging.sh"
-  source "${STATE_DIR}/lib/config.sh"
-  source "${STATE_DIR}/lib/workers.sh"
-
-  build_worker_command "generalist" "Prompt text"
-  [ "$?" -eq 0 ]
-  [ "${WORKER_COMMAND[0]}" = "${bin_path}" ]
-  [ "${WORKER_COMMAND[1]}" = "--foo" ]
-  [ "${WORKER_COMMAND[2]}" = "high" ]
-  [ "${WORKER_COMMAND[3]}" = "--bar" ]
-  [ "${WORKER_COMMAND[4]}" = "Prompt text" ]
+  run bash -c "
+    set -euo pipefail
+    ROOT_DIR=\"${REPO_DIR}\"
+    STATE_DIR=\"${REPO_DIR}/_governator\"
+    DB_DIR=\"${REPO_DIR}/.governator\"
+    CONFIG_FILE=\"\${DB_DIR}/config.json\"
+    GOV_QUIET=1
+    GOV_VERBOSE=0
+    source \"\${STATE_DIR}/lib/utils.sh\"
+    source \"\${STATE_DIR}/lib/logging.sh\"
+    source \"\${STATE_DIR}/lib/config.sh\"
+    source \"\${STATE_DIR}/lib/workers.sh\"
+    build_worker_command \"test_engineer\" \"prompt-text\"
+    printf '%s\n' \"\${WORKER_COMMAND[@]}\"
+  "
+  [ "$status" -eq 0 ]
+  expected="$(cat <<'EOF'
+codex
+--full-auto
+--search
+-c sandbox_workspace_write.network_access=true
+-c model_reasoning_effort=high
+exec
+--sandbox=workspace-write
+prompt-text
+EOF
+)"
+  [ "${output}" = "${expected}" ]
 }
 
 @test "build_worker_prompt includes reasoning file only for non-codex providers" {
