@@ -108,6 +108,9 @@ parse_run_args() {
       -v | --verbose)
         GOV_VERBOSE=1
         ;;
+      --refinement)
+        write_refinement_requested "true"
+        ;;
       --)
         shift
         break
@@ -165,6 +168,8 @@ Public commands:
   init     Configure the project mode and defaults.
           Use --defaults for non-interactive defaults or --non-interactive
           with --project-mode/--remote/--branch.
+  discovery Run an interactive clarification session to create GOVERNATOR.md.
+  refinement Run an interactive clarification session to refine plans.
   update   Replace governator.sh with the latest upstream version.
   status   Show queue counts, in-flight workers, and blocked tasks.
   lock     Prevent new activity from starting and show a work snapshot.
@@ -176,6 +181,8 @@ Options:
   -h, --help   Show this help message.
   run -q, --quiet   Suppress stdout during run (errors still surface).
   run -v, --verbose  Print worker/reviewer command lines.
+  run --refinement   Request a refinement chat before task planning.
+  discovery --refinement  Request refinement after discovery.
 
 Note: You must run `governator.sh init` before using any other command.
 Last updated at: $(read_last_update_at)
@@ -216,6 +223,12 @@ dispatch_subcommand() {
       ;;
     init)
       init_governator "$@"
+      ;;
+    discovery)
+      discovery_governator "$@"
+      ;;
+    refinement)
+      refinement_governator "$@"
       ;;
     update)
       update_governator "$@"

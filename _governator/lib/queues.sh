@@ -72,6 +72,63 @@ gap_analysis_planner_active() {
   return 1
 }
 
+# task_planning_active
+# Purpose: Determine whether the task-planning task exists.
+# Args: None.
+# Output: None.
+# Returns: 0 if the task-planning task exists; 1 otherwise.
+task_planning_active() {
+  if task_exists "${TASK_PLANNING_TASK}"; then
+    return 0
+  fi
+  return 1
+}
+
+# active_planning_task
+# Purpose: Identify any active planning task.
+# Args: None.
+# Output: Prints the task name to stdout.
+# Returns: 0 if a planning task exists; 1 otherwise.
+active_planning_task() {
+  if gap_analysis_planner_active; then
+    printf '%s\n' "${GAP_ANALYSIS_PLANNER_TASK}"
+    return 0
+  fi
+  if task_planning_active; then
+    printf '%s\n' "${TASK_PLANNING_TASK}"
+    return 0
+  fi
+  return 1
+}
+
+# reset_planning_state_if_stale
+# Purpose: Clear planning state when GOVERNATOR.md changes.
+# Args: None.
+# Output: Logs state resets and commits config changes.
+# Returns: 0 on completion.
+reset_planning_state_if_stale() {
+  if ! governator_hash_mismatch; then
+    return 0
+  fi
+  local epics
+  local tasks
+  local refinement
+  epics="$(read_pipeline_state_value "epics_complete")"
+  tasks="$(read_pipeline_state_value "tasks_planned")"
+  refinement="$(read_pipeline_state_value "refinement_complete")"
+  if [[ -z "${epics}" && -z "${tasks}" && -z "${refinement}" ]]; then
+    return 0
+  fi
+  clear_pipeline_state_value "epics_complete"
+  clear_pipeline_state_value "tasks_planned"
+  clear_pipeline_state_value "refinement_complete"
+  log_task_event "system" "reset planning state after GOVERNATOR.md change"
+  git -C "${ROOT_DIR}" add "${CONFIG_FILE}" "${AUDIT_LOG}"
+  git -C "${ROOT_DIR}" commit -q -m "[governator] Reset planning state"
+  git_push_default_branch
+  return 0
+}
+
 # ensure_gap_analysis_planner_task
 # Purpose: Create the gap-analysis planner task when GOVERNATOR.md changes.
 # Notes: Skips creation until a bootstrap task has been completed.
@@ -108,6 +165,41 @@ ensure_gap_analysis_planner_task() {
   return 0
 }
 
+# ensure_task_planning_task
+# Purpose: Create the task-planning task when epics are complete and ready.
+# Args: None.
+# Output: Logs task creation and commits changes.
+# Returns: 0 on completion; 1 on failure to copy the template.
+ensure_task_planning_task() {
+  if ! pipeline_state_is_set "epics_complete"; then
+    return 0
+  fi
+  if pipeline_state_is_set "tasks_planned"; then
+    return 0
+  fi
+  if task_planning_active; then
+    return 0
+  fi
+  if [[ ! -f "${TASK_PLANNING_TEMPLATE}" ]]; then
+    log_error "Missing task-planning template at ${TASK_PLANNING_TEMPLATE}."
+    return 1
+  fi
+  if ! role_exists "${TASK_PLANNING_ROLE}"; then
+    log_warn "Unknown role ${TASK_PLANNING_ROLE} for task-planning task."
+    return 0
+  fi
+
+  local dest="${STATE_DIR}/task-assigned/${TASK_PLANNING_TASK}.md"
+  cp "${TASK_PLANNING_TEMPLATE}" "${dest}"
+  annotate_assignment "${dest}" "${TASK_PLANNING_ROLE}"
+  log_task_event "${TASK_PLANNING_TASK}" "created task-planning task"
+
+  git -C "${ROOT_DIR}" add "${dest}" "${AUDIT_LOG}"
+  git -C "${ROOT_DIR}" commit -q -m "[governator] Create task planning task"
+  git_push_default_branch
+  return 0
+}
+
 # assign_pending_tasks
 # Purpose: Assign backlog tasks according to role suffix and caps.
 # Args: None.
@@ -123,10 +215,27 @@ assign_pending_tasks() {
     return 0
   fi
 
+  ensure_architecture_state || true
+  reset_planning_state_if_stale || true
+
   ensure_unblock_planner_task || true
   ensure_gap_analysis_planner_task || true
-  if gap_analysis_planner_active; then
-    log_verbose "Gap-analysis planner active; skipping backlog assignment"
+  local planning_task
+  if planning_task="$(active_planning_task 2> /dev/null)"; then
+    log_verbose "Planning task active (${planning_task}); skipping backlog assignment"
+    return 0
+  fi
+
+  if read_refinement_requested && ! pipeline_state_is_set "refinement_complete"; then
+    if pipeline_state_is_set "epics_complete"; then
+      log_warn "Refinement requested; run \`governator.sh refinement\` before task planning."
+      return 0
+    fi
+  fi
+
+  ensure_task_planning_task || true
+  if planning_task="$(active_planning_task 2> /dev/null)"; then
+    log_verbose "Planning task active (${planning_task}); skipping backlog assignment"
     return 0
   fi
 
@@ -346,9 +455,10 @@ resume_assigned_tasks() {
 
   ensure_gap_analysis_planner_task || true
   local planner_active=0
-  if gap_analysis_planner_active; then
+  local planning_task=""
+  if planning_task="$(active_planning_task 2> /dev/null)"; then
     planner_active=1
-    log_verbose "Gap-analysis planner active; pausing non-planner dispatch"
+    log_verbose "Planning task active (${planning_task}); pausing non-planner dispatch"
   fi
 
   local active_milestone
@@ -382,8 +492,8 @@ resume_assigned_tasks() {
       log_verbose "Skipping in-flight task ${task_name}"
       continue
     fi
-    if [[ "${planner_active}" -eq 1 && "${task_name}" != "${GAP_ANALYSIS_PLANNER_TASK}" ]]; then
-      log_verbose "Planner active; deferring ${task_name}"
+    if [[ "${planner_active}" -eq 1 && "${task_name}" != "${planning_task}" ]]; then
+      log_verbose "Planning task active; deferring ${task_name}"
       continue
     fi
 

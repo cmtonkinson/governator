@@ -90,6 +90,8 @@ apply_review_decision() {
   local task_dir
   task_dir="$(basename "$(dirname "${main_task_file}")")"
   local gap_task="${GAP_ANALYSIS_PLANNER_TASK:-}"
+  local planning_task="${TASK_PLANNING_TASK:-}"
+  local refinement_task="${REFINEMENT_REVIEW_TASK:-}"
 
   case "${task_dir}" in
     task-worked | task-assigned)
@@ -107,7 +109,17 @@ apply_review_decision() {
               move_task_file "${main_task_file}" "${STATE_DIR}/task-done" "${task_name}" "moved to task-done"
             else
               if [[ -n "${gap_task}" && "${task_name}" == "${gap_task}" ]]; then
+                write_pipeline_state_value "epics_complete" "$(timestamp_utc_seconds)"
+                clear_pipeline_state_value "tasks_planned"
+                clear_pipeline_state_value "refinement_complete"
+              fi
+              if [[ -n "${planning_task}" && "${task_name}" == "${planning_task}" ]]; then
+                write_pipeline_state_value "tasks_planned" "$(timestamp_utc_seconds)"
                 write_planning_gov_sha "$(governator_doc_sha)"
+              fi
+              if [[ -n "${refinement_task}" && "${task_name}" == "${refinement_task}" ]]; then
+                write_pipeline_state_value "refinement_complete" "$(timestamp_utc_seconds)"
+                write_refinement_requested "false"
               fi
               move_task_file "${main_task_file}" "${STATE_DIR}/task-done" "${task_name}" "moved to task-done"
             fi
@@ -118,7 +130,17 @@ apply_review_decision() {
               move_completion_check_to_gap_analysis "${main_task_file}" "${task_name}"
             else
               if [[ -n "${gap_task}" && "${task_name}" == "${gap_task}" ]]; then
+                clear_pipeline_state_value "epics_complete"
+                clear_pipeline_state_value "tasks_planned"
+                clear_pipeline_state_value "refinement_complete"
+              fi
+              if [[ -n "${planning_task}" && "${task_name}" == "${planning_task}" ]]; then
+                clear_pipeline_state_value "tasks_planned"
                 write_planning_gov_sha ""
+              fi
+              if [[ -n "${refinement_task}" && "${task_name}" == "${refinement_task}" ]]; then
+                clear_pipeline_state_value "refinement_complete"
+                write_refinement_requested "true"
               fi
               move_task_file "${main_task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "moved to task-assigned"
             fi
@@ -129,7 +151,17 @@ apply_review_decision() {
               move_completion_check_to_gap_analysis "${main_task_file}" "${task_name}"
             else
               if [[ -n "${gap_task}" && "${task_name}" == "${gap_task}" ]]; then
+                clear_pipeline_state_value "epics_complete"
+                clear_pipeline_state_value "tasks_planned"
+                clear_pipeline_state_value "refinement_complete"
+              fi
+              if [[ -n "${planning_task}" && "${task_name}" == "${planning_task}" ]]; then
+                clear_pipeline_state_value "tasks_planned"
                 write_planning_gov_sha ""
+              fi
+              if [[ -n "${refinement_task}" && "${task_name}" == "${refinement_task}" ]]; then
+                clear_pipeline_state_value "refinement_complete"
+                write_refinement_requested "true"
               fi
               move_task_file "${main_task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
             fi

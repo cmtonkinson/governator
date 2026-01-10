@@ -29,6 +29,29 @@ load ./helpers.bash
   [ -f "${REPO_DIR}/_governator/task-backlog/001-sample-ruby.md" ]
 }
 
+@test "assign-backlog creates task planning task after epics complete" {
+  complete_bootstrap
+  set_config_value "state.epics_complete" "2026-01-01T00:00:00Z"
+  commit_paths "Set epics complete" ".governator/config.json"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" assign-backlog
+  [ "$status" -eq 0 ]
+
+  [ -f "${REPO_DIR}/_governator/task-assigned/000-task-planning-planner.md" ]
+}
+
+@test "assign-backlog blocks task planning while refinement requested" {
+  complete_bootstrap
+  set_config_value "state.epics_complete" "2026-01-01T00:00:00Z"
+  set_config_value "state.refinement_requested" "true"
+  commit_paths "Request refinement" ".governator/config.json"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" assign-backlog
+  [ "$status" -eq 0 ]
+
+  [ ! -f "${REPO_DIR}/_governator/task-assigned/000-task-planning-planner.md" ]
+}
+
 @test "run skips gap-analysis planner before bootstrap completes" {
   set_config_value "planning.gov_hash" "deadbeef"
   commit_paths "Set stale planning hash" ".governator/config.json"

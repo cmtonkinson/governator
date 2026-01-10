@@ -69,18 +69,5 @@ Start epic identifiers at 1 prefixed with a lowercase "e" (e.g. "e1"), and
 increment by 1 for each subsequent epic.
 
 ### 3. Tasks
-Read and review existing tasks (except "done") for context. Where gaps were 
-identified, and now certain epics exist without all the necessary tasks required
-to implement them, create those new tasks in `_governator/task-backlog/` using
-the standard task template at `_governator/templates/task.md`. Be sure to
-include the correct milestone and epic numbers in the YAML frontmatter.
-
-Each task file:
-- must be part of the work required to implement a documented epic
-- must be marked with the correct YAML frontmatter milestone, epic, and task
-  identifiers (e.g. `milestone: m1`, `epic: e3`, `task: 024`)
-- must include only one logical work order; any task which would be estimated at
-  more than 8 fibonacci story points should be split into multiple tasks
-- must be named according to the strict format: `<id>-<kebab-case-title>-<role>.md`
-  (example: `001-exchange-adapter-generalist.md`)
-- must support closing a gap identified by the review
+Do not create tasks in this pass. Task planning is handled by a separate
+task-planning prompt after milestones and epics are reviewed.

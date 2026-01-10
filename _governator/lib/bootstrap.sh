@@ -362,6 +362,37 @@ architecture_bootstrap_complete() {
   return 0
 }
 
+# record_architecture_state
+# Purpose: Record the architecture completion state in config.json.
+# Args: None.
+# Output: None.
+# Returns: 0 if updated; 1 if already set.
+record_architecture_state() {
+  if pipeline_state_is_set "architecture_complete"; then
+    return 1
+  fi
+  write_pipeline_state_value "architecture_complete" "$(timestamp_utc_seconds)"
+  return 0
+}
+
+# ensure_architecture_state
+# Purpose: Ensure architecture completion state is persisted when ready.
+# Args: None.
+# Output: Logs updates and commits config changes.
+# Returns: 0 on completion.
+ensure_architecture_state() {
+  if ! architecture_bootstrap_complete; then
+    return 0
+  fi
+  if ! record_architecture_state; then
+    return 0
+  fi
+  git -C "${ROOT_DIR}" add "${CONFIG_FILE}"
+  git -C "${ROOT_DIR}" commit -q -m "[governator] Record architecture completion"
+  git_push_default_branch
+  return 0
+}
+
 # complete_bootstrap_task_if_ready
 # Purpose: Auto-complete the bootstrap task when requirements are met.
 # Args: None.
@@ -387,7 +418,14 @@ complete_bootstrap_task_if_ready() {
     return 0
   fi
   move_task_file "${task_file}" "${STATE_DIR}/task-done" "${BOOTSTRAP_TASK_NAME}" "moved to task-done"
+  local state_updated=0
+  if record_architecture_state; then
+    state_updated=1
+  fi
   git -C "${ROOT_DIR}" add "${STATE_DIR}"
+  if [[ "${state_updated}" -eq 1 ]]; then
+    git -C "${ROOT_DIR}" add "${CONFIG_FILE}"
+  fi
   git -C "${ROOT_DIR}" commit -q -m "[governator] Complete architecture bootstrap"
   git_push_default_branch
   return 0

@@ -84,6 +84,10 @@ goals, ideas, hard requirements, nice to haves, assumptions, definitions of
 
 _TODO: add a sample `GOVERNATOR.md` for both new and existing projects._
 
+If you do not have a `GOVERNATOR.md`, run `governator.sh discovery` to generate
+one from an interactive clarification chat. You can request a post-planning
+refinement chat by passing `--refinement` to `init`, `discovery`, or `run`.
+
 You have to run `governator.sh init` before the system will do anything useful.
 
 The most important question is whether this is a new or existing project: in
@@ -378,6 +382,7 @@ It requires:
 - git
 - jq
 - a SHA256 tool (shasum, sha256sum, or openssl)
+- screen
 - cron (or some other means of invocation)
 - a fully-baked `GOVERNATOR.md`
   - overview/summary

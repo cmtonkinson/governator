@@ -22,6 +22,7 @@ config_json_read_value() {
        | if $v == null then $fallback
          elif ($v | type) == "string" then $v
          elif ($v | type) == "number" then $v
+         elif ($v | type) == "boolean" then $v
          else $fallback end' \
       "${CONFIG_FILE}" 2> /dev/null
   )"; then
@@ -74,7 +75,7 @@ config_json_read_map_value() {
 # Args:
 #   $1: Dot-delimited key path (string).
 #   $2: Value to write (string).
-#   $3: Value type ("string" or "number").
+#   $3: Value type ("string", "number", or "bool").
 # Output: None.
 # Returns: 0 on success.
 config_json_write_value() {
@@ -89,6 +90,16 @@ config_json_write_value() {
   if [[ "${value_type}" == "number" ]]; then
     if [[ ! "${safe_value}" =~ ^-?[0-9]+$ ]]; then
       safe_value=0
+    fi
+    jq_args=(--argjson value "${safe_value}")
+    jq_value_expr='$value'
+  elif [[ "${value_type}" == "bool" ]]; then
+    if [[ "${safe_value}" != "true" && "${safe_value}" != "false" ]]; then
+      if [[ "${safe_value}" == "1" ]]; then
+        safe_value="true"
+      else
+        safe_value="false"
+      fi
     fi
     jq_args=(--argjson value "${safe_value}")
     jq_value_expr='$value'
@@ -189,6 +200,7 @@ init_governator() {
 
   local non_interactive=0
   local use_defaults=0
+  local request_refinement=0
   local project_mode=""
   local remote_name=""
   local default_branch=""
@@ -199,6 +211,9 @@ init_governator() {
       --defaults)
         use_defaults=1
         non_interactive=1
+        ;;
+      --refinement)
+        request_refinement=1
         ;;
       --non-interactive)
         non_interactive=1
@@ -271,6 +286,9 @@ init_governator() {
   config_json_write_value "project_mode" "${project_mode}" "string"
   config_json_write_value "remote_name" "${remote_name}" "string"
   config_json_write_value "default_branch" "${default_branch}" "string"
+  if [[ "${request_refinement}" -eq 1 ]]; then
+    write_refinement_requested "true"
+  fi
 
   ensure_sha256_tool
   write_manifest "${ROOT_DIR}" "${STATE_DIR}" "${MANIFEST_FILE}"
@@ -430,6 +448,88 @@ read_planning_gov_sha() {
   trim_whitespace "${value}"
 }
 
+# read_pipeline_state_value
+# Purpose: Read a planning pipeline state value from config.json.
+# Args:
+#   $1: State key name (string).
+# Output: Prints the stored value or empty string.
+# Returns: 0 always.
+read_pipeline_state_value() {
+  local key="$1"
+  local value
+  value="$(config_json_read_value "state.${key}" "")"
+  trim_whitespace "${value}"
+}
+
+# write_pipeline_state_value
+# Purpose: Write a planning pipeline state value to config.json.
+# Args:
+#   $1: State key name (string).
+#   $2: Value to write (string).
+# Output: None.
+# Returns: 0 on success.
+write_pipeline_state_value() {
+  local key="$1"
+  local value="$2"
+  config_json_write_value "state.${key}" "${value}" "string"
+}
+
+# clear_pipeline_state_value
+# Purpose: Clear a planning pipeline state value.
+# Args:
+#   $1: State key name (string).
+# Output: None.
+# Returns: 0 on success.
+clear_pipeline_state_value() {
+  local key="$1"
+  write_pipeline_state_value "${key}" ""
+}
+
+# pipeline_state_is_set
+# Purpose: Determine whether a pipeline state value is set.
+# Args:
+#   $1: State key name (string).
+# Output: None.
+# Returns: 0 if set; 1 otherwise.
+pipeline_state_is_set() {
+  local key="$1"
+  local value
+  value="$(read_pipeline_state_value "${key}")"
+  if [[ -n "${value}" ]]; then
+    return 0
+  fi
+  return 1
+}
+
+# read_refinement_requested
+# Purpose: Check whether refinement has been requested.
+# Args: None.
+# Output: None.
+# Returns: 0 if requested; 1 otherwise.
+read_refinement_requested() {
+  local value
+  value="$(config_json_read_value "state.refinement_requested" "false")"
+  value="$(trim_whitespace "${value}")"
+  if [[ "${value}" == "true" ]]; then
+    return 0
+  fi
+  return 1
+}
+
+# write_refinement_requested
+# Purpose: Persist the refinement request flag.
+# Args:
+#   $1: Boolean-like value ("true" or "false").
+# Output: None.
+# Returns: 0 on success.
+write_refinement_requested() {
+  local value="$1"
+  if [[ "${value}" != "true" && "${value}" != "false" ]]; then
+    value="false"
+  fi
+  config_json_write_value "state.refinement_requested" "${value}" "bool"
+}
+
 # write_planning_gov_sha
 # Purpose: Write the stored GOVERNATOR.md hash for planning reanalysis to planning config.
 # Args:
@@ -547,6 +647,21 @@ read_agent_provider_args() {
     "${CONFIG_FILE}" 2> /dev/null || true
 }
 
+# read_agent_provider_chat_args
+# Purpose: Read the provider chat args array for a given provider.
+# Args:
+#   $1: Provider name (string).
+# Output: Prints each argument on its own line.
+# Returns: 0 always.
+read_agent_provider_chat_args() {
+  local provider="$1"
+  if [[ ! -f "${CONFIG_FILE}" ]]; then
+    return 0
+  fi
+  jq -r --arg provider "${provider}" \
+    '(.agents.providers[$provider].chat_args // []) | .[]? | select(type == "string")' \
+    "${CONFIG_FILE}" 2> /dev/null || true
+}
 # read_worker_cap
 # Purpose: Read the per-role worker concurrency cap, falling back to global.
 # Args:

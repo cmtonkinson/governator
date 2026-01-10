@@ -8,7 +8,7 @@
 ensure_dependencies() {
   local missing=()
   local dep
-  for dep in awk date find git jq mktemp nohup stat; do
+  for dep in awk date find git jq mktemp nohup screen stat; do
     if ! command -v "${dep}" > /dev/null 2>&1; then
       missing+=("${dep}")
     fi
@@ -63,7 +63,7 @@ ensure_sha256_tool() {
 # Returns: 0 if present; exits 1 if missing.
 require_governator_doc() {
   if [[ ! -f "${ROOT_DIR}/GOVERNATOR.md" ]]; then
-    log_error "GOVERNATOR.md not found at project root; aborting."
+    log_error "GOVERNATOR.md not found at project root; create it manually or run \`governator.sh discovery\`."
     exit 1
   fi
 }
@@ -102,4 +102,15 @@ ensure_ready_read_only() {
   ensure_dependencies
   ensure_db_dir
   require_governator_doc
+}
+
+# ensure_ready_for_discovery
+# Purpose: Apply safety checks for discovery without requiring GOVERNATOR.md.
+# Args: None.
+# Output: Errors are logged by called helpers.
+# Returns: 0 if environment is ready; exits on failure.
+ensure_ready_for_discovery() {
+  ensure_clean_git
+  ensure_dependencies
+  ensure_db_dir
 }

@@ -432,5 +432,11 @@ exit 0
 EOF_CODEX
   chmod +x "${BIN_DIR}/codex"
 
+  cat > "${BIN_DIR}/screen" <<'EOF_SCREEN'
+#!/usr/bin/env bash
+exit 0
+EOF_SCREEN
+  chmod +x "${BIN_DIR}/screen"
+
   export PATH="${BIN_DIR}:${PATH}"
 }

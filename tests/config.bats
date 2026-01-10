@@ -38,6 +38,9 @@ load ./helpers.bash
   [ "$status" -eq 0 ]
   run grep -F "\"test_engineer\": \"low\"" "${REPO_DIR}/.governator/config.json"
   [ "$status" -eq 0 ]
+  run jq -r '.state.refinement_requested' "${REPO_DIR}/.governator/config.json"
+  [ "$status" -eq 0 ]
+  [ "${output}" = "false" ]
 
   rm -f "${REPO_DIR}/.governator/config.json"
   commit_paths "Clear init files again" ".governator"

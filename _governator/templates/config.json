@@ -11,6 +11,13 @@
   "planning": {
     "gov_hash": ""
   },
+  "state": {
+    "architecture_complete": "",
+    "epics_complete": "",
+    "refinement_complete": "",
+    "tasks_planned": "",
+    "refinement_requested": false
+  },
   "worker_timeout_seconds": 900,
   "worker_caps": {
     "global": 1
@@ -35,18 +42,20 @@
           "-c model_reasoning_effort={REASONING_EFFORT}",
           "exec",
           "--sandbox=workspace-write"
-        ]
+        ],
+        "chat_args": []
       },
       "claude": {
         "bin": "claude",
         "args": [
           "--print"
-        ]
+        ],
+        "chat_args": []
       },
       "gemini": {
         "bin": "gemini",
-        "args": [
-        ]
+        "args": [],
+        "chat_args": []
       }
     }
   }

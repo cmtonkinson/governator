@@ -59,6 +59,7 @@ BOOTSTRAP_NEW_REQUIRED_ARTIFACTS=("asr.md" "arc42.md")
 BOOTSTRAP_NEW_OPTIONAL_ARTIFACTS=("personas.md" "wardley.md")
 BOOTSTRAP_EXISTING_REQUIRED_ARTIFACTS=("existing-system-discovery.md")
 BOOTSTRAP_EXISTING_OPTIONAL_ARTIFACTS=()
+CHAT_DOCS_DIR="${BOOTSTRAP_DOCS_DIR}/chat"
 
 COMPLETION_CHECK_REVIEW_ROLE="reviewer"
 COMPLETION_CHECK_REVIEW_TASK="000-completion-check-${COMPLETION_CHECK_REVIEW_ROLE}"
@@ -66,9 +67,21 @@ GAP_ANALYSIS_PLANNER_ROLE="planner"
 GAP_ANALYSIS_PLANNER_TASK="000-gap-analysis-${GAP_ANALYSIS_PLANNER_ROLE}"
 COMPLETION_CHECK_REVIEW_TEMPLATE="${TEMPLATES_DIR}/${COMPLETION_CHECK_REVIEW_TASK}.md"
 GAP_ANALYSIS_PLANNER_TEMPLATE="${TEMPLATES_DIR}/${GAP_ANALYSIS_PLANNER_TASK}.md"
+TASK_PLANNING_ROLE="planner"
+TASK_PLANNING_TASK="000-task-planning-${TASK_PLANNING_ROLE}"
+TASK_PLANNING_TEMPLATE="${TEMPLATES_DIR}/${TASK_PLANNING_TASK}.md"
+REFINEMENT_REVIEW_ROLE="reviewer"
+REFINEMENT_REVIEW_TASK="000-refinement-review-${REFINEMENT_REVIEW_ROLE}"
+REFINEMENT_REVIEW_TEMPLATE="${TEMPLATES_DIR}/${REFINEMENT_REVIEW_TASK}.md"
 UNBLOCK_PLANNER_ROLE="planner"
 UNBLOCK_PLANNER_TASK="000-unblock-${UNBLOCK_PLANNER_ROLE}"
 UNBLOCK_PLANNER_TEMPLATE="${TEMPLATES_DIR}/000-unblock-planner.md"
+
+DISCOVERY_CHAT_TEMPLATE="${TEMPLATES_DIR}/discovery-chat.md"
+DISCOVERY_SUMMARY_TEMPLATE="${TEMPLATES_DIR}/discovery-summary.md"
+DISCOVERY_GOV_TEMPLATE="${TEMPLATES_DIR}/discovery-governator.md"
+REFINEMENT_CHAT_TEMPLATE="${TEMPLATES_DIR}/refinement-chat.md"
+REFINEMENT_SUMMARY_TEMPLATE="${TEMPLATES_DIR}/refinement-summary.md"
 
 GITIGNORE_ENTRIES=(
   ".governator/governator.lock"
@@ -99,6 +112,8 @@ source "${LIB_DIR}/locks.sh"
 source "${LIB_DIR}/tasks.sh"
 # shellcheck source=_governator/lib/workers.sh
 source "${LIB_DIR}/workers.sh"
+# shellcheck source=_governator/lib/chat.sh
+source "${LIB_DIR}/chat.sh"
 # shellcheck source=_governator/lib/review.sh
 source "${LIB_DIR}/review.sh"
 # shellcheck source=_governator/lib/bootstrap.sh
