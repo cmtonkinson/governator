@@ -238,6 +238,11 @@ EOF_BIN
   mv "${tmp_file}" "${REPO_DIR}/.governator/config.json"
   set_config_map_value "reasoning_effort" "default" "high" "string"
 
+  # Verify config was updated (sanity check for CI debugging)
+  run jq -r '.reasoning_effort.default' "${REPO_DIR}/.governator/config.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "high" ]
+
   ROOT_DIR="${REPO_DIR}"
   STATE_DIR="${REPO_DIR}/_governator"
   DB_DIR="${REPO_DIR}/.governator"
@@ -261,6 +266,11 @@ EOF_BIN
 @test "build_worker_prompt includes reasoning file only for non-codex providers" {
   set_config_value "agents.provider_by_role.default" "gemini" "string"
 
+  # Verify config was updated (sanity check for CI debugging)
+  run jq -r '.agents.provider_by_role.default' "${REPO_DIR}/.governator/config.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "gemini" ]
+
   run bash -c "
     set -euo pipefail
     ROOT_DIR=\"${REPO_DIR}\"
@@ -280,6 +290,11 @@ EOF_BIN
   [[ "${output}" == *"_governator/reasoning/medium.md"* ]]
 
   set_config_value "agents.provider_by_role.default" "codex" "string"
+
+  # Verify config was updated (sanity check for CI debugging)
+  run jq -r '.agents.provider_by_role.default' "${REPO_DIR}/.governator/config.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "codex" ]
 
   run bash -c "
     set -euo pipefail
