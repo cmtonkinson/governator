@@ -222,14 +222,17 @@ add_worker_process() {
 
 # create_upstream_dir
 # Purpose: Create a temp upstream directory containing _governator files.
-# Args: None.
+# Args:
+#   $1: Release tag (optional, defaults to "v1.0.0").
 # Output: Prints the upstream root path.
 # Returns: 0 on success.
 create_upstream_dir() {
+  local tag="${1:-v1.0.0}"
+  local version="${tag#v}"
   local upstream_root
   upstream_root="$(mktemp -d "${BATS_TMPDIR}/upstream.XXXXXX")"
-  mkdir -p "${upstream_root}/governator-main"
-  cp -R "${REPO_DIR}/_governator" "${upstream_root}/governator-main/_governator"
+  mkdir -p "${upstream_root}/governator-${version}"
+  cp -R "${REPO_DIR}/_governator" "${upstream_root}/governator-${version}/_governator"
   printf '%s\n' "${upstream_root}"
 }
 
@@ -238,25 +241,65 @@ create_upstream_dir() {
 # Args:
 #   $1: Upstream root path (string).
 #   $2: Output tarball path (string).
+#   $3: Release tag (string, e.g., "v1.0.0").
 # Output: Writes a tarball to disk.
 # Returns: 0 on success.
 build_upstream_tarball() {
   local upstream_root="$1"
   local tar_path="$2"
-  tar -cz -C "${upstream_root}" -f "${tar_path}" governator-main/_governator
+  local tag="${3:-v1.0.0}"
+  local version="${tag#v}"
+  tar -cz -C "${upstream_root}" -f "${tar_path}" "governator-${version}/_governator"
 }
 
-# stub_curl_with_tarball
-# Purpose: Stub curl to output a local tarball for update tests.
+# stub_curl_for_release
+# Purpose: Stub curl to simulate GitHub release API, checksum, and tarball downloads.
 # Args:
 #   $1: Tarball path (string).
-# Output: Writes a curl stub into BIN_DIR.
+#   $2: Release tag (string, e.g., "v1.0.0").
+#   $3: Checksum override (optional, for testing verification failure).
+# Output: Writes a curl stub into BIN_DIR that handles different URLs.
 # Returns: 0 on success.
-stub_curl_with_tarball() {
+stub_curl_for_release() {
   local tar_path="$1"
+  local tag="${2:-v1.0.0}"
+  local checksum_override="${3:-}"
+
+  local actual_checksum
+  actual_checksum="$(file_sha256 "${tar_path}")"
+  local checksum_to_serve="${checksum_override:-${actual_checksum}}"
+
   cat > "${BIN_DIR}/curl" <<EOF_CURL
 #!/usr/bin/env bash
-cat "${tar_path}"
+# Stub curl for update tests
+url=""
+output_file=""
+while [[ "\$#" -gt 0 ]]; do
+  case "\$1" in
+    -o) output_file="\$2"; shift ;;
+    -*) ;;  # ignore other flags
+    *) url="\$1" ;;
+  esac
+  shift
+done
+
+if [[ "\${url}" == *"/releases/latest"* ]]; then
+  # GitHub API: return release info JSON
+  printf '{"tag_name": "${tag}"}\n'
+elif [[ "\${url}" == *"/checksums.sha256"* ]]; then
+  # Checksum file download
+  printf '%s  governator-${tag}.tar.gz\n' "${checksum_to_serve}"
+elif [[ "\${url}" == *".tar.gz"* ]]; then
+  # Tarball download
+  if [[ -n "\${output_file}" ]]; then
+    cat "${tar_path}" > "\${output_file}"
+  else
+    cat "${tar_path}"
+  fi
+else
+  echo "Unknown URL: \${url}" >&2
+  exit 1
+fi
 EOF_CURL
   chmod +x "${BIN_DIR}/curl"
 }

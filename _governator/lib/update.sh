@@ -1,6 +1,82 @@
 # shellcheck shell=bash
 
 UPDATE_TMP_ROOT=""
+GOVERNATOR_REPO="cmtonkinson/governator"
+
+# fetch_latest_release_tag
+# Purpose: Query GitHub API for the latest release tag.
+# Args: None.
+# Output: Prints the tag name (e.g., "v1.2.3") to stdout.
+# Returns: 0 on success; 1 on failure.
+fetch_latest_release_tag() {
+  local api_url="https://api.github.com/repos/${GOVERNATOR_REPO}/releases/latest"
+  local tag
+  if ! tag="$(curl -fsSL "${api_url}" | jq -r '.tag_name // empty')"; then
+    return 1
+  fi
+  if [[ -z "${tag}" ]]; then
+    return 1
+  fi
+  printf '%s\n' "${tag}"
+}
+
+# fetch_release_checksum
+# Purpose: Download the expected checksum for a release tarball.
+# Args:
+#   $1: Release tag (string, e.g., "v1.2.3").
+# Output: Prints the expected SHA256 hash to stdout.
+# Returns: 0 on success; 1 on failure.
+fetch_release_checksum() {
+  local tag="$1"
+  local checksums_url="https://github.com/${GOVERNATOR_REPO}/releases/download/${tag}/checksums.sha256"
+  local checksums
+  if ! checksums="$(curl -fsSL "${checksums_url}" 2>/dev/null)"; then
+    return 1
+  fi
+  # Extract hash for the tarball (first field, matching the tag)
+  local expected_hash
+  expected_hash="$(printf '%s\n' "${checksums}" | grep "governator-${tag}.tar.gz" | awk '{print $1}')"
+  if [[ -z "${expected_hash}" ]]; then
+    return 1
+  fi
+  printf '%s\n' "${expected_hash}"
+}
+
+# download_and_verify_tarball
+# Purpose: Download a release tarball and verify its checksum.
+# Args:
+#   $1: Release tag (string, e.g., "v1.2.3").
+#   $2: Destination path for the tarball (string).
+# Output: Logs progress and errors.
+# Returns: 0 on success; 1 on checksum mismatch or download failure.
+download_and_verify_tarball() {
+  local tag="$1"
+  local dest_path="$2"
+  local tar_url="https://github.com/${GOVERNATOR_REPO}/archive/refs/tags/${tag}.tar.gz"
+
+  local expected_hash
+  if ! expected_hash="$(fetch_release_checksum "${tag}")"; then
+    log_error "Failed to fetch checksum for ${tag}. Release may not exist or lacks checksums.sha256."
+    return 1
+  fi
+
+  if ! curl -fsSL "${tar_url}" -o "${dest_path}"; then
+    log_error "Failed to download ${tar_url}"
+    return 1
+  fi
+
+  local actual_hash
+  actual_hash="$(sha256_file "${dest_path}")"
+  if [[ "${actual_hash}" != "${expected_hash}" ]]; then
+    log_error "Checksum verification failed for ${tag}"
+    log_error "  Expected: ${expected_hash}"
+    log_error "  Actual:   ${actual_hash}"
+    return 1
+  fi
+
+  log_info "Checksum verified for ${tag}"
+  return 0
+}
 
 # manifest_sha_for_path
 # Purpose: Read a manifest SHA entry for a relative path.
@@ -333,16 +409,18 @@ remove_prompt_file() {
 }
 
 # update_governator
-# Purpose: Update Governator code and prompt templates from upstream tarball.
+# Purpose: Update Governator code and prompt templates from upstream release.
 # Args:
 #   --keep-local: Keep local prompt changes without prompting.
 #   --force-remote: Overwrite local prompt changes without prompting.
+#   --version <tag>: Update to a specific release version (e.g., v1.2.3).
 # Output: Prints update summary, runs pending migrations, and records audit/timestamp
 #   metadata when updates are applied.
 # Returns: 0 on success; exits on fatal errors.
 update_governator() {
   UPDATE_KEEP_LOCAL=0
   UPDATE_FORCE_REMOTE=0
+  UPDATE_VERSION=""
   while [[ "$#" -gt 0 ]]; do
     case "$1" in
       --keep-local)
@@ -351,8 +429,16 @@ update_governator() {
       --force-remote)
         UPDATE_FORCE_REMOTE=1
         ;;
+      --version)
+        if [[ -z "${2:-}" ]]; then
+          log_error "--version requires a tag argument (e.g., --version v1.2.3)"
+          exit 1
+        fi
+        UPDATE_VERSION="$2"
+        shift
+        ;;
       -h | --help)
-        printf 'Usage: governator.sh update [--keep-local|--force-remote]\n'
+        printf 'Usage: governator.sh update [--keep-local|--force-remote] [--version <tag>]\n'
         printf 'Last updated at: %s\n' "$(read_last_update_at)"
         return 0
         ;;
@@ -384,9 +470,28 @@ update_governator() {
   }
   trap cleanup EXIT
 
-  local tar_url="https://github.com/cmtonkinson/governator/archive/refs/heads/main.tar.gz"
-  if ! curl -fsSL "${tar_url}" | tar -xz -C "${UPDATE_TMP_ROOT}" --strip-components=1 -f - governator-main/_governator; then
-    log_error "Failed to download ${tar_url}"
+  local release_tag
+  if [[ -n "${UPDATE_VERSION}" ]]; then
+    release_tag="${UPDATE_VERSION}"
+    printf 'Pinned version: %s\n' "${release_tag}"
+  else
+    if ! release_tag="$(fetch_latest_release_tag)"; then
+      log_error "Failed to fetch latest release. Check network connectivity and GitHub API access."
+      exit 1
+    fi
+    printf 'Latest release: %s\n' "${release_tag}"
+  fi
+
+  local tarball_path="${UPDATE_TMP_ROOT}/governator-${release_tag}.tar.gz"
+  if ! download_and_verify_tarball "${release_tag}" "${tarball_path}"; then
+    exit 1
+  fi
+
+  # GitHub archives extract to <repo>-<tag-without-v>/ (e.g., governator-1.2.3/)
+  # Strip that prefix so files land at ${UPDATE_TMP_ROOT}/_governator/
+  local archive_prefix="governator-${release_tag#v}"
+  if ! tar -xzf "${tarball_path}" -C "${UPDATE_TMP_ROOT}" --strip-components=1 "${archive_prefix}/_governator"; then
+    log_error "Failed to extract tarball"
     exit 1
   fi
 

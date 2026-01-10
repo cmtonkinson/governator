@@ -1,0 +1,34 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Generate checksum
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          TARBALL_URL="https://github.com/${{ github.repository }}/archive/refs/tags/${TAG}.tar.gz"
+
+          curl -fsSL "${TARBALL_URL}" -o "governator-${TAG}.tar.gz"
+          sha256sum "governator-${TAG}.tar.gz" > checksums.sha256
+
+          echo "Generated checksum:"
+          cat checksums.sha256
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            checksums.sha256
