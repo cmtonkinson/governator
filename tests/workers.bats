@@ -238,21 +238,6 @@ EOF_BIN
   mv "${tmp_file}" "${REPO_DIR}/.governator/config.json"
   set_config_map_value "reasoning_effort" "default" "high" "string"
 
-  # Verify config was updated (sanity check for CI debugging)
-  run jq -r '.reasoning_effort.default' "${REPO_DIR}/.governator/config.json"
-  [ "$status" -eq 0 ]
-  [ "$output" = "high" ]
-
-  # Additional debug: show reasoning_effort section
-  echo "DEBUG: reasoning_effort section:" >&2
-  jq '.reasoning_effort' "${REPO_DIR}/.governator/config.json" >&2
-
-  # Debug: test the exact jq command that config_json_read_map_value uses
-  echo "DEBUG: Testing jq variable access:" >&2
-  echo "  Direct path result: $(jq -r '.reasoning_effort.default' "${REPO_DIR}/.governator/config.json")" >&2
-  echo "  Variable access result: $(jq -r --arg map "reasoning_effort" --arg def "default" '.[$map][$def]' "${REPO_DIR}/.governator/config.json")" >&2
-  echo "DEBUG: CONFIG_FILE will be: ${REPO_DIR}/.governator/config.json" >&2
-
   ROOT_DIR="${REPO_DIR}"
   STATE_DIR="${REPO_DIR}/_governator"
   DB_DIR="${REPO_DIR}/.governator"
@@ -264,24 +249,10 @@ EOF_BIN
   source "${STATE_DIR}/lib/config.sh"
   source "${STATE_DIR}/lib/workers.sh"
 
-  # Debug: call read function directly to see what it returns
-  echo "DEBUG: CONFIG_FILE=${CONFIG_FILE}" >&2
-  echo "DEBUG: Calling config_json_read_map_value directly:" >&2
-  debug_value="$(config_json_read_map_value "reasoning_effort" "generalist" "default" "medium")"
-  echo "DEBUG:   config_json_read_map_value returned: '${debug_value}'" >&2
-  echo "DEBUG: Calling read_reasoning_effort directly:" >&2
-  debug_reasoning="$(read_reasoning_effort "generalist")"
-  echo "DEBUG:   read_reasoning_effort returned: '${debug_reasoning}'" >&2
-
   build_worker_command "generalist" "Prompt text"
   [ "$?" -eq 0 ]
   [ "${WORKER_COMMAND[0]}" = "${bin_path}" ]
   [ "${WORKER_COMMAND[1]}" = "--foo" ]
-  # Debug: print actual value if assertion would fail
-  if [ "${WORKER_COMMAND[2]}" != "high" ]; then
-    echo "DEBUG: WORKER_COMMAND[2]='${WORKER_COMMAND[2]}' (expected 'high')" >&2
-    echo "DEBUG: Full WORKER_COMMAND: ${WORKER_COMMAND[*]}" >&2
-  fi
   [ "${WORKER_COMMAND[2]}" = "high" ]
   [ "${WORKER_COMMAND[3]}" = "--bar" ]
   [ "${WORKER_COMMAND[4]}" = "Prompt text" ]

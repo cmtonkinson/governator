@@ -50,17 +50,17 @@ config_json_read_map_value() {
     return 0
   fi
   # Try entry key first, then default key.
-  # jq -r outputs "null" string for JSON null values.
+  # Use getpath for jq 1.5/1.6 compatibility (double indexing with vars fails in older jq).
   local value
   value="$(jq -r --arg map "${map_key}" --arg entry "${entry_key}" \
-    '.[$map][$entry]' \
+    'getpath([$map, $entry])' \
     "${CONFIG_FILE}" 2> /dev/null)"
   if [[ -n "${value}" && "${value}" != "null" ]]; then
     printf '%s\n' "${value}"
     return 0
   fi
   value="$(jq -r --arg map "${map_key}" --arg def "${default_key}" \
-    '.[$map][$def]' \
+    'getpath([$map, $def])' \
     "${CONFIG_FILE}" 2> /dev/null)"
   if [[ -n "${value}" && "${value}" != "null" ]]; then
     printf '%s\n' "${value}"
