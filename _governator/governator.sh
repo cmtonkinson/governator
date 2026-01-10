@@ -21,7 +21,6 @@ CONFIG_FILE="${DB_DIR}/config.json"
 CONFIG_TEMPLATE="${STATE_DIR}/templates/config.json"
 
 MANIFEST_FILE="${DB_DIR}/manifest.json"
-LAST_UPDATE_FILE="${DB_DIR}/last_update_at"
 
 AUDIT_LOG="${DB_DIR}/audit.log"
 WORKER_PROCESSES_LOG="${DB_DIR}/worker-processes.log"

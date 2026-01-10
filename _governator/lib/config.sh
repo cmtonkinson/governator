@@ -394,12 +394,9 @@ write_completion_check_last_run() {
 # Output: Prints the timestamp string or "never".
 # Returns: 0 always.
 read_last_update_at() {
-  if [[ ! -f "${LAST_UPDATE_FILE}" ]]; then
-    printf '%s\n' "never"
-    return 0
-  fi
   local value
-  value="$(tr -d '[:space:]' < "${LAST_UPDATE_FILE}")"
+  value="$(config_json_read_value "last_update_at" "never")"
+  value="$(trim_whitespace "${value}")"
   if [[ -z "${value}" ]]; then
     printf '%s\n' "never"
     return 0
@@ -415,7 +412,7 @@ read_last_update_at() {
 # Returns: 0 on success.
 write_last_update_at() {
   local timestamp="$1"
-  printf '%s\n' "${timestamp}" > "${LAST_UPDATE_FILE}"
+  config_json_write_value "last_update_at" "${timestamp}" "string"
 }
 
 # read_planning_gov_sha

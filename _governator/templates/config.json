@@ -7,6 +7,7 @@
     "cooldown_seconds": 300,
     "last_check": 0
   },
+  "last_update_at": "never",
   "planning": {
     "gov_hash": ""
   },

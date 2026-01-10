@@ -564,9 +564,9 @@ update_governator() {
 
   git -C "${ROOT_DIR}" add "${STATE_DIR}" "${MANIFEST_FILE}" "${MIGRATIONS_STATE_FILE}"
   if [[ "${#UPDATED_FILES[@]}" -gt 0 ]]; then
-    git -C "${ROOT_DIR}" add "${AUDIT_LOG}" "${LAST_UPDATE_FILE}"
+    git -C "${ROOT_DIR}" add "${AUDIT_LOG}" "${CONFIG_FILE}"
   fi
-  if [[ -n "$(git -C "${ROOT_DIR}" status --porcelain -- "${STATE_DIR}" "${MANIFEST_FILE}" "${AUDIT_LOG}" "${LAST_UPDATE_FILE}")" ]]; then
+  if [[ -n "$(git -C "${ROOT_DIR}" status --porcelain -- "${STATE_DIR}" "${MANIFEST_FILE}" "${AUDIT_LOG}" "${CONFIG_FILE}")" ]]; then
     git -C "${ROOT_DIR}" commit -q -m "[governator] Update governator"
   fi
 }
