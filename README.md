@@ -1,14 +1,14 @@
 # Governator
 The agentic anti-swarm (or: just a context management state machine)
 
-[![CI](https://github.com/cmtonkinson/governator/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cmtonkinson/governator/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.txt)
 [![Status: Active Development](https://img.shields.io/badge/Status-Active%20Development-green.svg)](https://github.com/cmtonkinson/governator)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/cmtonkinson/governator/pulls)
-[![Bash 5+](https://img.shields.io/badge/Bash-5%2B-blue?logo=gnu-bash&logoColor=white)](https://www.gnu.org/software/bash/)
+[![CI](https://github.com/cmtonkinson/governator/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cmtonkinson/governator/actions/workflows/ci.yml)
 [![macOS](https://img.shields.io/badge/macOS-supported-lightgrey?logo=apple&logoColor=white)](https://github.com/cmtonkinson/governator)
 [![Linux](https://img.shields.io/badge/Linux-supported-lightgrey?logo=linux&logoColor=white)](https://github.com/cmtonkinson/governator)
-[![Share on X](https://img.shields.io/badge/X-Share-black?logo=x&logoColor=white)](https://x.com/intent/tweet?text=Governator%20-%20agentic%20anti-swarm%20state%20machine&url=https%3A%2F%2Fgithub.com%2Fcmtonkinson%2Fgovernator)
+[![Bash 5+](https://img.shields.io/badge/Bash-5%2B-blue?logo=gnu-bash&logoColor=white)](https://www.gnu.org/software/bash/)
+[![No Telemetry](https://img.shields.io/badge/Telemetry-None-green.svg)](https://github.com/cmtonkinson/governator)
 
 ![Governator](img/governator_512.png)
 
