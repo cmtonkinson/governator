@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   release:
+    if: ${{ github.actor != 'nektos/act' }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
