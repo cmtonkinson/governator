@@ -71,7 +71,9 @@ config_json_read_map_value() {
 }
 
 # config_json_write_value
-# Purpose: Write a scalar value into config.json at the given dot path.
+# Purpose: Write a scalar value into config.json at the given dot path. Boolean
+#   values accept "true"/"false" and coerce "1" to "true" (everything else
+#   becomes "false").
 # Args:
 #   $1: Dot-delimited key path (string).
 #   $2: Value to write (string).
@@ -662,6 +664,7 @@ read_agent_provider_chat_args() {
     '(.agents.providers[$provider].chat_args // []) | .[]? | select(type == "string")' \
     "${CONFIG_FILE}" 2> /dev/null || true
 }
+
 # read_worker_cap
 # Purpose: Read the per-role worker concurrency cap, falling back to global.
 # Args:

@@ -96,7 +96,7 @@ build_chat_command() {
 }
 
 # run_chat_session
-# Purpose: Run an interactive chat session under screen with transcript logging.
+# Purpose: Run an interactive chat session under screen with transcript logging and prompt injection retries.
 # Args:
 #   $1: Session name (string).
 #   $2: Prompt text to inject (string).
@@ -114,9 +114,27 @@ run_chat_session() {
   fi
 
   log_verbose "Chat command: ${CHAT_COMMAND_LOG}"
-  screen -dmS "${session_name}" -L -Logfile "${transcript_path}" "${CHAT_COMMAND[@]}"
-  screen -S "${session_name}" -X stuff "$(printf '%s\n' "${prompt}")"
-  screen -r "${session_name}"
+  if ! screen -dmS "${session_name}" -L -Logfile "${transcript_path}" "${CHAT_COMMAND[@]}"; then
+    log_error "Failed to start chat session ${session_name}."
+    return 1
+  fi
+  local attempt
+  local sent=0
+  for attempt in 1 2 3 4 5; do
+    if screen -S "${session_name}" -X stuff "$(printf '%s\n' "${prompt}")"; then
+      sent=1
+      break
+    fi
+    sleep 0.1
+  done
+  if [[ "${sent}" -ne 1 ]]; then
+    log_error "Failed to send prompt to chat session ${session_name}."
+    return 1
+  fi
+  if ! screen -r "${session_name}"; then
+    log_error "Chat session ${session_name} exited with error."
+    return 1
+  fi
 }
 
 # run_chat_completion
