@@ -28,6 +28,73 @@ load ./helpers.bash
   [ "$status" -eq 0 ]
 }
 
+@test "worker self-check flags dirty worktree" {
+  task_name="020-self-check-ruby"
+  worker="ruby"
+  write_task "task-assigned" "${task_name}"
+  commit_all "Prepare self-check worktree"
+
+  worktree_dir="$(worktree_dir_for "${task_name}" "${worker}")"
+  git -C "${REPO_DIR}" worktree add -b "worker/${worker}/${task_name}" "${worktree_dir}" "main" >/dev/null 2>&1
+  git -C "${worktree_dir}" config user.email "test@example.com"
+  git -C "${worktree_dir}" config user.name "Test User"
+
+  printf '%s\n' "committed" > "${worktree_dir}/committed.txt"
+  git -C "${worktree_dir}" add "committed.txt"
+  git -C "${worktree_dir}" commit -m "Commit ${task_name}" >/dev/null
+
+  printf '%s\n' "dirty" > "${worktree_dir}/dirty.txt"
+
+  wrapper="$(bash -c "
+    set -euo pipefail
+    ROOT_DIR=\"${REPO_DIR}\"
+    STATE_DIR=\"${REPO_DIR}/_governator\"
+    DB_DIR=\"${REPO_DIR}/.governator\"
+    CONFIG_FILE=\"\${DB_DIR}/config.json\"
+    GOV_QUIET=1
+    GOV_VERBOSE=0
+    source \"\${STATE_DIR}/lib/utils.sh\"
+    source \"\${STATE_DIR}/lib/logging.sh\"
+    source \"\${STATE_DIR}/lib/config.sh\"
+    source \"\${STATE_DIR}/lib/workers.sh\"
+    write_worker_env_wrapper \"${worktree_dir}\" \"worker/${worker}/${task_name}\"
+  ")"
+
+  run bash "${wrapper}" true
+  [ "$status" -eq 0 ]
+
+  report_path="${worktree_dir}/.governator/self-check.json"
+  [ -f "${report_path}" ]
+  run jq -r '.status' "${report_path}"
+  [ "$status" -eq 0 ]
+  [ "${output}" = "fail" ]
+  run jq -r '.reason' "${report_path}"
+  [ "$status" -eq 0 ]
+  [[ "${output}" == *"uncommitted changes"* ]]
+}
+
+@test "check-zombies blocks when self-check fails" {
+  task_name="021-self-check-block-ruby"
+  write_task "task-assigned" "${task_name}"
+  add_in_flight "${task_name}" "ruby"
+
+  worktree_dir="$(create_worktree_dir "${task_name}" "ruby")"
+  mkdir -p "${worktree_dir}/.governator"
+  cat > "${worktree_dir}/.governator/self-check.json" <<'EOF_SELF_CHECK'
+{"status":"fail","reason":"Worktree has uncommitted changes."}
+EOF_SELF_CHECK
+
+  add_worker_process "${task_name}" "ruby" "999999" "${worktree_dir}"
+  commit_all "Prepare self-check failure"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" check-zombies
+  [ "$status" -eq 0 ]
+
+  [ -f "${REPO_DIR}/_governator/task-blocked/${task_name}.md" ]
+  run grep -F "Worker self-check failed" "${REPO_DIR}/_governator/task-blocked/${task_name}.md"
+  [ "$status" -eq 0 ]
+}
+
 @test "check-zombies blocks after second failure" {
   write_task "task-assigned" "008-stuck-ruby"
   add_in_flight "008-stuck-ruby" "ruby"

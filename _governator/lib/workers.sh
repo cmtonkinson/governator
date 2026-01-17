@@ -50,6 +50,7 @@ build_worker_command() {
 #   $2: Prompt text (string).
 #   $3: Log file path (string).
 #   $4: Role name (string).
+#   $5: Wrapper script path (string, optional).
 # Output: Prints the spawned PID to stdout.
 # Returns: 0 on success; returns 1 when worker command build or spawn fails.
 run_worker_detached() {
@@ -57,6 +58,7 @@ run_worker_detached() {
   local prompt="$2"
   local log_file="$3"
   local role="$4"
+  local wrapper="${5:-}"
 
   # Use nohup to prevent worker exit from being tied to this process.
   if ! build_worker_command "${role}" "${prompt}"; then
@@ -64,12 +66,173 @@ run_worker_detached() {
   fi
   (
     cd "${dir}"
+    if [[ -n "${wrapper}" ]]; then
+      log_verbose "Worker wrapper: ${wrapper}"
+    fi
     log_verbose "Worker command: ${WORKER_COMMAND_LOG}"
-    nohup "${WORKER_COMMAND[@]}" >> "${log_file}" 2>&1 &
+    if [[ -n "${wrapper}" ]]; then
+      nohup "${wrapper}" "${WORKER_COMMAND[@]}" >> "${log_file}" 2>&1 &
+    else
+      nohup "${WORKER_COMMAND[@]}" >> "${log_file}" 2>&1 &
+    fi
     echo $!
   )
 }
 
+# resolve_worktree_git_dir
+# Purpose: Resolve the absolute git dir path for a worktree.
+# Args:
+#   $1: Worktree directory (string).
+# Output: Prints the absolute git dir path to stdout.
+# Returns: 0 on success; 1 if git dir cannot be resolved.
+resolve_worktree_git_dir() {
+  local worktree_dir="$1"
+  local git_dir
+  if ! git_dir="$(git -C "${worktree_dir}" rev-parse --git-dir 2>/dev/null)"; then
+    return 1
+  fi
+  if [[ "${git_dir}" != /* ]]; then
+    git_dir="${worktree_dir}/${git_dir}"
+  fi
+  printf '%s\n' "${git_dir}"
+}
+
+# write_worker_env_wrapper
+# Purpose: Write a wrapper script that pins git to the worker worktree.
+# Args:
+#   $1: Worktree directory (string).
+#   $2: Expected branch name (string).
+# Output: Prints the wrapper path to stdout.
+# Returns: 0 on success; 1 on failure.
+write_worker_env_wrapper() {
+  local worktree_dir="$1"
+  local expected_branch="$2"
+  local git_dir
+  if ! git_dir="$(resolve_worktree_git_dir "${worktree_dir}")"; then
+    return 1
+  fi
+  local default_branch
+  default_branch="$(read_default_branch)"
+  if [[ -z "${expected_branch}" ]]; then
+    return 1
+  fi
+  local wrapper="${worktree_dir}/.governator-worker-env.sh"
+  cat > "${wrapper}" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+export GIT_DIR="${git_dir}"
+export GIT_WORK_TREE="${worktree_dir}"
+export GIT_INDEX_FILE="${git_dir}/index"
+unset GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_OBJECT_DIRECTORY
+export GIT_EDITOR=true
+exit_code=0
+"\$@" || exit_code=\$?
+expected_branch="${expected_branch}"
+current_branch="\$(git -C "${worktree_dir}" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+status="ok"
+reason=""
+if [[ -z "\${expected_branch}" ]]; then
+  status="fail"
+  reason="Missing expected branch name."
+elif [[ "\${current_branch}" != "\${expected_branch}" ]]; then
+  status="fail"
+  reason="Current branch does not match expected branch."
+elif ! git -C "${worktree_dir}" show-ref --verify --quiet "refs/heads/\${expected_branch}"; then
+  status="fail"
+  reason="Expected local branch is missing."
+elif [[ -n "\$(git -C "${worktree_dir}" status --porcelain 2>/dev/null)" ]]; then
+  status="fail"
+  reason="Worktree has uncommitted changes."
+elif [[ "\$(git -C "${worktree_dir}" rev-list --count "${default_branch}..\${expected_branch}" 2>/dev/null || echo 0)" -eq 0 ]]; then
+  status="fail"
+  reason="No commits beyond base branch."
+fi
+mkdir -p "${worktree_dir}/.governator"
+jq -n --arg status "\${status}" \\
+  --arg reason "\${reason}" \\
+  --arg expected_branch "\${expected_branch}" \\
+  --arg current_branch "\${current_branch}" \\
+  --arg worktree_dir "${worktree_dir}" \\
+  --argjson exit_code "\${exit_code}" \\
+  '{status:\$status, reason:\$reason, expected_branch:\$expected_branch, current_branch:\$current_branch, worktree_dir:\$worktree_dir, exit_code:\$exit_code}' \\
+  > "${worktree_dir}/.governator/self-check.json"
+exit "\${exit_code}"
+EOF
+  chmod +x "${wrapper}"
+  printf '%s\n' "${wrapper}"
+}
+
+# worktree_has_uncommitted_changes
+# Purpose: Check if a worktree has uncommitted changes.
+# Args:
+#   $1: Worktree directory (string).
+# Output: None.
+# Returns: 0 if changes exist; 1 otherwise.
+worktree_has_uncommitted_changes() {
+  local worktree_dir="$1"
+  if [[ -z "${worktree_dir}" || ! -d "${worktree_dir}" ]]; then
+    return 1
+  fi
+  if [[ ! -e "${worktree_dir}/.git" ]]; then
+    return 1
+  fi
+  if ! git -C "${worktree_dir}" rev-parse --git-dir > /dev/null 2>&1; then
+    return 1
+  fi
+  [[ -n "$(git -C "${worktree_dir}" status --porcelain 2>/dev/null || true)" ]]
+}
+
+# block_task_for_worker_failure
+# Purpose: Block a task when a worker exits with a recoverable failure.
+# Args:
+#   $1: Task name (string).
+#   $2: Worker name (string).
+#   $3: Worktree directory (string, optional).
+#   $4: Reason text (string).
+# Output: Logs warnings and task transitions.
+# Returns: 0 on completion.
+block_task_for_worker_failure() {
+  local task_name="$1"
+  local worker="$2"
+  local worktree_dir="${3:-}"
+  local reason="$4"
+  log_task_warn "${task_name}" "${reason}"
+  local task_file
+  if task_file="$(task_file_for_name "${task_name}")"; then
+    annotate_blocked "${task_file}" "${reason}"
+    move_task_file "${task_file}" "${STATE_DIR}/task-blocked" "${task_name}" "moved to task-blocked"
+    git -C "${ROOT_DIR}" add "${STATE_DIR}"
+    git -C "${ROOT_DIR}" commit -q -m "[governator] Block task ${task_name} on dirty worktree"
+    git_push_default_branch
+  fi
+  in_flight_remove "${task_name}" "${worker}"
+  return 0
+}
+
+# read_worker_self_check
+# Purpose: Read the worker self-check status and reason from the worktree.
+# Args:
+#   $1: Worktree directory (string).
+# Output: Prints "status|reason" to stdout when available.
+# Returns: 0 if a report was read; 1 otherwise.
+read_worker_self_check() {
+  local worktree_dir="$1"
+  if [[ -z "${worktree_dir}" ]]; then
+    return 1
+  fi
+  local report_path="${worktree_dir}/.governator/self-check.json"
+  if [[ ! -f "${report_path}" ]]; then
+    return 1
+  fi
+  local status
+  local reason
+  status="$(jq -r '.status // empty' "${report_path}" 2>/dev/null)"
+  reason="$(jq -r '.reason // empty' "${report_path}" 2>/dev/null)"
+  if [[ -z "${status}" ]]; then
+    return 1
+  fi
+  printf '%s|%s\n' "${status}" "${reason}"
+}
 
 # format_prompt_files
 # Purpose: Join prompt file paths into a comma-separated string.
@@ -605,7 +768,13 @@ spawn_worker_for_task() {
   local pid
   local started_at
   started_at="$(date +%s)"
-  pid="$(run_worker_detached "${worktree_dir}" "${prompt}" "${log_file}" "${worker}")"
+  local wrapper
+  if ! wrapper="$(write_worker_env_wrapper "${worktree_dir}" "${branch_name}")"; then
+    log_task_warn "${task_name}" "failed to create worker git wrapper"
+    return 1
+  fi
+
+  pid="$(run_worker_detached "${worktree_dir}" "${prompt}" "${log_file}" "${worker}" "${wrapper}")"
   if [[ -n "${pid}" ]]; then
     worker_process_set "${task_name}" "${worker}" "${pid}" "${worktree_dir}" "${branch_name}" "${started_at}"
     if [[ -n "${audit_message}" ]]; then
@@ -675,6 +844,23 @@ check_zombie_workers() {
         log_task_event "${task_name}" "recovered reviewer output"
         continue
       fi
+    fi
+
+    local self_check
+    if self_check="$(read_worker_self_check "${worktree_dir}")"; then
+      local self_status="${self_check%%|*}"
+      local self_reason="${self_check#*|}"
+      if [[ "${self_status}" != "ok" ]]; then
+        local reason="Worker self-check failed: ${self_reason} Worktree preserved at ${worktree_dir}."
+        block_task_for_worker_failure "${task_name}" "${worker}" "${worktree_dir}" "${reason}"
+        continue
+      fi
+    fi
+
+    if worktree_has_uncommitted_changes "${worktree_dir}"; then
+      local reason="Worker exited without committing to the local branch; worktree has uncommitted changes. Worktree preserved at ${worktree_dir}."
+      block_task_for_worker_failure "${task_name}" "${worker}" "${worktree_dir}" "${reason}"
+      continue
     fi
 
     log_task_warn "${task_name}" "worker ${worker} exited without completing"
