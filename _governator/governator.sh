@@ -76,6 +76,7 @@ GITIGNORE_ENTRIES=(
   ".governator/failed-merges.log"
   ".governator/in-flight.log"
   ".governator/logs/"
+  ".governator/worktrees/"
 )
 
 LIB_DIR="${STATE_DIR}/lib"

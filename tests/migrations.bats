@@ -17,3 +17,13 @@ load ./helpers.bash
   [ "${output}" = "12345" ]
   [ ! -f "${REPO_DIR}/.governator/last_update_at" ]
 }
+
+@test "migration adds worktrees entry to gitignore" {
+  printf '%s\n' "# Governator" ".governator/logs/" > "${REPO_DIR}/.gitignore"
+
+  run bash "${REPO_DIR}/_governator/migrations/2026-01-17-add-worktrees-gitignore.sh"
+  [ "$status" -eq 0 ]
+
+  run grep -Fqx ".governator/worktrees/" "${REPO_DIR}/.gitignore"
+  [ "$status" -eq 0 ]
+}
