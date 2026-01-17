@@ -26,6 +26,25 @@ load ./helpers.bash
   [ "$status" -eq 0 ]
 }
 
+@test "update records last_update_at even when no updates are applied" {
+  local tag="v1.0.0"
+  upstream_root="$(create_upstream_dir "${tag}")"
+  tar_path="${BATS_TMPDIR}/upstream-noop.tar.gz"
+  build_upstream_tarball "${upstream_root}" "${tar_path}" "${tag}"
+  stub_curl_for_release "${tar_path}" "${tag}"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" update --force-remote
+  local update_output="${output}"
+  [ "$status" -eq 0 ]
+  run grep -F "No updates applied." <<< "${update_output}"
+  [ "$status" -eq 0 ]
+
+  run jq -r '.last_update_at' "${REPO_DIR}/.governator/config.json"
+  [ "$status" -eq 0 ]
+  [ "${output}" != "never" ]
+  [[ "${output}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+}
+
 @test "update runs migrations and records state" {
   local tag="v1.0.0"
   upstream_root="$(create_upstream_dir "${tag}")"
