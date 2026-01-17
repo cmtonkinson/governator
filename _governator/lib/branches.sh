@@ -373,6 +373,11 @@ process_worker_branch() {
     return 0
   fi
 
+  if in_flight_has_task_worker "${task_name}" "${worker_name}" && ! worktree_has_completed "${task_name}" "${worker_name}"; then
+    log_verbose "Worker branch ${branch} not completed; skipping."
+    return 0
+  fi
+
   local task_relpath="${STATE_DIR}/${task_dir}/${task_name}.md"
   local decision="block"
   local review_lines=()
