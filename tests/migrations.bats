@@ -27,3 +27,13 @@ load ./helpers.bash
   run grep -Fqx ".governator/worktrees/" "${REPO_DIR}/.gitignore"
   [ "$status" -eq 0 ]
 }
+
+@test "migration adds worker env entry to gitignore" {
+  printf '%s\n' "# Governator" ".governator/logs/" > "${REPO_DIR}/.gitignore"
+
+  run bash "${REPO_DIR}/_governator/migrations/2026-01-18-add-worker-env-gitignore.sh"
+  [ "$status" -eq 0 ]
+
+  run grep -Fqx ".governator-worker-env.sh" "${REPO_DIR}/.gitignore"
+  [ "$status" -eq 0 ]
+}

@@ -4,4 +4,5 @@
 .governator/in-flight.log
 .governator/logs/
 .governator/worktrees/
+.governator-worker-env.sh
 coverage/
