@@ -112,6 +112,30 @@ EOF_REVIEW
   [ "$status" -ne 0 ]
 }
 
+@test "process-branches preserves worktree for blocked task with preservation reason" {
+  task_name="061-blocked-preserve-ruby"
+  worker="ruby"
+  worktree_dir="$(create_worktree_dir "${task_name}" "${worker}")"
+  cat > "${REPO_DIR}/_governator/task-blocked/${task_name}.md" <<EOF_TASK
+# Task
+## Governator Block
+Worker self-check failed: Worktree has uncommitted changes. Worktree preserved at ${worktree_dir}.
+EOF_TASK
+  add_in_flight "${task_name}" "${worker}"
+  commit_all "Prepare blocked task with preserved worktree"
+
+  create_worker_branch "${task_name}" "${worker}"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" process-branches
+  [ "$status" -eq 0 ]
+
+  [ -d "${worktree_dir}" ]
+  run repo_git show-ref --verify "refs/heads/worker/ruby/${task_name}"
+  [ "$status" -eq 0 ]
+  run grep -F "${task_name} -> ${worker}" "${REPO_DIR}/.governator/in-flight.log"
+  [ "$status" -ne 0 ]
+}
+
 @test "process_worker_branch clears in-flight entry when branch is missing" {
   write_task "task-assigned" "011-missing-ruby"
   add_in_flight "011-missing-ruby" "ruby"

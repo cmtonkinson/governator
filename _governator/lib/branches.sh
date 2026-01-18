@@ -172,12 +172,35 @@ handle_non_reviewer_branch_state() {
   if [[ "${task_dir}" == "task-blocked" ]]; then
     log_warn "Worker marked ${task_name} blocked; skipping merge."
     in_flight_remove "${task_name}" "${worker_name}"
-    delete_worker_branch "${branch}"
-    remove_worktree "${task_name}" "${worker_name}"
+    if task_block_reason_requests_preserved_worktree "${task_relpath}"; then
+      log_verbose "Preserving worktree for ${task_name} based on block reason."
+    else
+      delete_worker_branch "${branch}"
+      remove_worktree "${task_name}" "${worker_name}"
+    fi
     ensure_unblock_planner_task || true
     return 0
   fi
 
+  return 1
+}
+
+# task_block_reason_requests_preserved_worktree
+# Purpose: Check if the blocked task reason requests preserving the worktree.
+# Args:
+#   $1: Task file path (string).
+# Output: None.
+# Returns: 0 if the reason indicates preservation; 1 otherwise.
+task_block_reason_requests_preserved_worktree() {
+  local task_file="$1"
+  if [[ -z "${task_file}" || ! -f "${task_file}" ]]; then
+    return 1
+  fi
+  local reason
+  reason="$(extract_block_reason "${task_file}")"
+  if [[ "${reason}" == *"Worktree preserved at "* ]]; then
+    return 0
+  fi
   return 1
 }
 
