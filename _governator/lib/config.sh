@@ -404,6 +404,60 @@ read_last_update_at() {
   printf '%s\n' "${value}"
 }
 
+# read_last_update_ref
+# Purpose: Read the last update ref (tag or commit) for the update command.
+# Args: None.
+# Output: Prints the ref string or empty.
+# Returns: 0 always.
+read_last_update_ref() {
+  local value
+  value="$(config_json_read_value "last_update_ref" "")"
+  value="$(trim_whitespace "${value}")"
+  if [[ -z "${value}" ]]; then
+    printf '%s\n' ""
+    return 0
+  fi
+  printf '%s\n' "${value}"
+}
+
+# write_last_update_ref
+# Purpose: Persist the last update ref (tag or commit) for the update command.
+# Args:
+#   $1: Ref string (string).
+# Output: None.
+# Returns: 0 on success.
+write_last_update_ref() {
+  local ref="$1"
+  config_json_write_value "last_update_ref" "${ref}" "string"
+}
+
+# read_last_update_commit
+# Purpose: Read the last update commit SHA for the update command.
+# Args: None.
+# Output: Prints the commit SHA or empty.
+# Returns: 0 always.
+read_last_update_commit() {
+  local value
+  value="$(config_json_read_value "last_update_commit" "")"
+  value="$(trim_whitespace "${value}")"
+  if [[ -z "${value}" ]]; then
+    printf '%s\n' ""
+    return 0
+  fi
+  printf '%s\n' "${value}"
+}
+
+# write_last_update_commit
+# Purpose: Persist the last update commit SHA for the update command.
+# Args:
+#   $1: Commit SHA (string).
+# Output: None.
+# Returns: 0 on success.
+write_last_update_commit() {
+  local commit_sha="$1"
+  config_json_write_value "last_update_commit" "${commit_sha}" "string"
+}
+
 # write_last_update_at
 # Purpose: Persist the last update timestamp for the update command.
 # Args:

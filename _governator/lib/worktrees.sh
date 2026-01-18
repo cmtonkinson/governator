@@ -262,10 +262,10 @@ cleanup_worktree_by_branch() {
 }
 
 # cleanup_stale_worktrees
-# Purpose: Remove stale worktrees not tracked as active.
+# Purpose: Report stale worktrees without removing them.
 # Args:
-#   $1: Optional "--dry-run" to list candidates without deleting.
-# Output: Prints stale worktrees when running in dry-run mode.
+#   $1: Optional "--dry-run" to list candidates.
+# Output: Prints stale worktrees to stdout when running in dry-run mode.
 # Returns: 0 on completion.
 cleanup_stale_worktrees() {
   local dry_run="${1:-}"
@@ -320,13 +320,10 @@ cleanup_stale_worktrees() {
 
     if [[ "${dry_run}" == "--dry-run" ]]; then
       printf '%s\n' "${dir}"
-    else
-      # Remove the worktree
-      git -C "${ROOT_DIR}" worktree remove --force "${dir}" 2>/dev/null || rm -rf "${dir}"
-      log_verbose "Removed stale worktree: ${dir}"
     fi
   done < <(find "${WORKTREES_DIR}" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
 
-  # Prune any stale worktree references
-  prune_worktrees
+  if [[ "${dry_run}" != "--dry-run" ]]; then
+    log_verbose "Stale worktree cleanup disabled; use --dry-run to list candidates."
+  fi
 }

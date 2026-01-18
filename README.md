@@ -348,6 +348,10 @@ automatically download the latest version and:
 - run any unapplied bash migrations in `_governator/migrations`, recording
   applied entries in the tracked `.governator/migrations.json`.
 
+You can pin updates to a specific tag or commit ref:
+- `governator.sh update --ref v1.2.3` (release tag)
+- `governator.sh update --ref abc1234` (commit SHA/prefix)
+
 _**Note**: `update` itself will never modify any tasks or docs; migrations are
 opt-in and can change anything they touch. Most of the other stuff under
 `_governator` is fair game._

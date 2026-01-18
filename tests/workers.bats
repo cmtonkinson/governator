@@ -174,7 +174,7 @@ EOF_REVIEW
   [ "$output" -gt 0 ]
 }
 
-@test "cleanup-tmp removes stale worktrees but keeps active ones" {
+@test "cleanup-tmp reports stale worktrees but keeps active ones" {
   active_dir="$(create_worktree_dir "009-cleanup-ruby" "ruby")"
   stale_dir="${REPO_DIR}/.governator/worktrees/stale-task-ruby"
   mkdir -p "${stale_dir}"
@@ -188,7 +188,7 @@ EOF_REVIEW
   [ "$status" -eq 0 ]
 
   [ -d "${active_dir}" ]
-  [ ! -d "${stale_dir}" ]
+  [ -d "${stale_dir}" ]
 }
 
 @test "cleanup-tmp dry-run lists stale worktrees only" {

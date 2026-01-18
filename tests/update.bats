@@ -154,7 +154,7 @@ EOF_MIGRATE
   [ "$status" -eq 0 ]
 }
 
-@test "update respects --version flag" {
+@test "update respects --ref with tag" {
   local tag="v2.0.0"
   upstream_root="$(create_upstream_dir "${tag}")"
   printf '%s\n' "# version 2.0.0 update" >> "${upstream_root}/governator-2.0.0/_governator/governator.sh"
@@ -162,11 +162,48 @@ EOF_MIGRATE
   build_upstream_tarball "${upstream_root}" "${tar_path}" "${tag}"
   stub_curl_for_release "${tar_path}" "${tag}"
 
-  run bash "${REPO_DIR}/_governator/governator.sh" update --force-remote --version "${tag}"
+  run bash "${REPO_DIR}/_governator/governator.sh" update --force-remote --ref "${tag}"
   local update_output="${output}"
   [ "$status" -eq 0 ]
-  run grep -F "Pinned version: ${tag}" <<< "${update_output}"
+  run grep -F "Pinned ref: ${tag}" <<< "${update_output}"
   [ "$status" -eq 0 ]
   run grep -F "# version 2.0.0 update" "${REPO_DIR}/_governator/governator.sh"
+  [ "$status" -eq 0 ]
+}
+
+@test "update respects --ref with commit" {
+  local commit_sha="0123456789abcdef0123456789abcdef01234567"
+  local commit_prefix="0123456"
+  upstream_root="$(create_upstream_commit_dir "${commit_sha}")"
+  printf '%s\n' "# commit update" >> "${upstream_root}/governator-${commit_sha}/_governator/governator.sh"
+  tar_path="${BATS_TMPDIR}/upstream-commit.tar.gz"
+  build_upstream_commit_tarball "${upstream_root}" "${tar_path}" "${commit_sha}"
+  stub_curl_for_release "${tar_path}" "v1.0.0" "" "${commit_sha}"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" update --force-remote --ref "${commit_prefix}"
+  local update_output="${output}"
+  [ "$status" -eq 0 ]
+  run grep -F "Pinned ref: ${commit_prefix}" <<< "${update_output}"
+  [ "$status" -eq 0 ]
+  run grep -F "Resolved commit: ${commit_sha}" <<< "${update_output}"
+  [ "$status" -eq 0 ]
+  run grep -F "# commit update" "${REPO_DIR}/_governator/governator.sh"
+  [ "$status" -eq 0 ]
+}
+
+@test "update blocks commit downgrade" {
+  local current_commit="ffffffffffffffffffffffffffffffffffffffff"
+  local target_commit="0000000000000000000000000000000000000000"
+  set_config_value "last_update_commit" "${current_commit}"
+  commit_paths "Set last update commit" ".governator/config.json"
+
+  upstream_root="$(create_upstream_commit_dir "${target_commit}")"
+  tar_path="${BATS_TMPDIR}/upstream-downgrade.tar.gz"
+  build_upstream_commit_tarball "${upstream_root}" "${tar_path}" "${target_commit}"
+  stub_curl_for_release "${tar_path}" "v1.0.0" "" "${target_commit}" "behind"
+
+  run bash "${REPO_DIR}/_governator/governator.sh" update --force-remote --ref "0000000"
+  [ "$status" -ne 0 ]
+  run grep -F "older than current installed version" <<< "${output}"
   [ "$status" -eq 0 ]
 }

@@ -20,6 +20,46 @@ fetch_latest_release_tag() {
   printf '%s\n' "${tag}"
 }
 
+# fetch_commit_sha
+# Purpose: Resolve a git ref (tag/branch/commit) to a full commit SHA via GitHub API.
+# Args:
+#   $1: Ref string (string, e.g., "v1.2.3" or "abc1234").
+# Output: Prints the full commit SHA to stdout.
+# Returns: 0 on success; 1 on failure.
+fetch_commit_sha() {
+  local ref="$1"
+  local api_url="https://api.github.com/repos/${GOVERNATOR_REPO}/commits/${ref}"
+  local sha
+  if ! sha="$(curl -fsSL "${api_url}" | jq -r '.sha // empty')"; then
+    return 1
+  fi
+  if [[ -z "${sha}" ]]; then
+    return 1
+  fi
+  printf '%s\n' "${sha}"
+}
+
+# fetch_compare_status
+# Purpose: Compare two commits using the GitHub compare API.
+# Args:
+#   $1: Base commit SHA (string).
+#   $2: Head commit SHA (string).
+# Output: Prints the compare status (ahead|behind|identical|diverged) to stdout.
+# Returns: 0 on success; 1 on failure.
+fetch_compare_status() {
+  local base_sha="$1"
+  local head_sha="$2"
+  local api_url="https://api.github.com/repos/${GOVERNATOR_REPO}/compare/${base_sha}...${head_sha}"
+  local status
+  if ! status="$(curl -fsSL "${api_url}" | jq -r '.status // empty')"; then
+    return 1
+  fi
+  if [[ -z "${status}" ]]; then
+    return 1
+  fi
+  printf '%s\n' "${status}"
+}
+
 # fetch_release_checksum
 # Purpose: Download the expected checksum for a release tarball.
 # Args:
@@ -75,6 +115,23 @@ download_and_verify_tarball() {
   fi
 
   log_info "Checksum verified for ${tag}"
+  return 0
+}
+
+# download_tarball
+# Purpose: Download a tarball to the specified destination path.
+# Args:
+#   $1: Tarball URL (string).
+#   $2: Destination path for the tarball (string).
+# Output: Logs errors.
+# Returns: 0 on success; 1 on failure.
+download_tarball() {
+  local tar_url="$1"
+  local dest_path="$2"
+  if ! curl -fsSL "${tar_url}" -o "${dest_path}"; then
+    log_error "Failed to download ${tar_url}"
+    return 1
+  fi
   return 0
 }
 
@@ -408,19 +465,58 @@ remove_prompt_file() {
   fi
 }
 
+# assert_no_downgrade
+# Purpose: Abort if the target commit is behind the current installed commit.
+# Args:
+#   $1: Current commit SHA (string).
+#   $2: Target commit SHA (string).
+#   $3: Target ref label (string, optional).
+# Output: Logs an error and exits on downgrade detection.
+# Returns: 0 if the target is acceptable; exits on failure.
+assert_no_downgrade() {
+  local current_commit="$1"
+  local target_commit="$2"
+  local target_ref="${3:-${target_commit}}"
+  if [[ -z "${current_commit}" || -z "${target_commit}" ]]; then
+    return 0
+  fi
+  local status
+  if ! status="$(fetch_compare_status "${current_commit}" "${target_commit}")"; then
+    log_error "Failed to compare update target ${target_ref} against current version."
+    exit 1
+  fi
+  case "${status}" in
+    ahead | identical)
+      return 0
+      ;;
+    behind)
+      log_error "Update target ${target_ref} is older than current installed version (${current_commit})."
+      exit 1
+      ;;
+    diverged)
+      log_error "Update target ${target_ref} is not based on current installed version (${current_commit})."
+      exit 1
+      ;;
+    *)
+      log_error "Unexpected compare status '${status}' for update target ${target_ref}."
+      exit 1
+      ;;
+  esac
+}
+
 # update_governator
-# Purpose: Update Governator code and prompt templates from upstream release.
+# Purpose: Update Governator code and prompt templates from upstream releases or commits.
 # Args:
 #   --keep-local: Keep local prompt changes without prompting.
 #   --force-remote: Overwrite local prompt changes without prompting.
-#   --version <tag>: Update to a specific release version (e.g., v1.2.3).
+#   --ref <ref>: Update to a specific release tag or commit SHA/prefix.
 # Output: Prints update summary, runs pending migrations, records a timestamp for
 #   successful update runs, and records audit metadata when updates are applied.
 # Returns: 0 on success; exits on fatal errors.
 update_governator() {
   UPDATE_KEEP_LOCAL=0
   UPDATE_FORCE_REMOTE=0
-  UPDATE_VERSION=""
+  UPDATE_REF=""
   while [[ "$#" -gt 0 ]]; do
     case "$1" in
       --keep-local)
@@ -429,16 +525,16 @@ update_governator() {
       --force-remote)
         UPDATE_FORCE_REMOTE=1
         ;;
-      --version)
+      --ref)
         if [[ -z "${2:-}" ]]; then
-          log_error "--version requires a tag argument (e.g., --version v1.2.3)"
+          log_error "--ref requires a tag or commit argument (e.g., --ref v1.2.3)"
           exit 1
         fi
-        UPDATE_VERSION="$2"
+        UPDATE_REF="$2"
         shift
         ;;
       -h | --help)
-        printf 'Usage: governator.sh update [--keep-local|--force-remote] [--version <tag>]\n'
+        printf 'Usage: governator.sh update [--keep-local|--force-remote] [--ref <tag|sha>]\n'
         printf 'Last updated at: %s\n' "$(read_last_update_at)"
         return 0
         ;;
@@ -471,25 +567,65 @@ update_governator() {
   trap cleanup EXIT
 
   local release_tag
-  if [[ -n "${UPDATE_VERSION}" ]]; then
-    release_tag="${UPDATE_VERSION}"
-    printf 'Pinned version: %s\n' "${release_tag}"
+  local update_ref
+  local target_commit
+  local tarball_path
+  local archive_prefix
+  if [[ -n "${UPDATE_REF}" ]]; then
+    update_ref="${UPDATE_REF}"
+    printf 'Pinned ref: %s\n' "${update_ref}"
+    if fetch_release_checksum "${update_ref}" > /dev/null 2>&1; then
+      release_tag="${update_ref}"
+      tarball_path="${UPDATE_TMP_ROOT}/governator-${release_tag}.tar.gz"
+      if ! download_and_verify_tarball "${release_tag}" "${tarball_path}"; then
+        exit 1
+      fi
+      archive_prefix="governator-${release_tag#v}"
+    else
+      if ! target_commit="$(fetch_commit_sha "${update_ref}")"; then
+        log_error "Failed to resolve commit ${update_ref}. Check network connectivity and ref validity."
+        exit 1
+      fi
+      tarball_path="${UPDATE_TMP_ROOT}/governator-${target_commit}.tar.gz"
+      if ! download_tarball "https://github.com/${GOVERNATOR_REPO}/archive/${target_commit}.tar.gz" "${tarball_path}"; then
+        exit 1
+      fi
+      archive_prefix="governator-${target_commit}"
+    fi
   else
     if ! release_tag="$(fetch_latest_release_tag)"; then
       log_error "Failed to fetch latest release. Check network connectivity and GitHub API access."
       exit 1
     fi
     printf 'Latest release: %s\n' "${release_tag}"
+    update_ref="${release_tag}"
+    tarball_path="${UPDATE_TMP_ROOT}/governator-${release_tag}.tar.gz"
+    if ! download_and_verify_tarball "${release_tag}" "${tarball_path}"; then
+      exit 1
+    fi
+    # GitHub archives extract to <repo>-<tag-without-v>/ (e.g., governator-1.2.3/)
+    # Strip that prefix so files land at ${UPDATE_TMP_ROOT}/_governator/
+    archive_prefix="governator-${release_tag#v}"
   fi
 
-  local tarball_path="${UPDATE_TMP_ROOT}/governator-${release_tag}.tar.gz"
-  if ! download_and_verify_tarball "${release_tag}" "${tarball_path}"; then
-    exit 1
+  if [[ -z "${target_commit:-}" ]]; then
+    if ! target_commit="$(fetch_commit_sha "${update_ref}")"; then
+      log_error "Failed to resolve commit for ${update_ref}. Check network connectivity and ref validity."
+      exit 1
+    fi
   fi
 
-  # GitHub archives extract to <repo>-<tag-without-v>/ (e.g., governator-1.2.3/)
-  # Strip that prefix so files land at ${UPDATE_TMP_ROOT}/_governator/
-  local archive_prefix="governator-${release_tag#v}"
+  if [[ -n "${UPDATE_REF}" ]]; then
+    printf 'Resolved commit: %s\n' "${target_commit}"
+  fi
+
+  local current_commit
+  current_commit="$(read_last_update_commit)"
+  if [[ -n "${current_commit}" ]]; then
+    assert_no_downgrade "${current_commit}" "${target_commit}" "${update_ref}"
+  else
+    log_warn "No recorded update commit; skipping downgrade check."
+  fi
   if ! tar -xzf "${tarball_path}" -C "${UPDATE_TMP_ROOT}" --strip-components=1 "${archive_prefix}/_governator"; then
     log_error "Failed to extract tarball"
     exit 1
@@ -552,6 +688,8 @@ update_governator() {
   local updated_at
   updated_at="$(timestamp_utc_seconds)"
   write_last_update_at "${updated_at}"
+  write_last_update_ref "${update_ref}"
+  write_last_update_commit "${target_commit}"
 
   if [[ "${#UPDATED_FILES[@]}" -gt 0 ]]; then
     audit_log "governator" "update applied: $(join_by ", " "${UPDATED_FILES[@]}")"

@@ -236,6 +236,21 @@ create_upstream_dir() {
   printf '%s\n' "${upstream_root}"
 }
 
+# create_upstream_commit_dir
+# Purpose: Create a temp upstream directory using commit archive layout.
+# Args:
+#   $1: Commit SHA (string).
+# Output: Prints the upstream root path.
+# Returns: 0 on success.
+create_upstream_commit_dir() {
+  local commit_sha="$1"
+  local upstream_root
+  upstream_root="$(mktemp -d "${BATS_TMPDIR}/upstream.XXXXXX")"
+  mkdir -p "${upstream_root}/governator-${commit_sha}"
+  cp -R "${REPO_DIR}/_governator" "${upstream_root}/governator-${commit_sha}/_governator"
+  printf '%s\n' "${upstream_root}"
+}
+
 # build_upstream_tarball
 # Purpose: Package an upstream directory into a tarball for update tests.
 # Args:
@@ -252,18 +267,37 @@ build_upstream_tarball() {
   tar -cz -C "${upstream_root}" -f "${tar_path}" "governator-${version}/_governator"
 }
 
+# build_upstream_commit_tarball
+# Purpose: Package a commit-layout upstream directory into a tarball for update tests.
+# Args:
+#   $1: Upstream root path (string).
+#   $2: Output tarball path (string).
+#   $3: Commit SHA (string).
+# Output: Writes a tarball to disk.
+# Returns: 0 on success.
+build_upstream_commit_tarball() {
+  local upstream_root="$1"
+  local tar_path="$2"
+  local commit_sha="$3"
+  tar -cz -C "${upstream_root}" -f "${tar_path}" "governator-${commit_sha}/_governator"
+}
+
 # stub_curl_for_release
 # Purpose: Stub curl to simulate GitHub release API, checksum, and tarball downloads.
 # Args:
 #   $1: Tarball path (string).
 #   $2: Release tag (string, e.g., "v1.0.0").
 #   $3: Checksum override (optional, for testing verification failure).
+#   $4: Commit SHA to return from commit API (optional).
+#   $5: Compare status to return (optional).
 # Output: Writes a curl stub into BIN_DIR that handles different URLs.
 # Returns: 0 on success.
 stub_curl_for_release() {
   local tar_path="$1"
   local tag="${2:-v1.0.0}"
   local checksum_override="${3:-}"
+  local commit_sha="${4:-deadbeefdeadbeefdeadbeefdeadbeefdeadbeef}"
+  local compare_status="${5:-ahead}"
 
   local actual_checksum
   actual_checksum="$(file_sha256 "${tar_path}")"
@@ -286,6 +320,12 @@ done
 if [[ "\${url}" == *"/releases/latest"* ]]; then
   # GitHub API: return release info JSON
   printf '{"tag_name": "${tag}"}\n'
+elif [[ "\${url}" == *"/commits/"* ]]; then
+  # GitHub API: resolve ref to commit SHA
+  printf '{"sha": "${commit_sha}"}\n'
+elif [[ "\${url}" == *"/compare/"* ]]; then
+  # GitHub API: compare commits
+  printf '{"status": "${compare_status}"}\n'
 elif [[ "\${url}" == *"/checksums.sha256"* ]]; then
   # Checksum file download
   printf '%s  governator-${tag}.tar.gz\n' "${checksum_to_serve}"
