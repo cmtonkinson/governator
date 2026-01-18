@@ -140,7 +140,11 @@ elif [[ "\${current_branch}" != "\${expected_branch}" ]]; then
 elif ! git -C "${worktree_dir}" show-ref --verify --quiet "refs/heads/\${expected_branch}"; then
   status="fail"
   reason="Expected local branch is missing."
-elif [[ -n "\$(git -C "${worktree_dir}" status --porcelain --untracked-files=normal -- . ":(exclude).governator-worker-env.sh" 2>/dev/null)" ]]; then
+elif [[ -n "\$(git -C "${worktree_dir}" status --porcelain --untracked-files=normal -- . \\
+  ":(exclude).governator-worker-env.sh" \\
+  ":(exclude).governator/" \\
+  ":(exclude).git-local" \\
+  2>/dev/null)" ]]; then
   status="fail"
   reason="Worktree has uncommitted changes."
 elif [[ "\$(git -C "${worktree_dir}" rev-list --count "${default_branch}..\${expected_branch}" 2>/dev/null || echo 0)" -eq 0 ]]; then

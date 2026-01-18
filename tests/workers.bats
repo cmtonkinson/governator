@@ -73,6 +73,51 @@ load ./helpers.bash
   [[ "${output}" == *"uncommitted changes"* ]]
 }
 
+@test "worker self-check ignores governator logs and git-local" {
+  task_name="020-self-check-ignored-ruby"
+  worker="ruby"
+  write_task "task-assigned" "${task_name}"
+  commit_all "Prepare self-check ignore worktree"
+
+  worktree_dir="$(worktree_dir_for "${task_name}" "${worker}")"
+  git -C "${REPO_DIR}" worktree add -b "worker/${worker}/${task_name}" "${worktree_dir}" "main" >/dev/null 2>&1
+  git -C "${worktree_dir}" config user.email "test@example.com"
+  git -C "${worktree_dir}" config user.name "Test User"
+
+  printf '%s\n' "committed" > "${worktree_dir}/committed.txt"
+  git -C "${worktree_dir}" add "committed.txt"
+  git -C "${worktree_dir}" commit -m "Commit ${task_name}" >/dev/null
+
+  mkdir -p "${worktree_dir}/.governator"
+  printf '%s\n' "audit" > "${worktree_dir}/.governator/audit.log"
+  printf '%s\n' "proc" > "${worktree_dir}/.governator/worker-processes.log"
+  mkdir -p "${worktree_dir}/.git-local"
+
+  wrapper="$(bash -c "
+    set -euo pipefail
+    ROOT_DIR=\"${REPO_DIR}\"
+    STATE_DIR=\"${REPO_DIR}/_governator\"
+    DB_DIR=\"${REPO_DIR}/.governator\"
+    CONFIG_FILE=\"\${DB_DIR}/config.json\"
+    GOV_QUIET=1
+    GOV_VERBOSE=0
+    source \"\${STATE_DIR}/lib/utils.sh\"
+    source \"\${STATE_DIR}/lib/logging.sh\"
+    source \"\${STATE_DIR}/lib/config.sh\"
+    source \"\${STATE_DIR}/lib/workers.sh\"
+    write_worker_env_wrapper \"${worktree_dir}\" \"worker/${worker}/${task_name}\"
+  ")"
+
+  run bash "${wrapper}" true
+  [ "$status" -eq 0 ]
+
+  report_path="${worktree_dir}/.governator/self-check.json"
+  [ -f "${report_path}" ]
+  run jq -r '.status' "${report_path}"
+  [ "$status" -eq 0 ]
+  [ "${output}" = "ok" ]
+}
+
 @test "check-zombies blocks when self-check fails" {
   task_name="021-self-check-block-ruby"
   write_task "task-assigned" "${task_name}"
