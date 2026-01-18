@@ -396,6 +396,16 @@ process_worker_branch() {
     return 0
   fi
 
+  local main_task_file=""
+  local main_task_dir=""
+  if main_task_file="$(task_file_for_name "${task_name}")"; then
+    main_task_dir="$(basename "$(dirname "${main_task_file}")")"
+  fi
+  if [[ "${worker_name}" != "reviewer" && "${main_task_dir}" == "task-blocked" ]]; then
+    handle_non_reviewer_branch_state "${task_name}" "${worker_name}" "task-blocked" "${branch}" "${main_task_file}"
+    return 0
+  fi
+
   if in_flight_has_task_worker "${task_name}" "${worker_name}" && ! worktree_has_completed "${task_name}" "${worker_name}"; then
     log_verbose "Worker branch ${branch} not completed; skipping."
     return 0
