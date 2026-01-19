@@ -187,10 +187,14 @@ There is no conversational back-and-forth.
 `_governator/` directory is the heart of the system. It contains the source
 code, prompts, templates, and full task "database."
 
-`.governator/` directory is the system configuration/state "database."
-Customizable configuration and internal state are stored here.
+`_governator/_durable_state/` directory stores durable configuration that should
+be tracked in git (like `config.json` and `migrations.json`).
 
-Think `_governator` for shared state and `.governator` for runtime/local state.
+`_governator/_local_state/` directory is the runtime/local state "database" for
+logs, worktrees, and in-flight queues.
+
+Think `_governator` for shared state, `_durable_state` for tracked config, and
+`_local_state` for runtime/local state.
 
 ### Key Concepts
 - **Worker Contract** defines global, non-negotiable execution rules for all
@@ -213,7 +217,7 @@ does not match a role file in `_governator/roles/`, the task will be
 assigned to the default `generalist` role.
 
 The `templates/task.md` file is the stub for new tasks. `next_task_id`
-in `.governator/config.json` controls the auto-increment id.
+in `_governator/_durable_state/config.json` controls the auto-increment id.
 
 There are some specialized task templates that are pre-programmed into the
 system, mostly for initial bootstrapping and goal testing. Whenever those are
@@ -223,7 +227,7 @@ just to distinguish them from anything unique to your project.
 ## Concurrency Controls
 Governator limits concurrent work using a global cap (`worker_caps.global`) and
 optional per-role caps. In-flight assignments are tracked in
-`.governator/in-flight.log` (one line per task). The planner also has basic
+`_governator/_local_state/in-flight.log` (one line per task). The planner also has basic
 understanding of task dependency, and Governator will respect a simplistic DAG
 constraint for planning tasks.
 
@@ -231,7 +235,7 @@ constraint for planning tasks.
 it could be because of a milestone or task constraint.)
 
 ## Audit Log
-Governator writes fine-grained lifecycle events to `.governator/audit.log`:
+Governator writes fine-grained lifecycle events to `_governator/_local_state/audit.log`:
 
 ```
 2026-01-01T14:22Z 003-migrate-auth-sso-ruby -> assigned to ruby
@@ -346,7 +350,7 @@ automatically download the latest version and:
   version. If you have, you are prompted with a choice to keep your changes or
   accept the newer version.
 - run any unapplied bash migrations in `_governator/migrations`, recording
-  applied entries in the tracked `.governator/migrations.json`.
+  applied entries in the tracked `_governator/_durable_state/migrations.json`.
 
 You can pin updates to a specific tag or commit ref:
 - `governator.sh update --ref v1.2.3` (release tag)

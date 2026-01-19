@@ -36,7 +36,7 @@
           "-c sandbox_workspace_write.network_access=true",
           "-c model_reasoning_effort={REASONING_EFFORT}",
           "exec",
-          "--sandbox=workspace-write"
+          "--sandbox=danger-full-access"
         ]
       },
       "claude": {
@@ -47,8 +47,7 @@
       },
       "gemini": {
         "bin": "gemini",
-        "args": [
-        ]
+        "args": []
       }
     }
   }

@@ -140,17 +140,10 @@ log_task_warn() {
 }
 
 # commit_audit_log_if_dirty
-# Purpose: Commit and push the audit log if it has uncommitted changes.
+# Purpose: No-op (audit log is local state and not committed).
 # Args: None.
 # Output: None.
 # Returns: 0 on completion.
 commit_audit_log_if_dirty() {
-  if [[ ! -f "${AUDIT_LOG}" ]]; then
-    return 0
-  fi
-  if [[ -n "$(git -C "${ROOT_DIR}" status --porcelain -- "${AUDIT_LOG}")" ]]; then
-    git -C "${ROOT_DIR}" add "${AUDIT_LOG}"
-    git -C "${ROOT_DIR}" commit -q -m "[governator] Update audit log"
-    git_push_default_branch
-  fi
+  return 0
 }

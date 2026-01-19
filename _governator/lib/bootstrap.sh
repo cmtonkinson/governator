@@ -112,7 +112,7 @@ ensure_bootstrap_task_exists() {
   local dest="${STATE_DIR}/task-backlog/${BOOTSTRAP_TASK_NAME}.md"
   cp "${template}" "${dest}"
   log_task_event "${BOOTSTRAP_TASK_NAME}" "created bootstrap task"
-  git -C "${ROOT_DIR}" add "${dest}" "${AUDIT_LOG}"
+  git -C "${ROOT_DIR}" add "${dest}"
   git -C "${ROOT_DIR}" commit -q -m "[governator] Create architecture bootstrap task"
   git_push_default_branch
 }
@@ -179,7 +179,7 @@ create_completion_check_task() {
 
   write_completion_check_last_run "$(date +%s)"
 
-  git -C "${ROOT_DIR}" add "${dest}" "${AUDIT_LOG}" "${CONFIG_FILE}"
+  git -C "${ROOT_DIR}" add "${dest}" "${CONFIG_FILE}"
   git -C "${ROOT_DIR}" commit -q -m "[governator] Create completion check task"
   git_push_default_branch
 }

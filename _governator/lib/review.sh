@@ -148,7 +148,7 @@ apply_review_decision() {
     rm -f "${ROOT_DIR}/review.json"
   fi
 
-  git -C "${ROOT_DIR}" add "${STATE_DIR}" "${AUDIT_LOG}"
+  git -C "${ROOT_DIR}" add "${STATE_DIR}"
   git -C "${ROOT_DIR}" add "${CONFIG_FILE}"
   if git -C "${ROOT_DIR}" ls-files --error-unmatch "review.json" > /dev/null 2>&1; then
     git -C "${ROOT_DIR}" add -u "review.json"

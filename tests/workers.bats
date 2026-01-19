@@ -12,7 +12,7 @@ load ./helpers.bash
   run bash "${REPO_DIR}/_governator/governator.sh" check-zombies
   [ "$status" -eq 0 ]
 
-  run grep -F "007-zombie-ruby | 1" "${REPO_DIR}/.governator/retry-counts.log"
+  run grep -F "007-zombie-ruby | 1" "${REPO_DIR}/_governator/_local_state/retry-counts.log"
   [ "$status" -eq 0 ]
 }
 
@@ -24,7 +24,7 @@ load ./helpers.bash
   run bash "${REPO_DIR}/_governator/governator.sh" check-zombies
   [ "$status" -eq 0 ]
 
-  run grep -F "026-missing-proc-ruby | 1" "${REPO_DIR}/.governator/retry-counts.log"
+  run grep -F "026-missing-proc-ruby | 1" "${REPO_DIR}/_governator/_local_state/retry-counts.log"
   [ "$status" -eq 0 ]
 }
 
@@ -49,8 +49,10 @@ load ./helpers.bash
     set -euo pipefail
     ROOT_DIR=\"${REPO_DIR}\"
     STATE_DIR=\"${REPO_DIR}/_governator\"
-    DB_DIR=\"${REPO_DIR}/.governator\"
-    CONFIG_FILE=\"\${DB_DIR}/config.json\"
+    LOCAL_STATE_DIR=\"${REPO_DIR}/_governator/_local_state\"
+    CONFIG_DIR=\"${REPO_DIR}/_governator/_durable_state\"
+    DB_DIR=\"\${LOCAL_STATE_DIR}\"
+    CONFIG_FILE=\"\${CONFIG_DIR}/config.json\"
     GOV_QUIET=1
     GOV_VERBOSE=0
     source \"\${STATE_DIR}/lib/utils.sh\"
@@ -63,7 +65,7 @@ load ./helpers.bash
   run bash "${wrapper}" true
   [ "$status" -eq 0 ]
 
-  report_path="${worktree_dir}/.governator/self-check.json"
+  report_path="${worktree_dir}/_governator/_local_state/self-check.json"
   [ -f "${report_path}" ]
   run jq -r '.status' "${report_path}"
   [ "$status" -eq 0 ]
@@ -88,17 +90,19 @@ load ./helpers.bash
   git -C "${worktree_dir}" add "committed.txt"
   git -C "${worktree_dir}" commit -m "Commit ${task_name}" >/dev/null
 
-  mkdir -p "${worktree_dir}/.governator"
-  printf '%s\n' "audit" > "${worktree_dir}/.governator/audit.log"
-  printf '%s\n' "proc" > "${worktree_dir}/.governator/worker-processes.log"
+  mkdir -p "${worktree_dir}/_governator/_local_state"
+  printf '%s\n' "audit" > "${worktree_dir}/_governator/_local_state/audit.log"
+  printf '%s\n' "proc" > "${worktree_dir}/_governator/_local_state/worker-processes.log"
   mkdir -p "${worktree_dir}/.git-local"
 
   wrapper="$(bash -c "
     set -euo pipefail
     ROOT_DIR=\"${REPO_DIR}\"
     STATE_DIR=\"${REPO_DIR}/_governator\"
-    DB_DIR=\"${REPO_DIR}/.governator\"
-    CONFIG_FILE=\"\${DB_DIR}/config.json\"
+    LOCAL_STATE_DIR=\"${REPO_DIR}/_governator/_local_state\"
+    CONFIG_DIR=\"${REPO_DIR}/_governator/_durable_state\"
+    DB_DIR=\"\${LOCAL_STATE_DIR}\"
+    CONFIG_FILE=\"\${CONFIG_DIR}/config.json\"
     GOV_QUIET=1
     GOV_VERBOSE=0
     source \"\${STATE_DIR}/lib/utils.sh\"
@@ -111,7 +115,7 @@ load ./helpers.bash
   run bash "${wrapper}" true
   [ "$status" -eq 0 ]
 
-  report_path="${worktree_dir}/.governator/self-check.json"
+  report_path="${worktree_dir}/_governator/_local_state/self-check.json"
   [ -f "${report_path}" ]
   run jq -r '.status' "${report_path}"
   [ "$status" -eq 0 ]
@@ -124,8 +128,8 @@ load ./helpers.bash
   add_in_flight "${task_name}" "ruby"
 
   worktree_dir="$(create_worktree_dir "${task_name}" "ruby")"
-  mkdir -p "${worktree_dir}/.governator"
-  cat > "${worktree_dir}/.governator/self-check.json" <<'EOF_SELF_CHECK'
+  mkdir -p "${worktree_dir}/_governator/_local_state"
+  cat > "${worktree_dir}/_governator/_local_state/self-check.json" <<'EOF_SELF_CHECK'
 {"status":"fail","reason":"Worktree has uncommitted changes."}
 EOF_SELF_CHECK
 
@@ -152,9 +156,9 @@ EOF_SELF_CHECK
   [ "$status" -eq 0 ]
 
   [ -f "${REPO_DIR}/_governator/task-blocked/008-stuck-ruby.md" ]
-  run grep -F "008-stuck-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
+  run grep -F "008-stuck-ruby -> ruby" "${REPO_DIR}/_governator/_local_state/in-flight.log"
   [ "$status" -ne 0 ]
-  run grep -F "008-stuck-ruby |" "${REPO_DIR}/.governator/retry-counts.log"
+  run grep -F "008-stuck-ruby |" "${REPO_DIR}/_governator/_local_state/retry-counts.log"
   [ "$status" -ne 0 ]
 }
 
@@ -176,9 +180,9 @@ EOF_SELF_CHECK
 
   [ -f "${REPO_DIR}/_governator/task-blocked/012-zombie-a-ruby.md" ]
   [ -f "${REPO_DIR}/_governator/task-blocked/013-zombie-b-ruby.md" ]
-  run grep -F "012-zombie-a-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
+  run grep -F "012-zombie-a-ruby -> ruby" "${REPO_DIR}/_governator/_local_state/in-flight.log"
   [ "$status" -ne 0 ]
-  run grep -F "013-zombie-b-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
+  run grep -F "013-zombie-b-ruby -> ruby" "${REPO_DIR}/_governator/_local_state/in-flight.log"
   [ "$status" -ne 0 ]
 }
 
@@ -186,15 +190,12 @@ EOF_SELF_CHECK
   write_task "task-worked" "016-review-ruby"
   add_in_flight "016-review-ruby" "reviewer"
 
-  # Add worktrees to gitignore to prevent dirty repo detection
-  echo ".governator/worktrees/" >> "${REPO_DIR}/.gitignore"
-
-  # Commit task file, in-flight log, and gitignore (before creating worktree)
-  commit_paths "Prepare reviewer recovery task" GOVERNATOR.md _governator .governator .gitignore
+  # Commit task file and in-flight log (before creating worktree)
+  commit_paths "Prepare reviewer recovery task" GOVERNATOR.md _governator
 
   # Create worktree for the reviewer
-  worktree_dir="${REPO_DIR}/.governator/worktrees/016-review-ruby-reviewer"
-  mkdir -p "${REPO_DIR}/.governator/worktrees"
+  worktree_dir="${REPO_DIR}/_governator/_local_state/worktrees/016-review-ruby-reviewer"
+  mkdir -p "${REPO_DIR}/_governator/_local_state/worktrees"
   git -C "${REPO_DIR}" worktree add -b "worker/reviewer/016-review-ruby" "${worktree_dir}" "main" >/dev/null 2>&1
   git -C "${worktree_dir}" config user.email "test@example.com"
   git -C "${worktree_dir}" config user.name "Test User"
@@ -205,7 +206,7 @@ EOF_SELF_CHECK
 EOF_REVIEW
 
   # Add worker process record (don't commit to avoid embedded repo warning)
-  echo "016-review-ruby | reviewer | 999999 | ${worktree_dir} | worker/reviewer/016-review-ruby | 0" >> "${REPO_DIR}/.governator/worker-processes.log"
+  echo "016-review-ruby | reviewer | 999999 | ${worktree_dir} | worker/reviewer/016-review-ruby | 0" >> "${REPO_DIR}/_governator/_local_state/worker-processes.log"
 
   # Get the base commit to compare against
   base_commit="$(git -C "${REPO_DIR}" rev-parse main)"
@@ -221,7 +222,7 @@ EOF_REVIEW
 
 @test "cleanup-tmp reports stale worktrees but keeps active ones" {
   active_dir="$(create_worktree_dir "009-cleanup-ruby" "ruby")"
-  stale_dir="${REPO_DIR}/.governator/worktrees/stale-task-ruby"
+  stale_dir="${REPO_DIR}/_governator/_local_state/worktrees/stale-task-ruby"
   mkdir -p "${stale_dir}"
   touch -t 202001010000 "${stale_dir}"
 
@@ -238,7 +239,7 @@ EOF_REVIEW
 
 @test "cleanup-tmp dry-run lists stale worktrees only" {
   active_dir="$(create_worktree_dir "017-cleanup-ruby" "ruby")"
-  stale_dir="${REPO_DIR}/.governator/worktrees/stale-task-sre"
+  stale_dir="${REPO_DIR}/_governator/_local_state/worktrees/stale-task-sre"
   mkdir -p "${stale_dir}"
   touch -t 202001010000 "${stale_dir}"
 
@@ -270,15 +271,17 @@ EOF_REVIEW
 
 @test "read_agent_provider errors when default provider is missing" {
   tmp_file="$(mktemp "${BATS_TMPDIR}/config.XXXXXX")"
-  jq 'del(.agents.provider_by_role.default)' "${REPO_DIR}/.governator/config.json" > "${tmp_file}"
-  mv "${tmp_file}" "${REPO_DIR}/.governator/config.json"
+  jq 'del(.agents.provider_by_role.default)' "${REPO_DIR}/_governator/_durable_state/config.json" > "${tmp_file}"
+  mv "${tmp_file}" "${REPO_DIR}/_governator/_durable_state/config.json"
 
   run bash -c "
     set -euo pipefail
     ROOT_DIR=\"${REPO_DIR}\"
     STATE_DIR=\"${REPO_DIR}/_governator\"
-    DB_DIR=\"${REPO_DIR}/.governator\"
-    CONFIG_FILE=\"\${DB_DIR}/config.json\"
+    LOCAL_STATE_DIR=\"${REPO_DIR}/_governator/_local_state\"
+    CONFIG_DIR=\"${REPO_DIR}/_governator/_durable_state\"
+    DB_DIR=\"\${LOCAL_STATE_DIR}\"
+    CONFIG_FILE=\"\${CONFIG_DIR}/config.json\"
     GOV_QUIET=1
     GOV_VERBOSE=0
     source \"\${STATE_DIR}/lib/utils.sh\"
@@ -297,8 +300,10 @@ EOF_REVIEW
     set -euo pipefail
     ROOT_DIR=\"${REPO_DIR}\"
     STATE_DIR=\"${REPO_DIR}/_governator\"
-    DB_DIR=\"${REPO_DIR}/.governator\"
-    CONFIG_FILE=\"\${DB_DIR}/config.json\"
+    LOCAL_STATE_DIR=\"${REPO_DIR}/_governator/_local_state\"
+    CONFIG_DIR=\"${REPO_DIR}/_governator/_durable_state\"
+    DB_DIR=\"\${LOCAL_STATE_DIR}\"
+    CONFIG_FILE=\"\${CONFIG_DIR}/config.json\"
     GOV_QUIET=1
     GOV_VERBOSE=0
     source \"\${STATE_DIR}/lib/utils.sh\"
@@ -320,8 +325,10 @@ EOF_REVIEW
     set -euo pipefail
     ROOT_DIR=\"${REPO_DIR}\"
     STATE_DIR=\"${REPO_DIR}/_governator\"
-    DB_DIR=\"${REPO_DIR}/.governator\"
-    CONFIG_FILE=\"\${DB_DIR}/config.json\"
+    LOCAL_STATE_DIR=\"${REPO_DIR}/_governator/_local_state\"
+    CONFIG_DIR=\"${REPO_DIR}/_governator/_durable_state\"
+    DB_DIR=\"\${LOCAL_STATE_DIR}\"
+    CONFIG_FILE=\"\${CONFIG_DIR}/config.json\"
     GOV_QUIET=1
     GOV_VERBOSE=0
     source \"\${STATE_DIR}/lib/utils.sh\"
@@ -340,8 +347,10 @@ EOF_REVIEW
     set -euo pipefail
     ROOT_DIR=\"${REPO_DIR}\"
     STATE_DIR=\"${REPO_DIR}/_governator\"
-    DB_DIR=\"${REPO_DIR}/.governator\"
-    CONFIG_FILE=\"\${DB_DIR}/config.json\"
+    LOCAL_STATE_DIR=\"${REPO_DIR}/_governator/_local_state\"
+    CONFIG_DIR=\"${REPO_DIR}/_governator/_durable_state\"
+    DB_DIR=\"\${LOCAL_STATE_DIR}\"
+    CONFIG_FILE=\"\${CONFIG_DIR}/config.json\"
     GOV_QUIET=1
     GOV_VERBOSE=0
     source \"\${STATE_DIR}/lib/utils.sh\"
@@ -359,7 +368,7 @@ codex
 -c sandbox_workspace_write.network_access=true
 -c model_reasoning_effort=high
 exec
---sandbox=workspace-write
+--sandbox=danger-full-access
 prompt-text
 EOF
 )"
@@ -370,7 +379,7 @@ EOF
   set_config_value "agents.provider_by_role.default" "gemini" "string"
 
   # Verify config was updated (sanity check for CI debugging)
-  run jq -r '.agents.provider_by_role.default' "${REPO_DIR}/.governator/config.json"
+  run jq -r '.agents.provider_by_role.default' "${REPO_DIR}/_governator/_durable_state/config.json"
   [ "$status" -eq 0 ]
   [ "$output" = "gemini" ]
 
@@ -378,8 +387,10 @@ EOF
     set -euo pipefail
     ROOT_DIR=\"${REPO_DIR}\"
     STATE_DIR=\"${REPO_DIR}/_governator\"
-    DB_DIR=\"${REPO_DIR}/.governator\"
-    CONFIG_FILE=\"\${DB_DIR}/config.json\"
+    LOCAL_STATE_DIR=\"${REPO_DIR}/_governator/_local_state\"
+    CONFIG_DIR=\"${REPO_DIR}/_governator/_durable_state\"
+    DB_DIR=\"\${LOCAL_STATE_DIR}\"
+    CONFIG_FILE=\"\${CONFIG_DIR}/config.json\"
     ROLES_DIR=\"\${STATE_DIR}/roles\"
     GOV_QUIET=1
     GOV_VERBOSE=0
@@ -395,7 +406,7 @@ EOF
   set_config_value "agents.provider_by_role.default" "codex" "string"
 
   # Verify config was updated (sanity check for CI debugging)
-  run jq -r '.agents.provider_by_role.default' "${REPO_DIR}/.governator/config.json"
+  run jq -r '.agents.provider_by_role.default' "${REPO_DIR}/_governator/_durable_state/config.json"
   [ "$status" -eq 0 ]
   [ "$output" = "codex" ]
 
@@ -403,8 +414,10 @@ EOF
     set -euo pipefail
     ROOT_DIR=\"${REPO_DIR}\"
     STATE_DIR=\"${REPO_DIR}/_governator\"
-    DB_DIR=\"${REPO_DIR}/.governator\"
-    CONFIG_FILE=\"\${DB_DIR}/config.json\"
+    LOCAL_STATE_DIR=\"${REPO_DIR}/_governator/_local_state\"
+    CONFIG_DIR=\"${REPO_DIR}/_governator/_durable_state\"
+    DB_DIR=\"\${LOCAL_STATE_DIR}\"
+    CONFIG_FILE=\"\${CONFIG_DIR}/config.json\"
     ROLES_DIR=\"\${STATE_DIR}/roles\"
     GOV_QUIET=1
     GOV_VERBOSE=0

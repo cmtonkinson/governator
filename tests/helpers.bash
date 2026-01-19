@@ -57,7 +57,7 @@ file_sha256() {
 # Returns: 0 on success; propagates git errors.
 commit_all() {
   local message="$1"
-  repo_git add GOVERNATOR.md _governator .governator
+  repo_git add -f GOVERNATOR.md _governator _governator/_durable_state
   repo_git commit -m "${message}" >/dev/null
   repo_git push origin main >/dev/null
 }
@@ -72,7 +72,7 @@ commit_all() {
 commit_paths() {
   local message="$1"
   shift
-  repo_git add "$@"
+  repo_git add -f "$@"
   repo_git commit -m "${message}" >/dev/null
   repo_git push origin main >/dev/null
 }
@@ -159,7 +159,7 @@ create_worker_branch() {
 add_in_flight() {
   local task_name="$1"
   local worker="$2"
-  printf '%s -> %s\n' "${task_name}" "${worker}" >> "${REPO_DIR}/.governator/in-flight.log"
+  printf '%s -> %s\n' "${task_name}" "${worker}" >> "${REPO_DIR}/_governator/_local_state/in-flight.log"
 }
 
 # add_retry_count
@@ -170,7 +170,7 @@ add_in_flight() {
 add_retry_count() {
   local task_name="$1"
   local count="$2"
-  printf '%s | %s\n' "${task_name}" "${count}" >> "${REPO_DIR}/.governator/retry-counts.log"
+  printf '%s | %s\n' "${task_name}" "${count}" >> "${REPO_DIR}/_governator/_local_state/retry-counts.log"
 }
 
 # worktree_dir_for
@@ -182,7 +182,7 @@ add_retry_count() {
 worktree_dir_for() {
   local task_name="$1"
   local worker="$2"
-  printf '%s/.governator/worktrees/%s-%s' "${REPO_DIR}" "${task_name}" "${worker}"
+  printf '%s/_governator/_local_state/worktrees/%s-%s' "${REPO_DIR}" "${task_name}" "${worker}"
 }
 
 # create_worktree_dir
@@ -217,7 +217,7 @@ add_worker_process() {
   local branch="worker/${worker}/${task_name}"
   printf '%s | %s | %s | %s | %s | %s\n' \
     "${task_name}" "${worker}" "${pid}" "${worktree_dir}" "${branch}" "${started_at}" \
-    >> "${REPO_DIR}/.governator/worker-processes.log"
+    >> "${REPO_DIR}/_governator/_local_state/worker-processes.log"
 }
 
 # create_upstream_dir
@@ -352,7 +352,7 @@ EOF_CURL
 # Returns: 0 on success.
 set_next_task_id() {
   set_config_value "next_task_id" "$1" "number"
-  commit_paths "Set task id" ".governator/config.json"
+  commit_paths "Set task id" "_governator/_durable_state/config.json"
 }
 
 # set_config_value
@@ -385,12 +385,12 @@ set_config_value() {
 
   if ! jq -S --arg path "${key_path}" "${jq_args[@]}" \
     "setpath(\$path | split(\".\"); ${jq_value_expr})" \
-    "${REPO_DIR}/.governator/config.json" > "${tmp_file}"; then
+    "${REPO_DIR}/_governator/_durable_state/config.json" > "${tmp_file}"; then
     echo "set_config_value: jq failed for path '${key_path}'" >&2
     rm -f "${tmp_file}"
     return 1
   fi
-  mv "${tmp_file}" "${REPO_DIR}/.governator/config.json"
+  mv "${tmp_file}" "${REPO_DIR}/_governator/_durable_state/config.json"
 }
 
 # set_config_map_value
@@ -425,12 +425,12 @@ set_config_map_value() {
 
   if ! jq -S --arg map "${map_key}" --arg entry "${entry_key}" "${jq_args[@]}" \
     "setpath([\$map, \$entry]; ${jq_value_expr})" \
-    "${REPO_DIR}/.governator/config.json" > "${tmp_file}"; then
+    "${REPO_DIR}/_governator/_durable_state/config.json" > "${tmp_file}"; then
     echo "set_config_map_value: jq failed for map '${map_key}' entry '${entry_key}'" >&2
     rm -f "${tmp_file}"
     return 1
   fi
-  mv "${tmp_file}" "${REPO_DIR}/.governator/config.json"
+  mv "${tmp_file}" "${REPO_DIR}/_governator/_durable_state/config.json"
 }
 
 # setup
@@ -444,14 +444,14 @@ setup() {
   BIN_DIR="$(mktemp -d "${BATS_TMPDIR}/bin.XXXXXX")"
 
   cp -R "${BATS_TEST_DIRNAME}/../_governator" "${REPO_DIR}/_governator"
-  cp -R "${BATS_TEST_DIRNAME}/../.governator" "${REPO_DIR}/.governator"
+  cp -R "${BATS_TEST_DIRNAME}/../_governator/_local_state" "${REPO_DIR}/_governator/_local_state"
   cp "${BATS_TEST_DIRNAME}/../GOVERNATOR.md" "${REPO_DIR}/GOVERNATOR.md"
-  cp "${REPO_DIR}/_governator/templates/config.json" "${REPO_DIR}/.governator/config.json"
+  cp "${REPO_DIR}/_governator/templates/config.json" "${REPO_DIR}/_governator/_durable_state/config.json"
 
   repo_git init -b main >/dev/null
   repo_git config user.email "test@example.com"
   repo_git config user.name "Test User"
-  repo_git add GOVERNATOR.md _governator .governator
+  repo_git add -f GOVERNATOR.md _governator _governator/_durable_state
   repo_git commit -m "Init" >/dev/null
 
   git init --bare "${ORIGIN_DIR}" >/dev/null
@@ -460,11 +460,11 @@ setup() {
   repo_git push -u origin main >/dev/null
 
   set_config_value "project_mode" "new"
-  commit_paths "Set project mode" ".governator/config.json"
+  commit_paths "Set project mode" "_governator/_durable_state/config.json"
   local gov_sha
   gov_sha="$(file_sha256 "${REPO_DIR}/GOVERNATOR.md")"
   set_config_value "planning.gov_hash" "${gov_sha}"
-  commit_paths "Set planning hash" ".governator/config.json"
+  commit_paths "Set planning hash" "_governator/_durable_state/config.json"
 
   cat > "${BIN_DIR}/codex" <<'EOF_CODEX'
 #!/usr/bin/env bash

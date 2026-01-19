@@ -34,7 +34,7 @@ Before exiting, you must, in order:
 - Push this branch exactly once, as your final action.
 
 You MAY `fetch` from `origin` and `rebase` onto the default branch configured
-in `.governator/config.json` before you push.
+in `_governator/_durable_state/config.json` before you push.
 
 Do NOT make or commit any changes to or within the following locations:
 - _governator/custom-prompts/

@@ -43,7 +43,7 @@ load ./helpers.bash
   run bash "${REPO_DIR}/_governator/governator.sh" allocate-task-id
   [ "$status" -eq 0 ]
   [ "${output}" = "7" ]
-  commit_paths "Bump task id" ".governator/config.json"
+  commit_paths "Bump task id" "_governator/_durable_state/config.json"
   run bash "${REPO_DIR}/_governator/governator.sh" allocate-task-id
   [ "$status" -eq 0 ]
   [ "${output}" = "8" ]
@@ -75,7 +75,7 @@ load ./helpers.bash
   run grep -F "Aborted by operator" "${REPO_DIR}/_governator/task-blocked/019-abort-ruby.md"
   [ "$status" -eq 0 ]
 
-  run grep -F "019-abort-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
+  run grep -F "019-abort-ruby -> ruby" "${REPO_DIR}/_governator/_local_state/in-flight.log"
   [ "$status" -ne 0 ]
 
   run repo_git show-ref --verify "refs/heads/worker/ruby/019-abort-ruby"
@@ -150,9 +150,9 @@ EOF_TASK
   run grep -F "Governator Block" "${REPO_DIR}/_governator/task-backlog/031-restart-ruby.md"
   [ "$status" -ne 0 ]
 
-  run grep -F "030-restart-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
+  run grep -F "030-restart-ruby -> ruby" "${REPO_DIR}/_governator/_local_state/in-flight.log"
   [ "$status" -ne 0 ]
-  run grep -F "030-restart-ruby | ruby" "${REPO_DIR}/.governator/worker-processes.log"
+  run grep -F "030-restart-ruby | ruby" "${REPO_DIR}/_governator/_local_state/worker-processes.log"
   [ "$status" -ne 0 ]
 
   [ ! -f "${ORIGIN_DIR}/refs/heads/worker/ruby/030-restart-ruby" ]
@@ -183,9 +183,9 @@ EOF_TASK
   run grep -F "Assignment" "${REPO_DIR}/_governator/task-assigned/032-restart-ruby.md"
   [ "$status" -eq 0 ]
 
-  run grep -F "032-restart-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
+  run grep -F "032-restart-ruby -> ruby" "${REPO_DIR}/_governator/_local_state/in-flight.log"
   [ "$status" -eq 0 ]
-  run grep -F "032-restart-ruby | ruby" "${REPO_DIR}/.governator/worker-processes.log"
+  run grep -F "032-restart-ruby | ruby" "${REPO_DIR}/_governator/_local_state/worker-processes.log"
   [ "$status" -eq 0 ]
 }
 
@@ -199,9 +199,9 @@ EOF_TASK
     set -euo pipefail
     ROOT_DIR=\"${REPO_DIR}\"
     STATE_DIR=\"${REPO_DIR}/_governator\"
-    DB_DIR=\"${REPO_DIR}/.governator\"
-    AUDIT_LOG=\"${REPO_DIR}/.governator/audit.log\"
-    CONFIG_FILE=\"${REPO_DIR}/.governator/config.json\"
+    DB_DIR=\"${REPO_DIR}/_governator/_local_state\"
+    AUDIT_LOG=\"${REPO_DIR}/_governator/_local_state/audit.log\"
+    CONFIG_FILE=\"${REPO_DIR}/_governator/_durable_state/config.json\"
     DEFAULT_REMOTE_NAME=\"origin\"
     DEFAULT_BRANCH_NAME=\"main\"
     GOV_QUIET=1
@@ -237,9 +237,9 @@ EOF_TASK
     set -euo pipefail
     ROOT_DIR=\"${REPO_DIR}\"
     STATE_DIR=\"${REPO_DIR}/_governator\"
-    DB_DIR=\"${REPO_DIR}/.governator\"
-    AUDIT_LOG=\"${REPO_DIR}/.governator/audit.log\"
-    CONFIG_FILE=\"${REPO_DIR}/.governator/config.json\"
+    DB_DIR=\"${REPO_DIR}/_governator/_local_state\"
+    AUDIT_LOG=\"${REPO_DIR}/_governator/_local_state/audit.log\"
+    CONFIG_FILE=\"${REPO_DIR}/_governator/_durable_state/config.json\"
     DEFAULT_REMOTE_NAME=\"origin\"
     DEFAULT_BRANCH_NAME=\"main\"
     GOV_QUIET=1
@@ -266,9 +266,9 @@ EOF_TASK
     set -euo pipefail
     ROOT_DIR=\"${REPO_DIR}\"
     STATE_DIR=\"${REPO_DIR}/_governator\"
-    DB_DIR=\"${REPO_DIR}/.governator\"
-    AUDIT_LOG=\"${REPO_DIR}/.governator/audit.log\"
-    CONFIG_FILE=\"${REPO_DIR}/.governator/config.json\"
+    DB_DIR=\"${REPO_DIR}/_governator/_local_state\"
+    AUDIT_LOG=\"${REPO_DIR}/_governator/_local_state/audit.log\"
+    CONFIG_FILE=\"${REPO_DIR}/_governator/_durable_state/config.json\"
     DEFAULT_REMOTE_NAME=\"origin\"
     DEFAULT_BRANCH_NAME=\"main\"
     BOOTSTRAP_TASK_NAME=\"000-architecture-bootstrap-architect\"

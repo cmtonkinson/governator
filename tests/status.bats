@@ -14,8 +14,7 @@ load ./helpers.bash
 @test "status lists only tracked in-flight worker branches" {
   create_worker_branch "020-status-ruby" "ruby"
   create_worker_branch "021-other-ruby" "ruby"
-  printf '%s -> %s\n' "020-status-ruby" "ruby" >> "${REPO_DIR}/.governator/in-flight.log"
-  commit_paths "Add status in-flight" ".governator/in-flight.log"
+  printf '%s -> %s\n' "020-status-ruby" "ruby" >> "${REPO_DIR}/_governator/_local_state/in-flight.log"
 
   run bash "${REPO_DIR}/_governator/governator.sh" status
   local status_output="${output}"
@@ -32,9 +31,9 @@ load ./helpers.bash
 @test "status reports project done when checks are up to date" {
   done_sha="$(file_sha256 "${REPO_DIR}/GOVERNATOR.md")"
   set_config_value "planning.gov_hash" "deadbeef" "string"
-  commit_paths "Set stale planning hash" ".governator/config.json"
+  commit_paths "Set stale planning hash" "_governator/_durable_state/config.json"
   set_config_value "planning.gov_hash" "${done_sha}" "string"
-  commit_paths "Set project done" ".governator/config.json"
+  commit_paths "Set project done" "_governator/_durable_state/config.json"
 
   run bash "${REPO_DIR}/_governator/governator.sh" status
   local status_output="${output}"

@@ -7,7 +7,7 @@
 
 ## Detection Hook
 - Integrate detection in `_governator/lib/workers.sh` inside `check_zombie_workers` before `handle_zombie_failure`.
-- Inspect the worker log (for example `.governator/logs/<task>.log` or reviewer log) because CLI exit codes are not captured.
+- Inspect the worker log (for example `_governator/_local_state/logs/<task>.log` or reviewer log) because CLI exit codes are not captured.
 
 ## Classification Signals
 - `temporary_rate_limit`:
@@ -20,7 +20,7 @@
   - No match, fall back to existing retry or block logic.
 
 ## Provider State and Backoff
-- Maintain a `.governator/provider-status.json` keyed by provider.
+- Maintain a `_governator/_local_state/provider-status.json` keyed by provider.
 - On `temporary_rate_limit`, set a cooldown timestamp with exponential backoff.
 - On `hard_quota_exhausted`, mark provider as exhausted and skip new dispatches.
 - Enforce cooldown and exhaustion checks in `_governator/lib/queues.sh` before assignment.

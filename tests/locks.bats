@@ -5,7 +5,7 @@ load ./helpers.bash
 @test "lock command writes a lock file and reports active snapshot" {
   run bash "${REPO_DIR}/_governator/governator.sh" lock
   [ "$status" -eq 0 ]
-  [ -f "${REPO_DIR}/.governator/governator.locked" ]
+  [ -f "${REPO_DIR}/_governator/_local_state/governator.locked" ]
 }
 
 @test "locked state stops assign-backlog" {
@@ -28,5 +28,5 @@ load ./helpers.bash
 
   run bash "${REPO_DIR}/_governator/governator.sh" unlock
   [ "$status" -eq 0 ]
-  [ ! -f "${REPO_DIR}/.governator/governator.locked" ]
+  [ ! -f "${REPO_DIR}/_governator/_local_state/governator.locked" ]
 }

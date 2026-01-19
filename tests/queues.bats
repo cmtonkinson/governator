@@ -11,14 +11,14 @@ load ./helpers.bash
   [ "$status" -eq 0 ]
 
   [ -f "${REPO_DIR}/_governator/task-assigned/001-sample-ruby.md" ]
-  run grep -F "001-sample-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
+  run grep -F "001-sample-ruby -> ruby" "${REPO_DIR}/_governator/_local_state/in-flight.log"
   [ "$status" -eq 0 ]
 }
 
 @test "assign-backlog queues gap-analysis planner on GOVERNATOR changes" {
   complete_bootstrap
   set_config_value "planning.gov_hash" "deadbeef"
-  commit_paths "Set stale planning hash" ".governator/config.json"
+  commit_paths "Set stale planning hash" "_governator/_durable_state/config.json"
   write_task "task-backlog" "001-sample-ruby"
   commit_all "Add backlog task"
 
@@ -31,7 +31,7 @@ load ./helpers.bash
 
 @test "run skips gap-analysis planner before bootstrap completes" {
   set_config_value "planning.gov_hash" "deadbeef"
-  commit_paths "Set stale planning hash" ".governator/config.json"
+  commit_paths "Set stale planning hash" "_governator/_durable_state/config.json"
 
   run bash "${REPO_DIR}/_governator/governator.sh" run
   [ "$status" -eq 0 ]
@@ -48,7 +48,7 @@ load ./helpers.bash
   [ "$status" -eq 0 ]
 
   [ -f "${REPO_DIR}/_governator/task-assigned/002norole.md" ]
-  run grep -F "002norole -> generalist" "${REPO_DIR}/.governator/in-flight.log"
+  run grep -F "002norole -> generalist" "${REPO_DIR}/_governator/_local_state/in-flight.log"
   [ "$status" -eq 0 ]
 }
 
@@ -61,7 +61,7 @@ load ./helpers.bash
   [ "$status" -eq 0 ]
 
   [ -f "${REPO_DIR}/_governator/task-assigned/003-unknown-ghost.md" ]
-  run grep -F "003-unknown-ghost -> generalist" "${REPO_DIR}/.governator/in-flight.log"
+  run grep -F "003-unknown-ghost -> generalist" "${REPO_DIR}/_governator/_local_state/in-flight.log"
   [ "$status" -eq 0 ]
 }
 

@@ -22,7 +22,7 @@ load ./helpers.bash
 
   run grep -F "# upstream update" "${REPO_DIR}/_governator/governator.sh"
   [ "$status" -eq 0 ]
-  run grep -F "update applied: updated _governator/governator.sh" "${REPO_DIR}/.governator/audit.log"
+  run grep -F "update applied: updated _governator/governator.sh" "${REPO_DIR}/_governator/_local_state/audit.log"
   [ "$status" -eq 0 ]
 }
 
@@ -39,7 +39,7 @@ load ./helpers.bash
   run grep -F "No updates applied." <<< "${update_output}"
   [ "$status" -eq 0 ]
 
-  run jq -r '.last_update_at' "${REPO_DIR}/.governator/config.json"
+  run jq -r '.last_update_at' "${REPO_DIR}/_governator/_durable_state/config.json"
   [ "$status" -eq 0 ]
   [ "${output}" != "never" ]
   [[ "${output}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
@@ -64,7 +64,7 @@ EOF_MIGRATE
   run grep -F "migrated" "${REPO_DIR}/migration-output.txt"
   [ "$status" -eq 0 ]
   run jq -e --arg id "202501010000__sample.sh" '.applied[]? | select(.id == $id)' \
-    "${REPO_DIR}/.governator/migrations.json"
+    "${REPO_DIR}/_governator/_durable_state/migrations.json"
   [ "$status" -eq 0 ]
 }
 
@@ -99,7 +99,7 @@ EOF_MIGRATE
   [ "$status" -eq 0 ]
   run grep -F "upstream change" "${local_template}"
   [ "$status" -ne 0 ]
-  run grep -F "update applied" "${REPO_DIR}/.governator/audit.log"
+  run grep -F "update applied" "${REPO_DIR}/_governator/_local_state/audit.log"
   [ "$status" -ne 0 ]
 }
 
@@ -136,7 +136,7 @@ EOF_MIGRATE
   [ "$status" -eq 0 ]
   run grep -F "local change" "${local_template}"
   [ "$status" -ne 0 ]
-  run grep -F "update applied: updated _governator/templates/task.md" "${REPO_DIR}/.governator/audit.log"
+  run grep -F "update applied: updated _governator/templates/task.md" "${REPO_DIR}/_governator/_local_state/audit.log"
   [ "$status" -eq 0 ]
 }
 
@@ -195,7 +195,7 @@ EOF_MIGRATE
   local current_commit="ffffffffffffffffffffffffffffffffffffffff"
   local target_commit="0000000000000000000000000000000000000000"
   set_config_value "last_update_commit" "${current_commit}"
-  commit_paths "Set last update commit" ".governator/config.json"
+  commit_paths "Set last update commit" "_governator/_durable_state/config.json"
 
   upstream_root="$(create_upstream_commit_dir "${target_commit}")"
   tar_path="${BATS_TMPDIR}/upstream-downgrade.tar.gz"

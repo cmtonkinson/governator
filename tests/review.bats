@@ -15,9 +15,9 @@ EOF_REVIEW
     set -euo pipefail
     ROOT_DIR=\"${REPO_DIR}\"
     STATE_DIR=\"${REPO_DIR}/_governator\"
-    DB_DIR=\"${REPO_DIR}/.governator\"
-    AUDIT_LOG=\"${REPO_DIR}/.governator/audit.log\"
-    CONFIG_FILE=\"${REPO_DIR}/.governator/config.json\"
+    DB_DIR=\"${REPO_DIR}/_governator/_local_state\"
+    AUDIT_LOG=\"${REPO_DIR}/_governator/_local_state/audit.log\"
+    CONFIG_FILE=\"${REPO_DIR}/_governator/_durable_state/config.json\"
     DEFAULT_REMOTE_NAME=\"origin\"
     DEFAULT_BRANCH_NAME=\"main\"
     COMPLETION_CHECK_REVIEW_TASK=\"000-completion-check-reviewer\"

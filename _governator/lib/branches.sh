@@ -362,7 +362,7 @@ handle_merge_failure() {
     # Keep the default branch task state authoritative; requeue and surface the failure.
     annotate_merge_failure "${main_task_file}" "${merge_branch}"
     move_task_file "${main_task_file}" "${STATE_DIR}/task-assigned" "${task_name}" "moved to task-assigned"
-    git -C "${ROOT_DIR}" add "${STATE_DIR}" "${AUDIT_LOG}"
+    git -C "${ROOT_DIR}" add "${STATE_DIR}"
     git -C "${ROOT_DIR}" commit -q -m "[governator] Requeue task ${task_name} after merge failure"
     git_push_default_branch
   fi

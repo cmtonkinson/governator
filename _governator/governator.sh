@@ -15,12 +15,17 @@ IFS=$'\n\t'
 # shellcheck disable=SC2034
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STATE_DIR="${ROOT_DIR}/_governator"
-DB_DIR="${ROOT_DIR}/.governator"
+LOCAL_STATE_DIRNAME="_local_state"
+DURABLE_STATE_DIRNAME="_durable_state"
+LOCAL_STATE_DIR="${STATE_DIR}/${LOCAL_STATE_DIRNAME}"
+DURABLE_STATE_DIR="${STATE_DIR}/${DURABLE_STATE_DIRNAME}"
+DB_DIR="${LOCAL_STATE_DIR}"
+CONFIG_DIR="${DURABLE_STATE_DIR}"
 
-CONFIG_FILE="${DB_DIR}/config.json"
+CONFIG_FILE="${CONFIG_DIR}/config.json"
 CONFIG_TEMPLATE="${STATE_DIR}/templates/config.json"
 
-MANIFEST_FILE="${DB_DIR}/manifest.json"
+MANIFEST_FILE="${LOCAL_STATE_DIR}/manifest.json"
 
 AUDIT_LOG="${DB_DIR}/audit.log"
 WORKER_PROCESSES_LOG="${DB_DIR}/worker-processes.log"
@@ -35,8 +40,7 @@ IN_FLIGHT_LOG="${DB_DIR}/in-flight.log"
 WORKTREES_DIR="${DB_DIR}/worktrees"
 SYSTEM_LOCK_FILE="${DB_DIR}/governator.locked"
 SYSTEM_LOCK_PATH="${SYSTEM_LOCK_FILE#"${ROOT_DIR}/"}"
-GITIGNORE_PATH="${ROOT_DIR}/.gitignore"
-MIGRATIONS_STATE_FILE="${DB_DIR}/migrations.json"
+MIGRATIONS_STATE_FILE="${CONFIG_DIR}/migrations.json"
 
 GOV_QUIET=0
 GOV_VERBOSE=0
@@ -69,15 +73,6 @@ GAP_ANALYSIS_PLANNER_TEMPLATE="${TEMPLATES_DIR}/${GAP_ANALYSIS_PLANNER_TASK}.md"
 UNBLOCK_PLANNER_ROLE="planner"
 UNBLOCK_PLANNER_TASK="000-unblock-${UNBLOCK_PLANNER_ROLE}"
 UNBLOCK_PLANNER_TEMPLATE="${TEMPLATES_DIR}/000-unblock-planner.md"
-
-GITIGNORE_ENTRIES=(
-  ".governator/governator.lock"
-  ".governator/governator.locked"
-  ".governator/failed-merges.log"
-  ".governator/in-flight.log"
-  ".governator/logs/"
-  ".governator/worktrees/"
-)
 
 LIB_DIR="${STATE_DIR}/lib"
 

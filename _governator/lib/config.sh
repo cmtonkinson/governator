@@ -82,7 +82,7 @@ config_json_write_value() {
   local value="$2"
   local value_type="${3:-string}"
   local tmp_file
-  tmp_file="$(mktemp "${DB_DIR}/config.XXXXXX")"
+  tmp_file="$(mktemp "${CONFIG_DIR}/config.XXXXXX")"
   local safe_value="${value}"
   local jq_args=()
   local jq_value_expr
@@ -152,23 +152,6 @@ require_project_mode() {
   return 0
 }
 
-# ensure_gitignore_entries
-# Purpose: Ensure .gitignore contains governator-specific entries.
-# Args: None.
-# Output: Writes to .gitignore when missing entries.
-# Returns: 0 on completion.
-ensure_gitignore_entries() {
-  if [[ ! -f "${GITIGNORE_PATH}" ]]; then
-    printf '# Governator\n' > "${GITIGNORE_PATH}"
-  fi
-  local entry
-  for entry in "${GITIGNORE_ENTRIES[@]}"; do
-    if ! grep -Fqx -- "${entry}" "${GITIGNORE_PATH}" 2> /dev/null; then
-      printf '%s\n' "${entry}" >> "${GITIGNORE_PATH}"
-    fi
-  done
-}
-
 # init_governator
 # Purpose: Initialize Governator config, defaults, and manifest.
 # Args:
@@ -181,7 +164,6 @@ ensure_gitignore_entries() {
 # Returns: 0 on success; exits 1 on invalid state.
 init_governator() {
   ensure_db_dir
-  ensure_gitignore_entries
   if read_project_mode > /dev/null 2>&1; then
     log_error "Governator is already initialized. Re-run init after clearing ${CONFIG_FILE}."
     exit 1
@@ -670,10 +652,13 @@ ensure_worktrees_dir() {
 # Output: Writes default config files as needed.
 # Returns: 0 on success.
 ensure_db_dir() {
-  if [[ ! -d "${DB_DIR}" ]]; then
-    mkdir -p "${DB_DIR}"
+  if [[ ! -d "${LOCAL_STATE_DIR}" ]]; then
+    mkdir -p "${LOCAL_STATE_DIR}"
   fi
-  mkdir -p "${DB_DIR}/logs"
+  if [[ ! -d "${CONFIG_DIR}" ]]; then
+    mkdir -p "${CONFIG_DIR}"
+  fi
+  mkdir -p "${LOCAL_STATE_DIR}/logs"
   ensure_worktrees_dir
   touch "${AUDIT_LOG}"
   touch "${WORKER_PROCESSES_LOG}" "${RETRY_COUNTS_LOG}"

@@ -159,7 +159,7 @@ manifest_sha_for_path() {
 list_manifest_paths() {
   local base_dir="$1"
   find "${base_dir}" \
-    \( -path "${base_dir}/docs" -o -path "${base_dir}/task-*" \) -prune -o \
+    \( -path "${base_dir}/docs" -o -path "${base_dir}/task-*" -o -path "${base_dir}/${LOCAL_STATE_DIRNAME}" -o -path "${base_dir}/${DURABLE_STATE_DIRNAME}" \) -prune -o \
     -type f -print 2> /dev/null | sort |
     while IFS= read -r path; do
       local base
@@ -701,11 +701,8 @@ update_governator() {
     printf 'No updates applied.\n'
   fi
 
-  git -C "${ROOT_DIR}" add "${STATE_DIR}" "${MANIFEST_FILE}" "${MIGRATIONS_STATE_FILE}" "${CONFIG_FILE}"
-  if [[ "${#UPDATED_FILES[@]}" -gt 0 ]]; then
-    git -C "${ROOT_DIR}" add "${AUDIT_LOG}"
-  fi
-  if [[ -n "$(git -C "${ROOT_DIR}" status --porcelain -- "${STATE_DIR}" "${MANIFEST_FILE}" "${AUDIT_LOG}" "${CONFIG_FILE}")" ]]; then
+  git -C "${ROOT_DIR}" add "${STATE_DIR}" "${MIGRATIONS_STATE_FILE}" "${CONFIG_FILE}"
+  if [[ -n "$(git -C "${ROOT_DIR}" status --porcelain -- "${STATE_DIR}" "${CONFIG_FILE}")" ]]; then
     git -C "${ROOT_DIR}" commit -q -m "[governator] Update governator"
   fi
 }

@@ -526,7 +526,7 @@ archive_done_system_tasks() {
   done < <(list_task_files_in_dir "${done_dir}")
 
   if [[ "${moved}" -eq 1 ]]; then
-    git -C "${ROOT_DIR}" add "${STATE_DIR}" "${AUDIT_LOG}"
+    git -C "${ROOT_DIR}" add "${STATE_DIR}"
     git -C "${ROOT_DIR}" commit -q -m "[governator] Archive system tasks"
   fi
 }

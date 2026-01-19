@@ -29,7 +29,7 @@ List concrete, testable requirements.
 - Avoid subjective language (“clean”, “nice”, “elegant”)
 
 Example:
-- [ ] Configuration is read from `.governator/config.json`
+- [ ] Configuration is read from `_governator/_durable_state/config.json`
 - [ ] Script exits non-zero on failure
 - [ ] No new runtime dependencies introduced
 

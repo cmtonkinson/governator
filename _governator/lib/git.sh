@@ -12,13 +12,6 @@ ensure_clean_git() {
     status="$(printf '%s\n' "${status}" | grep -v -F -- "${SYSTEM_LOCK_PATH}" || true)"
   fi
   if [[ -n "${status}" ]]; then
-    status="$(
-      printf '%s\n' "${status}" | grep -v -E \
-        '^[[:space:][:alnum:]\?]{2}[[:space:]](_governator/governator\.lock|\.governator/governator\.locked|\.governator/audit\.log|\.governator/worker-processes\.log|\.governator/retry-counts\.log|\.governator/logs/)' ||
-        true
-    )"
-  fi
-  if [[ -n "${status}" ]]; then
     log_warn "Local git changes detected, exiting."
     exit 0
   fi

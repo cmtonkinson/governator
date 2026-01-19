@@ -116,7 +116,9 @@ write_worker_env_wrapper() {
   if [[ -z "${expected_branch}" ]]; then
     return 1
   fi
-  local wrapper="${worktree_dir}/.governator-worker-env.sh"
+  local wrapper_dir="${worktree_dir}/_governator/${LOCAL_STATE_DIRNAME}"
+  local wrapper="${wrapper_dir}/worker-env.sh"
+  mkdir -p "${wrapper_dir}"
   cat > "${wrapper}" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
@@ -141,8 +143,7 @@ elif ! git -C "${worktree_dir}" show-ref --verify --quiet "refs/heads/\${expecte
   status="fail"
   reason="Expected local branch is missing."
 elif [[ -n "\$(git -C "${worktree_dir}" status --porcelain --untracked-files=normal -- . \\
-  ":(exclude).governator-worker-env.sh" \\
-  ":(exclude).governator/" \\
+  ":(exclude)_governator/${LOCAL_STATE_DIRNAME}/" \\
   ":(exclude).git-local" \\
   2>/dev/null)" ]]; then
   status="fail"
@@ -151,7 +152,7 @@ elif [[ "\$(git -C "${worktree_dir}" rev-list --count "${default_branch}..\${exp
   status="fail"
   reason="No commits beyond base branch."
 fi
-mkdir -p "${worktree_dir}/.governator"
+mkdir -p "${worktree_dir}/_governator/${LOCAL_STATE_DIRNAME}"
 jq -n --arg status "\${status}" \\
   --arg reason "\${reason}" \\
   --arg expected_branch "\${expected_branch}" \\
@@ -159,7 +160,7 @@ jq -n --arg status "\${status}" \\
   --arg worktree_dir "${worktree_dir}" \\
   --argjson exit_code "\${exit_code}" \\
   '{status:\$status, reason:\$reason, expected_branch:\$expected_branch, current_branch:\$current_branch, worktree_dir:\$worktree_dir, exit_code:\$exit_code}' \\
-  > "${worktree_dir}/.governator/self-check.json"
+  > "${worktree_dir}/_governator/${LOCAL_STATE_DIRNAME}/self-check.json"
 exit "\${exit_code}"
 EOF
   chmod +x "${wrapper}"
@@ -183,7 +184,10 @@ worktree_has_uncommitted_changes() {
   if ! git -C "${worktree_dir}" rev-parse --git-dir > /dev/null 2>&1; then
     return 1
   fi
-  [[ -n "$(git -C "${worktree_dir}" status --porcelain 2>/dev/null || true)" ]]
+  [[ -n "$(git -C "${worktree_dir}" status --porcelain --untracked-files=normal -- . \
+    ":(exclude)_governator/${LOCAL_STATE_DIRNAME}/" \
+    ":(exclude).git-local" \
+    2>/dev/null || true)" ]]
 }
 
 # block_task_for_worker_failure
@@ -224,7 +228,7 @@ read_worker_self_check() {
   if [[ -z "${worktree_dir}" ]]; then
     return 1
   fi
-  local report_path="${worktree_dir}/.governator/self-check.json"
+  local report_path="${worktree_dir}/_governator/${LOCAL_STATE_DIRNAME}/self-check.json"
   if [[ ! -f "${report_path}" ]]; then
     return 1
   fi

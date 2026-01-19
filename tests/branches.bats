@@ -23,7 +23,7 @@ EOF_REVIEW
   [ -f "${REPO_DIR}/_governator/task-done/010-review-ruby.md" ]
   run grep -F "Decision: approve" "${REPO_DIR}/_governator/task-done/010-review-ruby.md"
   [ "$status" -eq 0 ]
-  run grep -F "010-review-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
+  run grep -F "010-review-ruby -> ruby" "${REPO_DIR}/_governator/_local_state/in-flight.log"
   [ "$status" -ne 0 ]
 }
 
@@ -37,9 +37,9 @@ EOF_REVIEW
   run bash "${REPO_DIR}/_governator/governator.sh" process-branches
   [ "$status" -eq 0 ]
 
-  run grep -F "014-review-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
+  run grep -F "014-review-ruby -> ruby" "${REPO_DIR}/_governator/_local_state/in-flight.log"
   [ "$status" -ne 0 ]
-  run grep -F "014-review-ruby -> reviewer" "${REPO_DIR}/.governator/in-flight.log"
+  run grep -F "014-review-ruby -> reviewer" "${REPO_DIR}/_governator/_local_state/in-flight.log"
   [ "$status" -eq 0 ]
 }
 
@@ -56,7 +56,7 @@ EOF_REVIEW
   [ "$status" -eq 0 ]
 
   # Verify reviewer is in-flight
-  run grep -F "018-branch-ruby -> reviewer" "${REPO_DIR}/.governator/in-flight.log"
+  run grep -F "018-branch-ruby -> reviewer" "${REPO_DIR}/_governator/_local_state/in-flight.log"
   [ "$status" -eq 0 ]
 
   # Verify worker branch still exists (not deleted before reviewer could use it)
@@ -89,7 +89,7 @@ EOF_REVIEW
 
   run grep -F "Global worker cap reached" <<< "${output}"
   [ "$status" -ne 0 ]
-  run grep -F "015-review-ruby -> reviewer" "${REPO_DIR}/.governator/in-flight.log"
+  run grep -F "015-review-ruby -> reviewer" "${REPO_DIR}/_governator/_local_state/in-flight.log"
   [ "$status" -eq 0 ]
 }
 
@@ -105,7 +105,7 @@ EOF_REVIEW
 
   [ -f "${REPO_DIR}/_governator/task-blocked/060-blocked-ruby.md" ]
   [ -f "${REPO_DIR}/_governator/task-assigned/000-unblock-planner.md" ]
-  run grep -F "060-blocked-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
+  run grep -F "060-blocked-ruby -> ruby" "${REPO_DIR}/_governator/_local_state/in-flight.log"
   [ "$status" -ne 0 ]
   # Verify local branch was deleted after processing
   run repo_git show-ref --verify "refs/heads/worker/ruby/060-blocked-ruby"
@@ -132,7 +132,7 @@ EOF_TASK
   [ -d "${worktree_dir}" ]
   run repo_git show-ref --verify "refs/heads/worker/ruby/${task_name}"
   [ "$status" -eq 0 ]
-  run grep -F "${task_name} -> ${worker}" "${REPO_DIR}/.governator/in-flight.log"
+  run grep -F "${task_name} -> ${worker}" "${REPO_DIR}/_governator/_local_state/in-flight.log"
   [ "$status" -ne 0 ]
 }
 
@@ -173,7 +173,7 @@ EOF_TASK
     set -euo pipefail
     ROOT_DIR=\"${REPO_DIR}\"
     STATE_DIR=\"${REPO_DIR}/_governator\"
-    DB_DIR=\"${REPO_DIR}/.governator\"
+    DB_DIR=\"${REPO_DIR}/_governator/_local_state\"
     WORKTREES_DIR=\"\${DB_DIR}/worktrees\"
     DEFAULT_REMOTE_NAME=\"origin\"
     DEFAULT_BRANCH_NAME=\"main\"
@@ -197,9 +197,9 @@ EOF_TASK
   "
   [ "$status" -eq 0 ]
 
-  run grep -F "011-missing-ruby -> ruby" "${REPO_DIR}/.governator/in-flight.log"
+  run grep -F "011-missing-ruby -> ruby" "${REPO_DIR}/_governator/_local_state/in-flight.log"
   [ "$status" -ne 0 ]
-  run grep -F "011-missing-ruby | ruby" "${REPO_DIR}/.governator/worker-processes.log"
+  run grep -F "011-missing-ruby | ruby" "${REPO_DIR}/_governator/_local_state/worker-processes.log"
   [ "$status" -ne 0 ]
   [ ! -d "${worktree_dir}" ]
 }
