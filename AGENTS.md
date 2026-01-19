@@ -1,8 +1,3 @@
-Instructions for working in this repo:
-- Read `README.md`.
-- Ask for confirmation before modifying `README.md`.
-- Ask clarifying questions when needed.
-- Provide feedback when you believe you have encountered a conflicting instruction.
 
 When modifying code:
 - Write code that is concise, readable, maintainable, and idiomatic.
