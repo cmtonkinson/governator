@@ -19,7 +19,7 @@ WORK_PROMPT_FILE="${WORK_PROMPT_FILE:-/Users/chris/vault/vibe/ralph-work.md}"
 REVIEW_PROMPT_FILE="${REVIEW_PROMPT_FILE:-/Users/chris/vault/vibe/ralph-review.md}"
 
 CODEX_BIN="${CODEX_BIN:-codex}"
-CODEX_ARGS=(exec --full-auto --sandbox workspace-write)
+CODEX_ARGS=(exec --dangerously-bypass-approvals-and-sandbox)
 
 REVIEW_MAX_ATTEMPTS="${REVIEW_MAX_ATTEMPTS:-10}"
 SLEEP_BETWEEN_ATTEMPTS_SEC="${SLEEP_BETWEEN_ATTEMPTS_SEC:-0}"
