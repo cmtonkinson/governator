@@ -1,6 +1,6 @@
 1. [done] v2-plan/task-01-finalize-v2-intent-constraints.md (epic 01, milestone 0)
 2. [done] v2-plan/task-23-define-doc-custody-and-suggestion-flow.md (epic 01, milestone 0)
-3. [worked] v2-plan/task-02-define-go-module-layout.md (epic 02, milestone 0)
+3. [done] v2-plan/task-02-define-go-module-layout.md (epic 02, milestone 0)
 4. [open] v2-plan/task-03-outline-system-install-distribution.md (epic 02, milestone 0)
 5. [open] v2-plan/task-24-spec-versioning-and-build-metadata.md (epic 02, milestone 0)
 6. [open] v2-plan/task-31-spec-config-json.md (epic 04, milestone 1)
