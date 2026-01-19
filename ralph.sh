@@ -13,7 +13,7 @@ cleanup() {
 
 trap cleanup INT TERM
 
-INDEX_FILE="${INDEX_FILE:-TODO/index.md}"
+INDEX_FILE="${INDEX_FILE:-index.md}"
 
 WORK_PROMPT_FILE="${WORK_PROMPT_FILE:-/Users/chris/vault/vibe/ralph-work.md}"
 REVIEW_PROMPT_FILE="${REVIEW_PROMPT_FILE:-/Users/chris/vault/vibe/ralph-review.md}"

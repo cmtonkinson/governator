@@ -1,3 +1,12 @@
+Instructions for working in this repository:
+- Read v2-intent.md
+- The directory v2-plan/ holds project planning documents, including tasks, epics, and milestones
+    - You may read these files
+    - Never modify these files
+- The directory v1-reference/ holds the first version of the Governator project source code
+    - You may reference this code as historical context
+    - Never modify this code
+- Your working project root is ~/repo/governator/
 
 When modifying code:
 - Write code that is concise, readable, maintainable, and idiomatic.

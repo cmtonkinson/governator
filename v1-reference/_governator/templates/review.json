@@ -1,8 +1,0 @@
-{
-  "result": "approve" | "reject" | "block",
-  "timestamp": "2026-01-01T20:45:00Z",
-  "comments": [
-    "Good modularization of new function.",
-    "Consider improving error messaging if rejected."
-  ]
-}
