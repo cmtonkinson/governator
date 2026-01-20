@@ -19,6 +19,7 @@ type RoutingResult struct {
 // Routing decision reasons describe why a task was selected or skipped.
 const (
 	reasonSelected        = "selected (global and role caps available)"
+	reasonOverlapConflict = "skipped (overlap conflict)"
 	reasonRoleCapReached  = "skipped (role cap reached)"
 	reasonRoleCapDisabled = "skipped (role cap is zero)"
 )
@@ -39,13 +40,22 @@ func RouteOrderedTasks(ordered []index.Task, caps RoleCaps) RoutingResult {
 	}
 
 	result := RoutingResult{
-		Decisions: make([]RoutingDecision, 0, min(caps.Global, len(ordered))),
+		Decisions: make([]RoutingDecision, 0, len(ordered)),
 		Selected:  make([]index.Task, 0, min(caps.Global, len(ordered))),
 	}
 	usage := map[index.Role]int{}
+	activeOverlap := map[string]struct{}{}
 	for _, task := range ordered {
 		if len(result.Selected) >= caps.Global {
 			break
+		}
+		if overlapConflict(task, activeOverlap) {
+			result.Decisions = append(result.Decisions, RoutingDecision{
+				Task:     task,
+				Selected: false,
+				Reason:   reasonOverlapConflict,
+			})
+			continue
 		}
 		roleCap := capForRole(task.Role, caps)
 		if roleCap <= 0 {
@@ -66,6 +76,7 @@ func RouteOrderedTasks(ordered []index.Task, caps RoleCaps) RoutingResult {
 		}
 		usage[task.Role]++
 		result.Selected = append(result.Selected, task)
+		recordOverlap(task, activeOverlap)
 		result.Decisions = append(result.Decisions, RoutingDecision{
 			Task:     task,
 			Selected: true,
@@ -73,4 +84,30 @@ func RouteOrderedTasks(ordered []index.Task, caps RoleCaps) RoutingResult {
 		})
 	}
 	return result
+}
+
+// overlapConflict reports whether the task shares any overlap tag with active tasks.
+func overlapConflict(task index.Task, activeOverlap map[string]struct{}) bool {
+	if len(task.Overlap) == 0 {
+		return false
+	}
+	for _, overlap := range task.Overlap {
+		if overlap == "" {
+			continue
+		}
+		if _, ok := activeOverlap[overlap]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// recordOverlap adds task overlap tags to the active overlap set.
+func recordOverlap(task index.Task, activeOverlap map[string]struct{}) {
+	for _, overlap := range task.Overlap {
+		if overlap == "" {
+			continue
+		}
+		activeOverlap[overlap] = struct{}{}
+	}
 }
