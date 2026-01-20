@@ -1,0 +1,85 @@
+// Package index provides helpers for updating task state and attempts.
+package index
+
+import (
+	"fmt"
+	"log"
+
+	"github.com/cmtonkinson/governator/internal/state"
+)
+
+// TransitionTaskToWorked moves a task from open to worked.
+func TransitionTaskToWorked(idx *Index, taskID string) error {
+	return transitionTaskState(idx, taskID, TaskStateWorked)
+}
+
+// TransitionTaskToTested moves a task from worked to tested.
+func TransitionTaskToTested(idx *Index, taskID string) error {
+	return transitionTaskState(idx, taskID, TaskStateTested)
+}
+
+// TransitionTaskToDone moves a task from tested or resolved to done.
+func TransitionTaskToDone(idx *Index, taskID string) error {
+	return transitionTaskState(idx, taskID, TaskStateDone)
+}
+
+// TransitionTaskToBlocked moves a task from open, worked, tested, or conflict to blocked.
+func TransitionTaskToBlocked(idx *Index, taskID string) error {
+	return transitionTaskState(idx, taskID, TaskStateBlocked)
+}
+
+// TransitionTaskToConflict moves a task from tested or resolved to conflict.
+func TransitionTaskToConflict(idx *Index, taskID string) error {
+	return transitionTaskState(idx, taskID, TaskStateConflict)
+}
+
+// TransitionTaskToResolved moves a task from conflict to resolved.
+func TransitionTaskToResolved(idx *Index, taskID string) error {
+	return transitionTaskState(idx, taskID, TaskStateResolved)
+}
+
+// TransitionTaskToOpen moves a task from blocked to open.
+func TransitionTaskToOpen(idx *Index, taskID string) error {
+	return transitionTaskState(idx, taskID, TaskStateOpen)
+}
+
+// IncrementTaskAttempt increments the total attempt counter for a task.
+func IncrementTaskAttempt(idx *Index, taskID string) error {
+	task, err := findTaskByID(idx, taskID)
+	if err != nil {
+		return err
+	}
+	task.Attempts.Total++
+	return nil
+}
+
+// transitionTaskState enforces lifecycle state transitions before updating a task.
+func transitionTaskState(idx *Index, taskID string, to TaskState) error {
+	task, err := findTaskByID(idx, taskID)
+	if err != nil {
+		return err
+	}
+	if err := state.ValidateTransition(task.State, to); err != nil {
+		wrapped := fmt.Errorf("task %q: %w", taskID, err)
+		log.Printf("task %q transition from %q to %q rejected: %v", taskID, task.State, to, wrapped)
+		return wrapped
+	}
+	task.State = to
+	return nil
+}
+
+// findTaskByID locates a task in the index and validates the inputs.
+func findTaskByID(idx *Index, taskID string) (*Task, error) {
+	if idx == nil {
+		return nil, fmt.Errorf("index is nil")
+	}
+	if taskID == "" {
+		return nil, fmt.Errorf("task id is required")
+	}
+	for i := range idx.Tasks {
+		if idx.Tasks[i].ID == taskID {
+			return &idx.Tasks[i], nil
+		}
+	}
+	return nil, fmt.Errorf("task %q not found in index", taskID)
+}

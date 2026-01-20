@@ -76,6 +76,129 @@ func TestIndexSaveDeterministicPlanningDocs(t *testing.T) {
 	}
 }
 
+// TestIndexSaveDeterministicTasksAndDeps ensures tasks and lists are sorted.
+func TestIndexSaveDeterministicTasksAndDeps(t *testing.T) {
+	idx := Index{
+		SchemaVersion: 1,
+		Digests: Digests{
+			GovernatorMD: "",
+			PlanningDocs: map[string]string{},
+		},
+		Tasks: []Task{
+			{
+				ID:           "task-b",
+				Path:         "_governator/tasks/task-b.md",
+				State:        TaskStateOpen,
+				Role:         "worker",
+				Dependencies: []string{"dep-b", "dep-a"},
+				Overlap:      []string{"overlap-b", "overlap-a"},
+				Order:        20,
+			},
+			{
+				ID:           "task-a",
+				Path:         "_governator/tasks/task-a.md",
+				State:        TaskStateOpen,
+				Role:         "worker",
+				Dependencies: []string{"dep-d", "dep-c"},
+				Overlap:      []string{"overlap-d", "overlap-c"},
+				Order:        10,
+			},
+		},
+	}
+
+	path := filepath.Join(t.TempDir(), "index.json")
+	if err := Save(path, idx); err != nil {
+		t.Fatalf("save index: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read index output: %v", err)
+	}
+
+	content := string(data)
+	taskALoc := strings.Index(content, `"id": "task-a"`)
+	taskBLoc := strings.Index(content, `"id": "task-b"`)
+	if taskALoc == -1 || taskBLoc == -1 {
+		t.Fatalf("expected task ids in output, got %s", content)
+	}
+	if taskALoc > taskBLoc {
+		t.Fatalf("expected task ordering by order/id, got %s", content)
+	}
+
+	depPattern := regexp.MustCompile(`"dependencies"\s*:\s*\[\s*"dep-a"\s*,\s*"dep-b"\s*\]`)
+	if !depPattern.MatchString(content) {
+		t.Fatalf("expected sorted dependencies for task-b, got %s", content)
+	}
+
+	overlapPattern := regexp.MustCompile(`"overlap"\s*:\s*\[\s*"overlap-a"\s*,\s*"overlap-b"\s*\]`)
+	if !overlapPattern.MatchString(content) {
+		t.Fatalf("expected sorted overlap for task-b, got %s", content)
+	}
+}
+
+// TestIndexSaveRoundTripDeterministic verifies save-load-save stability.
+func TestIndexSaveRoundTripDeterministic(t *testing.T) {
+	idx := Index{
+		SchemaVersion: 1,
+		Digests: Digests{
+			GovernatorMD: "sha256:abc",
+			PlanningDocs: map[string]string{
+				"plan-b": "sha256:def",
+				"plan-a": "sha256:ghi",
+			},
+		},
+		Tasks: []Task{
+			{
+				ID:           "task-b",
+				Path:         "_governator/tasks/task-b.md",
+				State:        TaskStateOpen,
+				Role:         "worker",
+				Dependencies: []string{"dep-b", "dep-a"},
+				Order:        2,
+			},
+			{
+				ID:           "task-a",
+				Path:         "_governator/tasks/task-a.md",
+				State:        TaskStateOpen,
+				Role:         "worker",
+				Dependencies: []string{"dep-d", "dep-c"},
+				Order:        1,
+			},
+		},
+	}
+
+	dir := t.TempDir()
+	first := filepath.Join(dir, "index-first.json")
+	second := filepath.Join(dir, "index-second.json")
+
+	if err := Save(first, idx); err != nil {
+		t.Fatalf("save first index: %v", err)
+	}
+
+	loaded, err := Load(first)
+	if err != nil {
+		t.Fatalf("load first index: %v", err)
+	}
+
+	if err := Save(second, loaded); err != nil {
+		t.Fatalf("save second index: %v", err)
+	}
+
+	firstData, err := os.ReadFile(first)
+	if err != nil {
+		t.Fatalf("read first index: %v", err)
+	}
+	secondData, err := os.ReadFile(second)
+	if err != nil {
+		t.Fatalf("read second index: %v", err)
+	}
+
+	if string(firstData) != string(secondData) {
+		t.Fatalf("expected deterministic output, got first=%s second=%s", firstData, secondData)
+	}
+}
+
 // TestIndexLoadMalformedJSON ensures malformed input returns an actionable error.
 func TestIndexLoadMalformedJSON(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bad.json")

@@ -29,7 +29,17 @@ func Load(path string) (Index, error) {
 }
 
 // Save writes a task index JSON file to disk deterministically.
-func Save(path string, idx Index) error {
+func Save(path string, idx Index) (err error) {
+	lock, err := lockIndexForWrite(path)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if lockErr := lock.Release(); lockErr != nil && err == nil {
+			err = fmt.Errorf("release task index lock %s: %w", lock.path, lockErr)
+		}
+	}()
+
 	encoded, err := encodeIndex(idx)
 	if err != nil {
 		return fmt.Errorf("encode task index %s: %w", path, err)
@@ -95,7 +105,7 @@ func encodeIndex(idx Index) ([]byte, error) {
 			GovernatorMD: idx.Digests.GovernatorMD,
 			PlanningDocs: planningDocs,
 		},
-		Tasks: idx.Tasks,
+		Tasks: normalizeTasksForWrite(idx.Tasks),
 	}
 
 	encoded, err := json.MarshalIndent(wire, "", "  ")
@@ -103,6 +113,48 @@ func encodeIndex(idx Index) ([]byte, error) {
 		return nil, fmt.Errorf("marshal index: %w", err)
 	}
 	return encoded, nil
+}
+
+// normalizeTasksForWrite returns a deterministic task list for JSON output.
+func normalizeTasksForWrite(tasks []Task) []Task {
+	if len(tasks) == 0 {
+		return nil
+	}
+
+	normalized := make([]Task, len(tasks))
+	for i, task := range tasks {
+		normalized[i] = task
+		normalized[i].Dependencies = sortedStrings(task.Dependencies)
+		normalized[i].Overlap = sortedStrings(task.Overlap)
+	}
+
+	sort.SliceStable(normalized, func(i, j int) bool {
+		left := normalized[i]
+		right := normalized[j]
+		if left.Order != right.Order {
+			return left.Order < right.Order
+		}
+		if left.ID != right.ID {
+			return left.ID < right.ID
+		}
+		if left.Path != right.Path {
+			return left.Path < right.Path
+		}
+		return left.Role < right.Role
+	})
+
+	return normalized
+}
+
+// sortedStrings returns a sorted copy of the provided slice.
+func sortedStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	normalized := make([]string, len(values))
+	copy(normalized, values)
+	sort.Strings(normalized)
+	return normalized
 }
 
 // encodePlanningDocs sorts planning doc entries for stable JSON output.

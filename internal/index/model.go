@@ -1,6 +1,8 @@
 // Package index defines the task index data model and JSON mapping.
 package index
 
+import "github.com/cmtonkinson/governator/internal/state"
+
 // Index represents the canonical task index persisted as JSON.
 type Index struct {
 	SchemaVersion int     `json:"schema_version"`
@@ -29,23 +31,23 @@ type Task struct {
 }
 
 // TaskState labels the lifecycle state for a task.
-type TaskState string
+type TaskState = state.TaskState
 
 const (
 	// TaskStateOpen indicates the task has not been started.
-	TaskStateOpen TaskState = "open"
+	TaskStateOpen TaskState = state.TaskStateOpen
 	// TaskStateWorked indicates the task has work completed and awaits testing.
-	TaskStateWorked TaskState = "worked"
+	TaskStateWorked TaskState = state.TaskStateWorked
 	// TaskStateTested indicates the task has been tested and awaits review.
-	TaskStateTested TaskState = "tested"
+	TaskStateTested TaskState = state.TaskStateTested
 	// TaskStateDone indicates the task is complete.
-	TaskStateDone TaskState = "done"
+	TaskStateDone TaskState = state.TaskStateDone
 	// TaskStateBlocked indicates the task cannot proceed without intervention.
-	TaskStateBlocked TaskState = "blocked"
+	TaskStateBlocked TaskState = state.TaskStateBlocked
 	// TaskStateConflict indicates the task has a merge or execution conflict.
-	TaskStateConflict TaskState = "conflict"
+	TaskStateConflict TaskState = state.TaskStateConflict
 	// TaskStateResolved indicates a previously conflicted task has been resolved.
-	TaskStateResolved TaskState = "resolved"
+	TaskStateResolved TaskState = state.TaskStateResolved
 )
 
 // Role names the worker role assigned to a task.
