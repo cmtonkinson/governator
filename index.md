@@ -20,7 +20,7 @@
 20. [done] v2-plan/task-09-spec-bootstrap-artifacts.md (epic 05, milestone 2)
 21. [done] v2-plan/task-55-spec-cli-contract.md (epic 09, milestone 4)
 22. [done] v2-plan/task-32-implement-config-defaults.md (epic 04, milestone 1)
-23. [open] v2-plan/task-07-implement-config-loader.md (epic 04, milestone 1)
+23. [done] v2-plan/task-07-implement-config-loader.md (epic 04, milestone 1)
 24. [open] v2-plan/task-08-implement-repo-root-discovery.md (epic 04, milestone 1)
 25. [open] v2-plan/task-05-implement-index-io.md (epic 03, milestone 1)
 26. [open] v2-plan/task-27-implement-deterministic-json-encoding.md (epic 03, milestone 1)
