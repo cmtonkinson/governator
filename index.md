@@ -22,7 +22,7 @@
 22. [done] v2-plan/task-32-implement-config-defaults.md (epic 04, milestone 1)
 23. [done] v2-plan/task-07-implement-config-loader.md (epic 04, milestone 1)
 24. [done] v2-plan/task-08-implement-repo-root-discovery.md (epic 04, milestone 1)
-25. [open] v2-plan/task-05-implement-index-io.md (epic 03, milestone 1)
+25. [done] v2-plan/task-05-implement-index-io.md (epic 03, milestone 1)
 26. [open] v2-plan/task-27-implement-deterministic-json-encoding.md (epic 03, milestone 1)
 27. [open] v2-plan/task-28-implement-minimal-index-sanity-checks.md (epic 03, milestone 1)
 28. [open] v2-plan/task-30-implement-index-file-locking.md (epic 03, milestone 1)
