@@ -17,7 +17,7 @@
 17. [done] v2-plan/task-37-spec-planner-contract.md (epic 06, milestone 2)
 18. [done] v2-plan/task-11-design-planning-output-model.md (epic 06, milestone 2)
 19. [done] v2-plan/task-34-spec-template-packaging.md (epic 05, milestone 2)
-20. [open] v2-plan/task-09-spec-bootstrap-artifacts.md (epic 05, milestone 2)
+20. [done] v2-plan/task-09-spec-bootstrap-artifacts.md (epic 05, milestone 2)
 21. [open] v2-plan/task-55-spec-cli-contract.md (epic 09, milestone 4)
 22. [open] v2-plan/task-32-implement-config-defaults.md (epic 04, milestone 1)
 23. [open] v2-plan/task-07-implement-config-loader.md (epic 04, milestone 1)
