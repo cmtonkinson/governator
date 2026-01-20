@@ -18,7 +18,7 @@ const (
 )
 
 // OrderedEligibleTasks returns eligible tasks ordered deterministically by state, plan order, and id.
-func OrderedEligibleTasks(idx index.Index) ([]index.Task, error) {
+func OrderedEligibleTasks(idx index.Index, inFlight map[string]struct{}) ([]index.Task, error) {
 	if err := detectDependencyCycles(idx.Tasks); err != nil {
 		return nil, err
 	}
@@ -30,6 +30,9 @@ func OrderedEligibleTasks(idx index.Index) ([]index.Task, error) {
 
 	eligible := make([]index.Task, 0, len(idx.Tasks))
 	for _, task := range idx.Tasks {
+		if isInFlight(task.ID, inFlight) {
+			continue
+		}
 		if _, ok := statePriority(task.State); !ok {
 			continue
 		}
@@ -54,6 +57,15 @@ func OrderedEligibleTasks(idx index.Index) ([]index.Task, error) {
 	})
 
 	return eligible, nil
+}
+
+// isInFlight reports whether the task is tracked as in-flight.
+func isInFlight(taskID string, inFlight map[string]struct{}) bool {
+	if len(inFlight) == 0 {
+		return false
+	}
+	_, ok := inFlight[taskID]
+	return ok
 }
 
 // statePriority ranks task states so closer-to-completion work is favored.

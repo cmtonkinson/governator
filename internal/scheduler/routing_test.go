@@ -25,7 +25,7 @@ func TestRouteEligibleTasksStageBias(t *testing.T) {
 		DefaultRole: 3,
 	}
 
-	result, err := RouteEligibleTasks(idx, caps)
+	result, err := RouteEligibleTasks(idx, caps, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestRouteEligibleTasksOpenFallback(t *testing.T) {
 		DefaultRole: 3,
 	}
 
-	result, err := RouteEligibleTasks(idx, caps)
+	result, err := RouteEligibleTasks(idx, caps, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestRouteEligibleTasksOverlapAllowsParallel(t *testing.T) {
 		DefaultRole: 2,
 	}
 
-	result, err := RouteEligibleTasks(idx, caps)
+	result, err := RouteEligibleTasks(idx, caps, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestRouteEligibleTasksOverlapSerializes(t *testing.T) {
 		DefaultRole: 2,
 	}
 
-	result, err := RouteEligibleTasks(idx, caps)
+	result, err := RouteEligibleTasks(idx, caps, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -182,7 +182,7 @@ func TestRouteEligibleTasksOverlapAcrossStages(t *testing.T) {
 		DefaultRole: 2,
 	}
 
-	result, err := RouteEligibleTasks(idx, caps)
+	result, err := RouteEligibleTasks(idx, caps, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

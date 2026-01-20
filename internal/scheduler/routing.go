@@ -25,8 +25,8 @@ const (
 )
 
 // RouteEligibleTasks orders eligible tasks and applies caps to select tasks with reasons.
-func RouteEligibleTasks(idx index.Index, caps RoleCaps) (RoutingResult, error) {
-	ordered, err := OrderedEligibleTasks(idx)
+func RouteEligibleTasks(idx index.Index, caps RoleCaps, inFlight map[string]struct{}) (RoutingResult, error) {
+	ordered, err := OrderedEligibleTasks(idx, inFlight)
 	if err != nil {
 		return RoutingResult{}, err
 	}

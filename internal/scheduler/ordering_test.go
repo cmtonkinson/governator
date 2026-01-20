@@ -23,7 +23,7 @@ func TestOrderedEligibleTasksSimpleDAG(t *testing.T) {
 		},
 	}
 
-	ordered, err := OrderedEligibleTasks(idx)
+	ordered, err := OrderedEligibleTasks(idx, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestOrderedEligibleTasksDetectsCycles(t *testing.T) {
 		},
 	}
 
-	_, err := OrderedEligibleTasks(idx)
+	_, err := OrderedEligibleTasks(idx, nil)
 	if err == nil {
 		t.Fatal("expected cycle error, got nil")
 	}
@@ -78,7 +78,7 @@ func TestOrderedEligibleTasksConflictPriority(t *testing.T) {
 		},
 	}
 
-	ordered, err := OrderedEligibleTasks(idx)
+	ordered, err := OrderedEligibleTasks(idx, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -98,5 +98,28 @@ func TestOrderedEligibleTasksConflictPriority(t *testing.T) {
 		if got[i] != id {
 			t.Fatalf("ordered[%d] = %s, want %s", i, got[i], id)
 		}
+	}
+}
+
+// TestOrderedEligibleTasksSkipsInFlight ensures in-flight tasks are excluded.
+func TestOrderedEligibleTasksSkipsInFlight(t *testing.T) {
+	idx := index.Index{
+		Tasks: []index.Task{
+			{ID: "task-a", State: index.TaskStateOpen, Order: 1},
+			{ID: "task-b", State: index.TaskStateOpen, Order: 2},
+		},
+	}
+
+	inFlight := map[string]struct{}{"task-a": {}}
+	ordered, err := OrderedEligibleTasks(idx, inFlight)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(ordered) != 1 {
+		t.Fatalf("got %d tasks, want 1", len(ordered))
+	}
+	if ordered[0].ID != "task-b" {
+		t.Fatalf("ordered[0] = %s, want task-b", ordered[0].ID)
 	}
 }
