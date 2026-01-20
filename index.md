@@ -34,7 +34,7 @@
 34. [closed] v2-plan/task-15-implement-concurrency-caps.md (epic 07, milestone 3)
 35. [closed] v2-plan/task-16-implement-overlap-aware-parallelism.md (epic 07, milestone 3)
 36. [closed] v2-plan/task-46-implement-in-flight-tracking.md (epic 07, milestone 3)
-37. [open] v2-plan/task-47-implement-run-lock.md (epic 07, milestone 3)
+37. [closed] v2-plan/task-47-implement-run-lock.md (epic 07, milestone 3)
 38. [open] v2-plan/task-69-implement-audit-logging.md (epic 07, milestone 3)
 39. [open] v2-plan/task-73-implement-role-metadata-loading.md (epic 08, milestone 3)
 40. [open] v2-plan/task-77-implement-role-assignment-llm.md (epic 07, milestone 3)
