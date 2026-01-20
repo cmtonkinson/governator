@@ -1,2 +1,6 @@
 v1-reference/
-v2-plan/
+
+# Agent/task management
+ralph.sh
+work-*/
+
