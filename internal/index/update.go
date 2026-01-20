@@ -8,6 +8,11 @@ import (
 	"github.com/cmtonkinson/governator/internal/state"
 )
 
+// TransitionAuditor records task lifecycle transitions for audit logging.
+type TransitionAuditor interface {
+	LogTaskTransition(taskID string, role string, from string, to string) error
+}
+
 // TransitionTaskToWorked moves a task from open to worked.
 func TransitionTaskToWorked(idx *Index, taskID string) error {
 	return transitionTaskState(idx, taskID, TaskStateWorked)
@@ -43,6 +48,27 @@ func TransitionTaskToOpen(idx *Index, taskID string) error {
 	return transitionTaskState(idx, taskID, TaskStateOpen)
 }
 
+// TransitionTaskStateWithAudit moves a task to the target state and records an audit entry.
+func TransitionTaskStateWithAudit(idx *Index, taskID string, to TaskState, auditor TransitionAuditor) error {
+	task, err := findTaskByID(idx, taskID)
+	if err != nil {
+		return err
+	}
+	from := task.State
+	if err := state.ValidateTransition(task.State, to); err != nil {
+		wrapped := fmt.Errorf("task %q: %w", taskID, err)
+		log.Printf("task %q transition from %q to %q rejected: %v", taskID, task.State, to, wrapped)
+		return wrapped
+	}
+	task.State = to
+	if auditor != nil {
+		if err := auditor.LogTaskTransition(task.ID, string(task.Role), string(from), string(to)); err != nil {
+			log.Printf("task %q transition audit log failed: %v", taskID, err)
+		}
+	}
+	return nil
+}
+
 // IncrementTaskAttempt increments the total attempt counter for a task.
 func IncrementTaskAttempt(idx *Index, taskID string) error {
 	task, err := findTaskByID(idx, taskID)
@@ -55,17 +81,7 @@ func IncrementTaskAttempt(idx *Index, taskID string) error {
 
 // transitionTaskState enforces lifecycle state transitions before updating a task.
 func transitionTaskState(idx *Index, taskID string, to TaskState) error {
-	task, err := findTaskByID(idx, taskID)
-	if err != nil {
-		return err
-	}
-	if err := state.ValidateTransition(task.State, to); err != nil {
-		wrapped := fmt.Errorf("task %q: %w", taskID, err)
-		log.Printf("task %q transition from %q to %q rejected: %v", taskID, task.State, to, wrapped)
-		return wrapped
-	}
-	task.State = to
-	return nil
+	return TransitionTaskStateWithAudit(idx, taskID, to, nil)
 }
 
 // findTaskByID locates a task in the index and validates the inputs.

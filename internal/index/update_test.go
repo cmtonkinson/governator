@@ -3,6 +3,7 @@ package index
 
 import (
 	"bytes"
+	"errors"
 	"log"
 	"strings"
 	"testing"
@@ -159,4 +160,95 @@ func TestTransitionFromDoneToWorkedFails(t *testing.T) {
 	if !strings.Contains(buf.String(), "transition from") {
 		t.Fatalf("expected transition log entry, got %q", buf.String())
 	}
+}
+
+// TestTransitionTaskStateWithAuditLogs ensures audit logging is invoked on transitions.
+func TestTransitionTaskStateWithAuditLogs(t *testing.T) {
+	idx := Index{
+		SchemaVersion: 1,
+		Tasks: []Task{
+			{
+				ID:    "task-1",
+				Path:  "_governator/tasks/task-1.md",
+				State: TaskStateOpen,
+				Role:  "builder",
+			},
+		},
+	}
+
+	auditor := &transitionAuditCollector{}
+	if err := TransitionTaskStateWithAudit(&idx, "task-1", TaskStateWorked, auditor); err != nil {
+		t.Fatalf("transition with audit: %v", err)
+	}
+	if got := idx.Tasks[0].State; got != TaskStateWorked {
+		t.Fatalf("expected state %q, got %q", TaskStateWorked, got)
+	}
+	if len(auditor.calls) != 1 {
+		t.Fatalf("expected 1 audit call, got %d", len(auditor.calls))
+	}
+	call := auditor.calls[0]
+	if call.from != "open" || call.to != "worked" {
+		t.Fatalf("unexpected transition audit call: %#v", call)
+	}
+}
+
+// TestTransitionTaskStateWithAuditIgnoresAuditFailures ensures audit errors do not fail transitions.
+func TestTransitionTaskStateWithAuditIgnoresAuditFailures(t *testing.T) {
+	idx := Index{
+		SchemaVersion: 1,
+		Tasks: []Task{
+			{
+				ID:    "task-1",
+				Path:  "_governator/tasks/task-1.md",
+				State: TaskStateOpen,
+				Role:  "builder",
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	prevOutput := log.Writer()
+	prevFlags := log.Flags()
+	log.SetOutput(&buf)
+	log.SetFlags(0)
+	defer func() {
+		log.SetOutput(prevOutput)
+		log.SetFlags(prevFlags)
+	}()
+
+	auditor := &transitionAuditCollector{err: errors.New("audit down")}
+	if err := TransitionTaskStateWithAudit(&idx, "task-1", TaskStateWorked, auditor); err != nil {
+		t.Fatalf("transition with audit failure: %v", err)
+	}
+	if !strings.Contains(buf.String(), "transition audit log failed") {
+		t.Fatalf("expected audit log failure warning, got %q", buf.String())
+	}
+}
+
+// transitionAuditCollector records transition audit calls for testing.
+type transitionAuditCollector struct {
+	calls []transitionAuditCall
+	err   error
+}
+
+// transitionAuditCall captures one audit invocation.
+type transitionAuditCall struct {
+	taskID string
+	role   string
+	from   string
+	to     string
+}
+
+// LogTaskTransition records audit calls for testing.
+func (collector *transitionAuditCollector) LogTaskTransition(taskID string, role string, from string, to string) error {
+	if collector == nil {
+		return errors.New("collector is nil")
+	}
+	collector.calls = append(collector.calls, transitionAuditCall{
+		taskID: taskID,
+		role:   role,
+		from:   from,
+		to:     to,
+	})
+	return collector.err
 }
