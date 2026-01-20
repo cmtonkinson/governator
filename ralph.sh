@@ -8,13 +8,13 @@ set -euo pipefail
 # per the combined Ralph prompt.  [oai_citation:0‡ralph.md](sediment://file_00000000c7bc71fd931a79ab783661c4)
 
 INDEX_FILE="${INDEX_FILE:-index.md}"
-PROMPT_FILE="${PROMPT_FILE:-/Users/chris/vault/vibe/ralph.md}"
+CODEX_PROMPT_PREFIX="Read v2-intent.md."
 
-CODEX_BIN="${CODEX_BIN:-codex}"
 CODEX_ARGS=(${CODEX_ARGS:-exec --dangerously-bypass-approvals-and-sandbox})
-
-SLEEP_BETWEEN_RUNS_SEC="${SLEEP_BETWEEN_RUNS_SEC:-5}"
+CODEX_BIN="${CODEX_BIN:-codex}"
 MAX_RUNS="${MAX_RUNS:-60}" # 0 = unlimited
+PROMPT_FILE="${PROMPT_FILE:-/Users/chris/vault/vibe/ralph-prompt.md}"
+SLEEP_BETWEEN_RUNS_SEC="${SLEEP_BETWEEN_RUNS_SEC:-5}"
 
 # Ctrl-C should kill the entire script and any in-flight codex subprocesses.
 set -m
@@ -41,7 +41,7 @@ while has_open; do
     exit 2
   fi
 
-  "$CODEX_BIN" "${CODEX_ARGS[@]}" "$(cat "$PROMPT_FILE")"
+  "$CODEX_BIN" "${CODEX_ARGS[@]}" "${CODEX_PROMPT_PREFIX} $(cat "$PROMPT_FILE")"
 
   if (( SLEEP_BETWEEN_RUNS_SEC > 0 )); then
     echo "Sleeping ${SLEEP_BETWEEN_RUNS_SEC} seconds before next run."
