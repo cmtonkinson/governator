@@ -26,6 +26,10 @@ var requiredTemplates = []string{
 	"bootstrap/wardley.md",
 	"bootstrap/c4.md",
 	"planning/task.md",
+	"planning/architecture-baseline.md",
+	"planning/gap-analysis.md",
+	"planning/roadmap.md",
+	"planning/tasks.md",
 }
 
 // Required returns the template lookup keys required by bootstrap and planning.
