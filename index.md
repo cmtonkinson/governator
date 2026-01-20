@@ -12,7 +12,7 @@
 12. [done] v2-plan/task-68-spec-audit-log-format.md (epic 07, milestone 3)
 13. [done] v2-plan/task-71-spec-worker-result-contract.md (epic 08, milestone 3)
 14. [done] v2-plan/task-76-spec-role-assignment-llm.md (epic 07, milestone 3)
-15. [open] v2-plan/task-81-create-role-assignment-prompt.md (epic 07, milestone 3)
+15. [done] v2-plan/task-81-create-role-assignment-prompt.md (epic 07, milestone 3)
 16. [open] v2-plan/task-83-spec-planning-subjobs.md (epic 06, milestone 2)
 17. [open] v2-plan/task-37-spec-planner-contract.md (epic 06, milestone 2)
 18. [open] v2-plan/task-11-design-planning-output-model.md (epic 06, milestone 2)
