@@ -50,7 +50,7 @@
 50. [closed] work-v2/task-12-implement-planner-emission.md (epic 06, milestone 2)
 51. [closed] work-v2/task-43-add-explicit-plan-command.md (epic 06, milestone 2)
 52. [closed] work-v2/task-48-implement-worker-command-resolution.md (epic 08, milestone 3)
-53. [open] work-v2/task-49-implement-worktree-management.md (epic 08, milestone 3)
+53. [closed] work-v2/task-49-implement-worktree-management.md (epic 08, milestone 3)
 54. [open] work-v2/task-50-implement-worker-env-staging.md (epic 08, milestone 3)
 55. [open] work-v2/task-51-implement-worker-process-exec.md (epic 08, milestone 3)
 56. [open] work-v2/task-52-implement-worker-result-ingest.md (epic 08, milestone 3)
