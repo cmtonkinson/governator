@@ -39,7 +39,7 @@
 39. [closed] v2-plan/task-73-implement-role-metadata-loading.md (epic 08, milestone 3)
 40. [closed] v2-plan/task-77-implement-role-assignment-llm.md (epic 07, milestone 3)
 41. [closed] v2-plan/task-35-add-template-assets.md (epic 05, milestone 2)
-42. [open] v2-plan/task-10-implement-bootstrap-runner.md (epic 05, milestone 2)
+42. [closed] v2-plan/task-10-implement-bootstrap-runner.md (epic 05, milestone 2)
 43. [open] v2-plan/task-36-implement-bootstrap-idempotency.md (epic 05, milestone 2)
 44. [open] v2-plan/task-38-implement-planner-prompt-assembly.md (epic 06, milestone 2)
 45. [open] v2-plan/task-39-implement-planner-output-parser.md (epic 06, milestone 2)
