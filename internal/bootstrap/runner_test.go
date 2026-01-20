@@ -3,8 +3,10 @@ package bootstrap
 
 import (
 	"bytes"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cmtonkinson/governator/internal/templates"
@@ -107,6 +109,46 @@ func TestRunUsesLocalTemplateOverride(t *testing.T) {
 	got := string(readFile(t, path))
 	if got != override {
 		t.Fatalf("override content = %q, want %q", got, override)
+	}
+}
+
+// TestRunForceOverwritesArtifacts ensures Force overwrites existing artifacts and logs it.
+func TestRunForceOverwritesArtifacts(t *testing.T) {
+	t.Helper()
+	root := t.TempDir()
+
+	existing := Artifacts()[0]
+	existingPath := filepath.Join(root, docsDirName, existing.Name)
+	writeFile(t, existingPath, "custom content")
+
+	var buf bytes.Buffer
+	prevOutput := log.Writer()
+	prevFlags := log.Flags()
+	log.SetOutput(&buf)
+	log.SetFlags(0)
+	defer func() {
+		log.SetOutput(prevOutput)
+		log.SetFlags(prevFlags)
+	}()
+
+	result, err := Run(root, Options{Force: true})
+	if err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+
+	got := string(readFile(t, existingPath))
+	templateData := readTemplate(t, existing.Template)
+	if got != string(templateData) {
+		t.Fatalf("forced content = %q, want template content", got)
+	}
+
+	relativePath := repoRelativePath(root, existingPath)
+	if !strings.Contains(buf.String(), "bootstrap overwrite "+relativePath) {
+		t.Fatalf("log output = %q, want overwrite log for %s", buf.String(), relativePath)
+	}
+
+	if len(result.Skipped) != 0 {
+		t.Fatalf("Skipped count = %d, want 0", len(result.Skipped))
 	}
 }
 

@@ -4,6 +4,7 @@ package bootstrap
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,13 +78,16 @@ func writeArtifacts(repoRoot string, artifacts []Artifact, options Options) (Res
 			return Result{}, errors.New("artifact template is required")
 		}
 		path := filepath.Join(docsDir, artifact.Name)
-		if !options.Force {
-			if _, err := os.Stat(path); err == nil {
-				result.Skipped = append(result.Skipped, repoRelativePath(repoRoot, path))
-				continue
-			} else if !errors.Is(err, os.ErrNotExist) {
-				return Result{}, fmt.Errorf("stat artifact %s: %w", path, err)
-			}
+		exists, err := fileExists(path)
+		if err != nil {
+			return Result{}, fmt.Errorf("stat artifact %s: %w", path, err)
+		}
+		if exists && !options.Force {
+			result.Skipped = append(result.Skipped, repoRelativePath(repoRoot, path))
+			continue
+		}
+		if exists && options.Force {
+			log.Printf("bootstrap overwrite %s", repoRelativePath(repoRoot, path))
 		}
 
 		data, err := loadTemplate(repoRoot, artifact.Template)
@@ -134,4 +138,19 @@ func repoRelativePath(root string, path string) string {
 		return filepath.ToSlash(path)
 	}
 	return filepath.ToSlash(rel)
+}
+
+// fileExists reports whether the provided path exists on disk.
+func fileExists(path string) (bool, error) {
+	if strings.TrimSpace(path) == "" {
+		return false, errors.New("path is required")
+	}
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return false, err
 }
