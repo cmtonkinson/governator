@@ -47,7 +47,7 @@
 47. [closed] work-v2/task-41-implement-overlap-and-order-mapping.md (epic 06, milestone 2)
 48. [closed] work-v2/task-13-implement-content-digests.md (epic 06, milestone 2)
 49. [closed] work-v2/task-42-implement-drift-handling-policy.md (epic 06, milestone 2)
-50. [open] work-v2/task-12-implement-planner-emission.md (epic 06, milestone 2)
+50. [closed] work-v2/task-12-implement-planner-emission.md (epic 06, milestone 2)
 51. [open] work-v2/task-43-add-explicit-plan-command.md (epic 06, milestone 2)
 52. [open] work-v2/task-48-implement-worker-command-resolution.md (epic 08, milestone 3)
 53. [open] work-v2/task-49-implement-worktree-management.md (epic 08, milestone 3)
