@@ -40,29 +40,7 @@ func RoleCapsFromConfig(cfg config.Config) RoleCaps {
 
 // ApplyRoleCaps selects tasks in order, enforcing global and per-role caps.
 func ApplyRoleCaps(ordered []index.Task, caps RoleCaps) []index.Task {
-	if caps.Global <= 0 {
-		return nil
-	}
-	selected := make([]index.Task, 0, min(caps.Global, len(ordered)))
-	if len(ordered) == 0 {
-		return selected
-	}
-	usage := map[index.Role]int{}
-	for _, task := range ordered {
-		if len(selected) >= caps.Global {
-			break
-		}
-		roleCap := capForRole(task.Role, caps)
-		if roleCap <= 0 {
-			continue
-		}
-		if usage[task.Role] >= roleCap {
-			continue
-		}
-		selected = append(selected, task)
-		usage[task.Role]++
-	}
-	return selected
+	return RouteOrderedTasks(ordered, caps).Selected
 }
 
 // capForRole returns the concurrency cap that applies to the provided role.

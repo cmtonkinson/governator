@@ -11,9 +11,10 @@ import (
 
 // Priority constants describe how close a task is to completion.
 const (
-	statePriorityClosest = 0
-	statePriorityMid     = 1
-	statePriorityOpen    = 2
+	statePriorityConflict = 0
+	statePriorityReview   = 1
+	statePriorityTest     = 2
+	statePriorityWork     = 3
 )
 
 // OrderedEligibleTasks returns eligible tasks ordered deterministically by state, plan order, and id.
@@ -58,12 +59,14 @@ func OrderedEligibleTasks(idx index.Index) ([]index.Task, error) {
 // statePriority ranks task states so closer-to-completion work is favored.
 func statePriority(state index.TaskState) (int, bool) {
 	switch state {
-	case index.TaskStateTested, index.TaskStateResolved:
-		return statePriorityClosest, true
+	case index.TaskStateConflict, index.TaskStateResolved:
+		return statePriorityConflict, true
+	case index.TaskStateTested:
+		return statePriorityReview, true
 	case index.TaskStateWorked:
-		return statePriorityMid, true
+		return statePriorityTest, true
 	case index.TaskStateOpen:
-		return statePriorityOpen, true
+		return statePriorityWork, true
 	default:
 		return 0, false
 	}
