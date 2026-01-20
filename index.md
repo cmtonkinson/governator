@@ -28,7 +28,7 @@
 28. [done] v2-plan/task-30-implement-index-file-locking.md (epic 03, milestone 1)
 29. [done] v2-plan/task-06-implement-index-update-helpers.md (epic 03, milestone 1)
 30. [done] v2-plan/task-45-implement-state-transition-guards.md (epic 07, milestone 3)
-31. [open] v2-plan/task-72-implement-role-caps-and-defaults.md (epic 07, milestone 3)
+31. [closed] v2-plan/task-72-implement-role-caps-and-defaults.md (epic 07, milestone 3)
 32. [open] v2-plan/task-14-implement-scheduler-ordering.md (epic 07, milestone 3)
 33. [open] v2-plan/task-67-implement-routing-policy.md (epic 07, milestone 3)
 34. [open] v2-plan/task-15-implement-concurrency-caps.md (epic 07, milestone 3)
