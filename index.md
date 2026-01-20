@@ -31,7 +31,7 @@
 31. [closed] v2-plan/task-72-implement-role-caps-and-defaults.md (epic 07, milestone 3)
 32. [closed] v2-plan/task-14-implement-scheduler-ordering.md (epic 07, milestone 3)
 33. [closed] v2-plan/task-67-implement-routing-policy.md (epic 07, milestone 3)
-34. [open] v2-plan/task-15-implement-concurrency-caps.md (epic 07, milestone 3)
+34. [closed] v2-plan/task-15-implement-concurrency-caps.md (epic 07, milestone 3)
 35. [open] v2-plan/task-16-implement-overlap-aware-parallelism.md (epic 07, milestone 3)
 36. [open] v2-plan/task-46-implement-in-flight-tracking.md (epic 07, milestone 3)
 37. [open] v2-plan/task-47-implement-run-lock.md (epic 07, milestone 3)

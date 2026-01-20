@@ -61,6 +61,70 @@ func TestApplyRoleCapsUsesDefaultRoleCap(t *testing.T) {
 	}
 }
 
+// TestApplyRoleCapsPerRoleOverridesDefault ensures explicit role caps override default caps.
+func TestApplyRoleCapsPerRoleOverridesDefault(t *testing.T) {
+	ordered := []index.Task{
+		{ID: "T-01", Role: "writer"},
+		{ID: "T-02", Role: "writer"},
+		{ID: "T-03", Role: "reviewer"},
+		{ID: "T-04", Role: "reviewer"},
+		{ID: "T-05", Role: "reviewer"},
+		{ID: "T-06", Role: "qa"},
+	}
+	caps := RoleCaps{
+		Global:      4,
+		DefaultRole: 3,
+		Roles: map[index.Role]int{
+			"writer":   1,
+			"reviewer": 2,
+		},
+	}
+
+	selected := ApplyRoleCaps(ordered, caps)
+
+	want := []string{"T-01", "T-03", "T-04", "T-06"}
+	got := taskIDs(selected)
+	if len(got) != len(want) {
+		t.Fatalf("selected %d tasks, want %d", len(got), len(want))
+	}
+	for i, id := range want {
+		if got[i] != id {
+			t.Fatalf("selected[%d] = %s, want %s", i, got[i], id)
+		}
+	}
+}
+
+// TestApplyRoleCapsGlobalLimit ensures global caps limit concurrency below role caps.
+func TestApplyRoleCapsGlobalLimit(t *testing.T) {
+	ordered := []index.Task{
+		{ID: "T-01", Role: "worker"},
+		{ID: "T-02", Role: "worker"},
+		{ID: "T-03", Role: "tester"},
+		{ID: "T-04", Role: "tester"},
+	}
+	caps := RoleCaps{
+		Global:      2,
+		DefaultRole: 5,
+		Roles: map[index.Role]int{
+			"worker": 4,
+			"tester": 4,
+		},
+	}
+
+	selected := ApplyRoleCaps(ordered, caps)
+
+	want := []string{"T-01", "T-02"}
+	got := taskIDs(selected)
+	if len(got) != len(want) {
+		t.Fatalf("selected %d tasks, want %d", len(got), len(want))
+	}
+	for i, id := range want {
+		if got[i] != id {
+			t.Fatalf("selected[%d] = %s, want %s", i, got[i], id)
+		}
+	}
+}
+
 // TestRoleCapsFromConfigDefaults ensures invalid caps fall back to defaults.
 func TestRoleCapsFromConfigDefaults(t *testing.T) {
 	defaults := config.Defaults()
