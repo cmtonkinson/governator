@@ -12,6 +12,15 @@ state transitions.
 - Best-effort parsing: invalid or missing values fall back to defaults.
 - Paths are repo-relative unless explicitly stated otherwise.
 
+## Digest algorithm
+- Algorithm: SHA-256 over raw file bytes with no normalization (no newline
+  conversion, trimming, or encoding changes).
+- Encoding: lowercase hex with a `sha256:` prefix.
+- Compatibility: matches standard tools (`shasum -a 256`, `sha256sum`, `openssl
+  dgst -sha256`); no known conflicts with existing tooling.
+- Sample: file bytes `governator\n` digest to
+  `sha256:328961dd5885fa93c7c1f184d3489723f202e870088c9ae747f1454dc406176a`.
+
 ## Top-level fields
 `schema_version` (number, required)
 - Schema version for the index format.
