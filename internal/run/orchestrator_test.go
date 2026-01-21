@@ -285,7 +285,7 @@ func setupTestRepoWithConfig(t *testing.T) string {
 	configContent := `{
 		"workers": {
 			"commands": {
-				"default": ["echo", "test"]
+				"default": ["echo", "processing {task_path}"]
 			}
 		},
 		"concurrency": {
