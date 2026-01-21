@@ -56,7 +56,10 @@ func TestExecuteWorkerHappyPath(t *testing.T) {
 	}
 
 	if result.ExitCode != 0 {
-		t.Fatalf("exit code = %d, want 0", result.ExitCode)
+		t.Fatalf("exit code = %d, want 0 (error: %v)", result.ExitCode, result.Error)
+	}
+	if result.Error != nil {
+		t.Fatalf("unexpected exec error: %v", result.Error)
 	}
 	if result.TimedOut {
 		t.Fatal("process should not have timed out")
@@ -482,7 +485,10 @@ func TestExecuteWorkerFromConfig(t *testing.T) {
 	}
 
 	if result.ExitCode != 0 {
-		t.Fatalf("exit code = %d, want 0", result.ExitCode)
+		t.Fatalf("exit code = %d, want 0 (error: %v)", result.ExitCode, result.Error)
+	}
+	if result.Error != nil {
+		t.Fatalf("unexpected exec error: %v", result.Error)
 	}
 	if result.TimedOut {
 		t.Fatal("process should not have timed out")
@@ -520,7 +526,10 @@ func TestExecuteWorkerEnvironmentVariables(t *testing.T) {
 	}
 
 	if result.ExitCode != 0 {
-		t.Fatalf("exit code = %d, want 0", result.ExitCode)
+		t.Fatalf("exit code = %d, want 0 (error: %v)", result.ExitCode, result.Error)
+	}
+	if result.Error != nil {
+		t.Fatalf("unexpected exec error: %v", result.Error)
 	}
 
 	// Check stdout content contains environment variable value
@@ -564,4 +573,103 @@ func TestExecuteWorkerLogFileNaming(t *testing.T) {
 	if !strings.HasSuffix(result.StderrPath, "-stderr.log") {
 		t.Fatalf("stderr path = %q, want -stderr.log suffix", result.StderrPath)
 	}
+}
+
+// TestExecuteWorkerWithStubCommandSuccess confirms a stub worker completes and logs output.
+func TestExecuteWorkerWithStubCommandSuccess(t *testing.T) {
+	t.Parallel()
+	workDir := t.TempDir()
+	stub := stubRunnerPath(t)
+
+	input := ExecInput{
+		Command:     []string{stub, "success"},
+		WorkDir:     workDir,
+		TaskID:      "T-007",
+		TimeoutSecs: 5,
+	}
+
+	result, err := ExecuteWorker(input)
+	if err != nil {
+		t.Fatalf("ExecuteWorker failed: %v", err)
+	}
+
+	if result.ExitCode != 0 {
+		t.Fatalf("exit code = %d, want 0 (error: %v)", result.ExitCode, result.Error)
+	}
+	if result.Error != nil {
+		t.Fatalf("unexpected exec error: %v", result.Error)
+	}
+	if result.TimedOut {
+		t.Fatal("process should not have timed out")
+	}
+
+	stdoutPath := filepath.Join(workDir, result.StdoutPath)
+	stdoutContent, err := os.ReadFile(stdoutPath)
+	if err != nil {
+		t.Fatalf("read stdout log: %v", err)
+	}
+	if !strings.Contains(string(stdoutContent), "stub worker runner success") {
+		t.Fatalf("stdout log missing stub success message: %s", string(stdoutContent))
+	}
+}
+
+// TestExecuteWorkerWithStubCommandTimeout ensures a stub worker that sleeps past the timeout is terminated.
+func TestExecuteWorkerWithStubCommandTimeout(t *testing.T) {
+	t.Parallel()
+	workDir := t.TempDir()
+	stub := stubRunnerPath(t)
+
+	var warnings []string
+	warn := func(msg string) {
+		warnings = append(warnings, msg)
+	}
+
+	input := ExecInput{
+		Command:     []string{stub, "sleep", "10"},
+		WorkDir:     workDir,
+		TaskID:      "T-008",
+		TimeoutSecs: 1,
+		Warn:        warn,
+	}
+
+	result, err := ExecuteWorker(input)
+	if err != nil {
+		t.Fatalf("ExecuteWorker failed: %v", err)
+	}
+
+	if !result.TimedOut {
+		t.Fatal("process should have timed out")
+	}
+	if result.ExitCode != -1 {
+		t.Fatalf("exit code = %d, want -1 for timeout", result.ExitCode)
+	}
+	if result.Error == nil {
+		t.Fatal("expected timeout error")
+	}
+
+	if len(warnings) == 0 {
+		t.Fatal("expected timeout warning")
+	}
+	if !strings.Contains(warnings[0], "timed out") {
+		t.Fatalf("warning = %q, want timeout notice", warnings[0])
+	}
+
+	stdoutPath := filepath.Join(workDir, result.StdoutPath)
+	stdoutContent, err := os.ReadFile(stdoutPath)
+	if err != nil {
+		t.Fatalf("read stdout log: %v", err)
+	}
+	if !strings.Contains(string(stdoutContent), "stub worker runner sleeping for") {
+		t.Fatalf("stdout log missing stub sleep message: %s", string(stdoutContent))
+	}
+}
+
+func stubRunnerPath(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join("testdata", "stub-worker-runner.sh")
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		t.Fatalf("resolve stub runner path: %v", err)
+	}
+	return absPath
 }
