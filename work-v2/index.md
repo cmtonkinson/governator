@@ -57,7 +57,7 @@
 57. [closed] work-v2/task-79-implement-work-stage-marker.md (epic 08, milestone 3)
 58. [closed] work-v2/task-17-implement-timeout-logging.md (epic 08, milestone 3)
 59. [closed] work-v2/task-18-implement-resume-in-run.md (epic 08, milestone 3)
-60. [open] work-v2/task-53-implement-test-agent-stage.md (epic 08, milestone 3)
+60. [closed] work-v2/task-53-implement-test-agent-stage.md (epic 08, milestone 3)
 61. [open] work-v2/task-54-implement-review-agent-stage.md (epic 08, milestone 3)
 62. [open] work-v2/task-80-define-review-merge-flow.md (epic 08, milestone 3)
 63. [open] work-v2/task-70-implement-branch-lifecycle.md (epic 08, milestone 3)
