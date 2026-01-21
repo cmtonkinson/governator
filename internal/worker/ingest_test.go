@@ -308,7 +308,7 @@ func TestIngestWorkerResultAllStages(t *testing.T) {
 	t.Parallel()
 
 	stages := []struct {
-		stage       roles.Stage
+		stage        roles.Stage
 		successState index.TaskState
 		markerFile   string
 	}{

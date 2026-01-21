@@ -34,6 +34,9 @@ They should remain short, stable, and single-line.
 - `agent.invoke`: agent started (planner, worker, tester, reviewer).
 - `agent.outcome`: agent finished with a result.
 
+### Worker events
+- `worker.timeout`: worker process timed out.
+
 ## Examples
 Worktree create:
 `ts=2025-01-14T19:02:11Z task_id=T-014 role=worker event=worktree.create path=_governator/_local_state/worktrees/T-014 branch=gov/T-014`
@@ -55,3 +58,6 @@ Agent invoke:
 
 Agent outcome:
 `ts=2025-01-14T20:09:45Z task_id=T-014 role=tester event=agent.outcome agent=test-runner status=failed exit_code=1`
+
+Worker timeout:
+`ts=2025-01-14T20:15:30Z task_id=T-042 role=worker event=worker.timeout timeout_seconds=300 worktree_path=_governator/_local_state/worktrees/T-042`

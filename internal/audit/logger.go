@@ -39,6 +39,8 @@ const (
 	EventAgentInvoke = "agent.invoke"
 	// EventAgentOutcome records agent completion.
 	EventAgentOutcome = "agent.outcome"
+	// EventWorkerTimeout records worker process timeout.
+	EventWorkerTimeout = "worker.timeout"
 )
 
 // Logger appends audit entries to a log file.
@@ -198,6 +200,19 @@ func (logger *Logger) LogAgentOutcome(taskID string, role string, agent string, 
 			{Key: "agent", Value: agent},
 			{Key: "status", Value: status},
 			{Key: "exit_code", Value: strconv.Itoa(exitCode)},
+		},
+	})
+}
+
+// LogWorkerTimeout records a worker timeout event.
+func (logger *Logger) LogWorkerTimeout(taskID string, role string, timeoutSecs int, worktreePath string) error {
+	return logger.Log(Entry{
+		TaskID: taskID,
+		Role:   role,
+		Event:  EventWorkerTimeout,
+		Fields: []Field{
+			{Key: "timeout_seconds", Value: strconv.Itoa(timeoutSecs)},
+			{Key: "worktree_path", Value: worktreePath},
 		},
 	})
 }

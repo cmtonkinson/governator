@@ -24,6 +24,11 @@ const (
 	logDirMode = 0o755
 )
 
+// AuditLogger defines the interface for audit logging.
+type AuditLogger interface {
+	LogWorkerTimeout(taskID string, role string, timeoutSecs int, worktreePath string) error
+}
+
 // ExecInput defines the inputs required for worker process execution.
 type ExecInput struct {
 	Command      []string
@@ -32,16 +37,19 @@ type ExecInput struct {
 	TimeoutSecs  int
 	EnvVars      map[string]string
 	Warn         func(string)
+	AuditLogger  AuditLogger
+	Role         string
+	WorktreePath string
 }
 
 // ExecResult captures the worker process execution results.
 type ExecResult struct {
-	ExitCode    int
-	TimedOut    bool
-	StdoutPath  string
-	StderrPath  string
-	Duration    time.Duration
-	Error       error
+	ExitCode   int
+	TimedOut   bool
+	StdoutPath string
+	StderrPath string
+	Duration   time.Duration
+	Error      error
 }
 
 // ExecuteWorker runs a worker process with timeout and log capture.
@@ -118,6 +126,14 @@ func ExecuteWorker(input ExecInput) (ExecResult, error) {
 			result.TimedOut = true
 			result.ExitCode = -1
 			result.Error = fmt.Errorf("worker process timed out after %d seconds", input.TimeoutSecs)
+
+			// Log timeout to audit log if logger is provided
+			if input.AuditLogger != nil && input.Role != "" && input.WorktreePath != "" {
+				if auditErr := input.AuditLogger.LogWorkerTimeout(input.TaskID, input.Role, input.TimeoutSecs, input.WorktreePath); auditErr != nil {
+					emitWarning(input.Warn, fmt.Sprintf("failed to log timeout to audit: %v", auditErr))
+				}
+			}
+
 			emitWarning(input.Warn, fmt.Sprintf("task %s timed out after %d seconds", input.TaskID, input.TimeoutSecs))
 		} else if exitError, ok := err.(*exec.ExitError); ok {
 			// Process exited with non-zero code
@@ -137,18 +153,26 @@ func ExecuteWorker(input ExecInput) (ExecResult, error) {
 
 // ExecuteWorkerFromConfig executes a worker using configuration and staging results.
 func ExecuteWorkerFromConfig(cfg config.Config, task index.Task, stageResult StageResult, workDir string, warn func(string)) (ExecResult, error) {
+	return ExecuteWorkerFromConfigWithAudit(cfg, task, stageResult, workDir, warn, nil, "")
+}
+
+// ExecuteWorkerFromConfigWithAudit executes a worker using configuration and staging results with audit logging.
+func ExecuteWorkerFromConfigWithAudit(cfg config.Config, task index.Task, stageResult StageResult, workDir string, warn func(string), auditLogger AuditLogger, worktreePath string) (ExecResult, error) {
 	command, err := ResolveCommand(cfg, task.Role, task.Path, workDir)
 	if err != nil {
 		return ExecResult{}, fmt.Errorf("resolve worker command: %w", err)
 	}
 
 	input := ExecInput{
-		Command:     command,
-		WorkDir:     workDir,
-		TaskID:      task.ID,
-		TimeoutSecs: cfg.Timeouts.WorkerSeconds,
-		EnvVars:     stageResult.Env,
-		Warn:        warn,
+		Command:      command,
+		WorkDir:      workDir,
+		TaskID:       task.ID,
+		TimeoutSecs:  cfg.Timeouts.WorkerSeconds,
+		EnvVars:      stageResult.Env,
+		Warn:         warn,
+		AuditLogger:  auditLogger,
+		Role:         string(task.Role),
+		WorktreePath: worktreePath,
 	}
 
 	return ExecuteWorker(input)

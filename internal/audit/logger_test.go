@@ -113,3 +113,46 @@ func TestLoggerRejectsMissingFields(t *testing.T) {
 		t.Fatal("expected warning for rejected entry")
 	}
 }
+
+// TestLogWorkerTimeout ensures worker timeout events are logged correctly.
+func TestLogWorkerTimeout(t *testing.T) {
+	repoRoot := t.TempDir()
+	logPath := filepath.Join(repoRoot, localStateDirName, auditLogFileName)
+	if err := os.MkdirAll(filepath.Dir(logPath), auditLogDirMode); err != nil {
+		t.Fatalf("create audit log dir: %v", err)
+	}
+	if err := os.WriteFile(logPath, []byte(""), auditLogFileMode); err != nil {
+		t.Fatalf("create audit log file: %v", err)
+	}
+
+	var warnings bytes.Buffer
+	logger, err := NewLogger(repoRoot, &warnings)
+	if err != nil {
+		t.Fatalf("new logger: %v", err)
+	}
+	fixedTime := time.Date(2025, 1, 14, 20, 15, 30, 0, time.UTC)
+	logger.now = func() time.Time {
+		return fixedTime
+	}
+
+	if err := logger.LogWorkerTimeout("T-042", "worker", 300, "_governator/_local_state/worktrees/T-042"); err != nil {
+		t.Fatalf("log worker timeout: %v", err)
+	}
+
+	if warnings.Len() != 0 {
+		t.Fatalf("expected no warnings, got %q", warnings.String())
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 audit log line, got %d", len(lines))
+	}
+	expected := "ts=2025-01-14T20:15:30Z task_id=T-042 role=worker event=worker.timeout timeout_seconds=300 worktree_path=_governator/_local_state/worktrees/T-042"
+	if lines[0] != expected {
+		t.Fatalf("expected audit line %q, got %q", expected, lines[0])
+	}
+}

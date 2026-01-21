@@ -11,6 +11,30 @@ import (
 	"github.com/cmtonkinson/governator/internal/index"
 )
 
+// auditCall captures the parameters passed to LogWorkerTimeout.
+type auditCall struct {
+	taskID       string
+	role         string
+	timeoutSecs  int
+	worktreePath string
+}
+
+// mockAuditLogger implements AuditLogger for testing.
+type mockAuditLogger struct {
+	calls *[]auditCall
+}
+
+// LogWorkerTimeout records the call parameters for testing.
+func (m *mockAuditLogger) LogWorkerTimeout(taskID string, role string, timeoutSecs int, worktreePath string) error {
+	*m.calls = append(*m.calls, auditCall{
+		taskID:       taskID,
+		role:         role,
+		timeoutSecs:  timeoutSecs,
+		worktreePath: worktreePath,
+	})
+	return nil
+}
+
 // TestExecuteWorkerHappyPath ensures successful worker execution produces logs.
 func TestExecuteWorkerHappyPath(t *testing.T) {
 	t.Parallel()
@@ -126,6 +150,184 @@ func TestExecuteWorkerTimeout(t *testing.T) {
 	}
 	if _, err := os.Stat(stderrPath); err != nil {
 		t.Fatalf("stderr log file missing: %v", err)
+	}
+}
+
+// TestExecuteWorkerTimeoutWithAuditLogging ensures timeout audit logging works correctly.
+func TestExecuteWorkerTimeoutWithAuditLogging(t *testing.T) {
+	t.Parallel()
+	workDir := t.TempDir()
+
+	// Mock audit logger
+	var auditCalls []auditCall
+	mockAuditLogger := &mockAuditLogger{calls: &auditCalls}
+
+	var warnings []string
+	warn := func(msg string) {
+		warnings = append(warnings, msg)
+	}
+
+	input := ExecInput{
+		Command:      []string{"sleep", "10"}, // Sleep longer than timeout
+		WorkDir:      workDir,
+		TaskID:       "T-003",
+		TimeoutSecs:  1, // Short timeout
+		Warn:         warn,
+		AuditLogger:  mockAuditLogger,
+		Role:         "worker",
+		WorktreePath: "_governator/_local_state/worktrees/T-003",
+	}
+
+	result, err := ExecuteWorker(input)
+	if err != nil {
+		t.Fatalf("ExecuteWorker failed: %v", err)
+	}
+	if !result.TimedOut {
+		t.Fatal("expected timeout")
+	}
+
+	// Check that audit logger was called
+	if len(auditCalls) != 1 {
+		t.Fatalf("expected 1 audit call, got %d", len(auditCalls))
+	}
+	call := auditCalls[0]
+	if call.taskID != "T-003" {
+		t.Fatalf("audit call task ID = %q, want %q", call.taskID, "T-003")
+	}
+	if call.role != "worker" {
+		t.Fatalf("audit call role = %q, want %q", call.role, "worker")
+	}
+	if call.timeoutSecs != 1 {
+		t.Fatalf("audit call timeout seconds = %d, want %d", call.timeoutSecs, 1)
+	}
+	if call.worktreePath != "_governator/_local_state/worktrees/T-003" {
+		t.Fatalf("audit call worktree path = %q, want %q", call.worktreePath, "_governator/_local_state/worktrees/T-003")
+	}
+}
+
+// TestExecuteWorkerTimeoutWithoutAuditLogger ensures timeout works without audit logger.
+func TestExecuteWorkerTimeoutWithoutAuditLogger(t *testing.T) {
+	t.Parallel()
+	workDir := t.TempDir()
+
+	var warnings []string
+	warn := func(msg string) {
+		warnings = append(warnings, msg)
+	}
+
+	input := ExecInput{
+		Command:      []string{"sleep", "10"}, // Sleep longer than timeout
+		WorkDir:      workDir,
+		TaskID:       "T-004",
+		TimeoutSecs:  1, // Short timeout
+		Warn:         warn,
+		AuditLogger:  nil, // No audit logger
+		Role:         "worker",
+		WorktreePath: "_governator/_local_state/worktrees/T-004",
+	}
+
+	result, err := ExecuteWorker(input)
+	if err != nil {
+		t.Fatalf("ExecuteWorker failed: %v", err)
+	}
+	if !result.TimedOut {
+		t.Fatal("expected timeout")
+	}
+
+	// Should still work without audit logger
+	if len(warnings) == 0 {
+		t.Fatal("expected timeout warning")
+	}
+	if !strings.Contains(warnings[0], "timed out") {
+		t.Fatalf("warning = %q, want timeout message", warnings[0])
+	}
+}
+
+// TestExecuteWorkerTimeoutMissingFields ensures audit logging is skipped when fields are missing.
+func TestExecuteWorkerTimeoutMissingFields(t *testing.T) {
+	t.Parallel()
+	workDir := t.TempDir()
+
+	// Mock audit logger
+	var auditCalls []auditCall
+	mockAuditLogger := &mockAuditLogger{calls: &auditCalls}
+
+	var warnings []string
+	warn := func(msg string) {
+		warnings = append(warnings, msg)
+	}
+
+	input := ExecInput{
+		Command:      []string{"sleep", "10"}, // Sleep longer than timeout
+		WorkDir:      workDir,
+		TaskID:       "T-005",
+		TimeoutSecs:  1, // Short timeout
+		Warn:         warn,
+		AuditLogger:  mockAuditLogger,
+		Role:         "", // Missing role
+		WorktreePath: "", // Missing worktree path
+	}
+
+	result, err := ExecuteWorker(input)
+	if err != nil {
+		t.Fatalf("ExecuteWorker failed: %v", err)
+	}
+	if !result.TimedOut {
+		t.Fatal("expected timeout")
+	}
+
+	// Audit logger should not be called when fields are missing
+	if len(auditCalls) != 0 {
+		t.Fatalf("expected 0 audit calls, got %d", len(auditCalls))
+	}
+}
+
+// TestExecuteWorkerNonTimeoutFailureNoTimeoutMessage ensures non-timeout failures don't emit timeout messages.
+func TestExecuteWorkerNonTimeoutFailureNoTimeoutMessage(t *testing.T) {
+	t.Parallel()
+	workDir := t.TempDir()
+
+	// Mock audit logger
+	var auditCalls []auditCall
+	mockAuditLogger := &mockAuditLogger{calls: &auditCalls}
+
+	var warnings []string
+	warn := func(msg string) {
+		warnings = append(warnings, msg)
+	}
+
+	input := ExecInput{
+		Command:      []string{"false"}, // Command that fails but doesn't timeout
+		WorkDir:      workDir,
+		TaskID:       "T-006",
+		TimeoutSecs:  10, // Long timeout
+		Warn:         warn,
+		AuditLogger:  mockAuditLogger,
+		Role:         "worker",
+		WorktreePath: "_governator/_local_state/worktrees/T-006",
+	}
+
+	result, err := ExecuteWorker(input)
+	if err != nil {
+		t.Fatalf("ExecuteWorker failed: %v", err)
+	}
+	if result.TimedOut {
+		t.Fatal("process should not have timed out")
+	}
+	if result.ExitCode == 0 {
+		t.Fatal("expected non-zero exit code")
+	}
+
+	// Audit logger should not be called for non-timeout failures
+	if len(auditCalls) != 0 {
+		t.Fatalf("expected 0 audit calls for non-timeout failure, got %d", len(auditCalls))
+	}
+
+	// Warnings should not contain timeout messages
+	for _, warning := range warnings {
+		if strings.Contains(warning, "timed out") {
+			t.Fatalf("warning should not contain timeout message for non-timeout failure: %q", warning)
+		}
 	}
 }
 
