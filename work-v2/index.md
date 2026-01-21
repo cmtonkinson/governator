@@ -80,4 +80,4 @@
 80. [closed] work-v2/task-65-add-v2-upgrade-notes.md (epic 11, milestone 5)
 81. [closed] work-v2/task-22-update-documentation-set.md (epic 11, milestone 5)
 82. [closed] work-v2/task-74-design-distribution-packaging.md (epic 02, milestone 5)
-83. [open] work-v2/task-75-implement-release-scripts.md (epic 02, milestone 5)
+83. [closed] work-v2/task-75-implement-release-scripts.md (epic 02, milestone 5)
