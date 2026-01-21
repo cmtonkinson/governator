@@ -16,13 +16,13 @@ import (
 func TestExecuteConflictResolutionAgent_Success(t *testing.T) {
 	// Create temporary directory for test
 	tempDir := t.TempDir()
-	
+
 	// Create task file
 	taskPath := filepath.Join(tempDir, "task-01.md")
 	if err := os.WriteFile(taskPath, []byte("# Task 1\nTest task content"), 0644); err != nil {
 		t.Fatalf("failed to create task file: %v", err)
 	}
-	
+
 	// Create role assignment prompt
 	promptDir := filepath.Join(tempDir, "_governator", "prompts")
 	if err := os.MkdirAll(promptDir, 0755); err != nil {
@@ -32,7 +32,7 @@ func TestExecuteConflictResolutionAgent_Success(t *testing.T) {
 	if err := os.WriteFile(promptPath, []byte("# Role Assignment\nSelect appropriate role"), 0644); err != nil {
 		t.Fatalf("failed to create role assignment prompt: %v", err)
 	}
-	
+
 	// Create roles directory with a test role
 	rolesDir := filepath.Join(tempDir, "_governator", "roles")
 	if err := os.MkdirAll(rolesDir, 0755); err != nil {
@@ -44,11 +44,11 @@ func TestExecuteConflictResolutionAgent_Success(t *testing.T) {
 	}
 
 	task := index.Task{
-		ID:    "task-01",
-		State: index.TaskStateConflict,
-		Role:  "generalist",
-		Title: "Test Task 1",
-		Path:  "task-01.md",
+		ID:       "task-01",
+		State:    index.TaskStateConflict,
+		Role:     "generalist",
+		Title:    "Test Task 1",
+		Path:     "task-01.md",
 		Attempts: index.AttemptCounters{Total: 1},
 	}
 
@@ -69,16 +69,16 @@ func TestExecuteConflictResolutionAgent_Success(t *testing.T) {
 
 	// This will fail at the worker execution stage since we don't have a real worker setup,
 	// but we can verify the role selection and staging works
-	_, err := ExecuteConflictResolutionAgent(tempDir, tempDir, task, cfg, nil, opts)
-	
+	_, _, err := ExecuteConflictResolutionAgent(tempDir, tempDir, task, cfg, nil, opts)
+
 	// We expect this to fail at the worker execution stage, which is fine for this test
 	if err == nil {
 		t.Fatal("expected error due to missing worker setup, got nil")
 	}
-	
+
 	// Verify the error is from worker execution, not role selection or staging
 	if !strings.Contains(err.Error(), "execute conflict resolution worker") &&
-	   !strings.Contains(err.Error(), "stage conflict resolution environment") {
+		!strings.Contains(err.Error(), "stage conflict resolution environment") {
 		t.Errorf("unexpected error type: %v", err)
 	}
 }
@@ -86,13 +86,13 @@ func TestExecuteConflictResolutionAgent_Success(t *testing.T) {
 func TestSelectRoleForConflictResolution_Success(t *testing.T) {
 	// Create temporary directory for test
 	tempDir := t.TempDir()
-	
+
 	// Create task file
 	taskPath := filepath.Join(tempDir, "task-01.md")
 	if err := os.WriteFile(taskPath, []byte("# Task 1\nTest task content"), 0644); err != nil {
 		t.Fatalf("failed to create task file: %v", err)
 	}
-	
+
 	// Create role assignment prompt
 	promptDir := filepath.Join(tempDir, "_governator", "prompts")
 	if err := os.MkdirAll(promptDir, 0755); err != nil {
@@ -102,13 +102,13 @@ func TestSelectRoleForConflictResolution_Success(t *testing.T) {
 	if err := os.WriteFile(promptPath, []byte("# Role Assignment\nSelect appropriate role"), 0644); err != nil {
 		t.Fatalf("failed to create role assignment prompt: %v", err)
 	}
-	
+
 	// Create roles directory with test roles
 	rolesDir := filepath.Join(tempDir, "_governator", "roles")
 	if err := os.MkdirAll(rolesDir, 0755); err != nil {
 		t.Fatalf("failed to create roles dir: %v", err)
 	}
-	
+
 	roles := []string{"generalist", "architect", "reviewer"}
 	for _, role := range roles {
 		rolePath := filepath.Join(rolesDir, role+".md")
@@ -191,13 +191,13 @@ func TestSelectRoleForConflictResolution_ValidationErrors(t *testing.T) {
 				os.MkdirAll(promptDir, 0755)
 				promptPath := filepath.Join(promptDir, "role-assignment.md")
 				os.WriteFile(promptPath, []byte("# Role Assignment"), 0644)
-				
+
 				// Create roles directory with a test role
 				rolesDir := filepath.Join(tempDir, "_governator", "roles")
 				os.MkdirAll(rolesDir, 0755)
 				rolePath := filepath.Join(rolesDir, "generalist.md")
 				os.WriteFile(rolePath, []byte("# Generalist Role"), 0644)
-				
+
 				task := index.Task{
 					ID:   "task-01",
 					Path: "nonexistent.md",
@@ -213,7 +213,7 @@ func TestSelectRoleForConflictResolution_ValidationErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tempDir := t.TempDir()
 			task, cfg := tt.setupFunc(tempDir)
-			
+
 			var stdout strings.Builder
 			var stderr strings.Builder
 			opts := Options{
@@ -234,12 +234,12 @@ func TestSelectRoleForConflictResolution_ValidationErrors(t *testing.T) {
 
 func TestMockLLMInvoker_Invoke(t *testing.T) {
 	invoker := &mockLLMInvoker{fallbackRole: "generalist"}
-	
+
 	response, err := invoker.Invoke(context.Background(), "test prompt")
 	if err != nil {
 		t.Fatalf("Invoke failed: %v", err)
 	}
-	
+
 	// Verify response contains expected JSON structure
 	if !strings.Contains(response, `"role": "generalist"`) {
 		t.Errorf("expected response to contain role generalist, got: %s", response)
@@ -254,10 +254,10 @@ func TestExecuteMergeStage_Success(t *testing.T) {
 	idx := &index.Index{
 		Tasks: []index.Task{
 			{
-				ID:    "task-01",
-				State: index.TaskStateResolved,
-				Role:  "generalist",
-				Title: "Test Task 1",
+				ID:       "task-01",
+				State:    index.TaskStateResolved,
+				Role:     "generalist",
+				Title:    "Test Task 1",
 				Attempts: index.AttemptCounters{Total: 1},
 			},
 		},
@@ -265,7 +265,7 @@ func TestExecuteMergeStage_Success(t *testing.T) {
 
 	cfg := config.Config{}
 	auditor := &mockTransitionAuditor{}
-	
+
 	var stdout strings.Builder
 	var stderr strings.Builder
 	opts := Options{
@@ -305,7 +305,7 @@ func TestUpdateTaskStateFromMerge_Success(t *testing.T) {
 	}
 
 	auditor := &mockTransitionAuditor{}
-	
+
 	// Test successful merge (resolved -> done)
 	result := worker.IngestResult{
 		Success:  true,
@@ -326,7 +326,7 @@ func TestUpdateTaskStateFromMerge_Success(t *testing.T) {
 	if len(auditor.transitions) != 1 {
 		t.Errorf("expected 1 audit transition, got %d", len(auditor.transitions))
 	}
-	
+
 	transition := auditor.transitions[0]
 	if transition.from != string(index.TaskStateResolved) {
 		t.Errorf("expected from state %s, got %s", index.TaskStateResolved, transition.from)
@@ -349,7 +349,7 @@ func TestUpdateTaskStateFromMerge_Failure(t *testing.T) {
 	}
 
 	auditor := &mockTransitionAuditor{}
-	
+
 	// Test failed merge (resolved -> conflict)
 	result := worker.IngestResult{
 		Success:     false,
@@ -371,7 +371,7 @@ func TestUpdateTaskStateFromMerge_Failure(t *testing.T) {
 	if len(auditor.transitions) != 1 {
 		t.Errorf("expected 1 audit transition, got %d", len(auditor.transitions))
 	}
-	
+
 	transition := auditor.transitions[0]
 	if transition.from != string(index.TaskStateResolved) {
 		t.Errorf("expected from state %s, got %s", index.TaskStateResolved, transition.from)

@@ -28,6 +28,7 @@ type IngestResult struct {
 	Success      bool
 	NewState     index.TaskState
 	BlockReason  string
+	TimedOut     bool // TimedOut reports whether the worker execution timed out.
 	HasCommit    bool
 	HasMarker    bool
 	MarkerPath   string
@@ -57,6 +58,7 @@ func IngestWorkerResult(input IngestInput) (IngestResult, error) {
 			Success:     false,
 			NewState:    index.TaskStateBlocked,
 			BlockReason: blockReason,
+			TimedOut:    input.ExecResult.TimedOut,
 		}, nil
 	}
 

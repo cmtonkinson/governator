@@ -3,6 +3,7 @@ package run
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -60,6 +61,9 @@ func Run(repoRoot string, opts Options) (Result, error) {
 
 	// Check for planning drift
 	if err := CheckPlanningDrift(repoRoot, idx.Digests); err != nil {
+		if errors.Is(err, ErrPlanningDrift) {
+			emitPlanningDriftMessage(opts.Stdout, err.Error())
+		}
 		return Result{}, err
 	}
 
@@ -190,6 +194,7 @@ func Run(repoRoot string, opts Options) (Result, error) {
 		Message:      message.String(),
 	}, nil
 }
+
 // TestStageResult captures the outcome of test stage execution.
 type TestStageResult struct {
 	TasksProcessed int
@@ -230,6 +235,8 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, tran
 			continue
 		}
 
+		emitTaskStart(opts.Stdout, task.ID, string(task.Role), string(roles.StageTest))
+
 		// Execute test agent for the task
 		testResult, err := ExecuteTestAgent(repoRoot, worktreePath, task, cfg, workerAuditor, opts)
 		if err != nil {
@@ -244,7 +251,7 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, tran
 				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
 			} else {
 				result.TasksBlocked++
-				fmt.Fprintf(opts.Stdout, "Task %s blocked: %s\n", task.ID, failedResult.BlockReason)
+				emitTaskFailure(opts.Stdout, task.ID, string(task.Role), string(roles.StageTest), failedResult.BlockReason)
 			}
 			continue
 		}
@@ -257,10 +264,14 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, tran
 
 		if testResult.Success {
 			result.TasksTested++
-			fmt.Fprintf(opts.Stdout, "Task %s tested successfully\n", task.ID)
+			emitTaskComplete(opts.Stdout, task.ID, string(task.Role), string(roles.StageTest))
 		} else {
 			result.TasksBlocked++
-			fmt.Fprintf(opts.Stdout, "Task %s blocked: %s\n", task.ID, testResult.BlockReason)
+			if testResult.TimedOut {
+				emitTaskTimeout(opts.Stdout, task.ID, string(task.Role), string(roles.StageTest), testResult.BlockReason, cfg.Timeouts.WorkerSeconds)
+			} else {
+				emitTaskFailure(opts.Stdout, task.ID, string(task.Role), string(roles.StageTest), testResult.BlockReason)
+			}
 		}
 	}
 
@@ -351,6 +362,7 @@ func UpdateTaskStateFromTestResult(idx *index.Index, taskID string, testResult w
 
 	return nil
 }
+
 // ReviewStageResult captures the outcome of review stage execution.
 type ReviewStageResult struct {
 	TasksProcessed int
@@ -391,6 +403,8 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, tr
 			continue
 		}
 
+		emitTaskStart(opts.Stdout, task.ID, string(task.Role), string(roles.StageReview))
+
 		// Execute review agent for the task
 		reviewResult, err := ExecuteReviewAgent(repoRoot, worktreePath, task, cfg, workerAuditor, opts)
 		if err != nil {
@@ -405,13 +419,23 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, tr
 				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
 			} else {
 				result.TasksBlocked++
-				fmt.Fprintf(opts.Stdout, "Task %s blocked: %s\n", task.ID, failedResult.BlockReason)
+				emitTaskFailure(opts.Stdout, task.ID, string(task.Role), string(roles.StageReview), failedResult.BlockReason)
 			}
 			continue
 		}
 
-		// If review was successful, execute the merge flow
+		// Update task state based on review result
+		if err := UpdateTaskStateFromReviewResult(idx, task.ID, reviewResult, transitionAuditor); err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, err)
+			continue
+		}
+
 		if reviewResult.Success {
+			result.TasksReviewed++
+			emitTaskComplete(opts.Stdout, task.ID, string(task.Role), string(roles.StageReview))
+
+			// Execute merge flow after review success
+			emitTaskStart(opts.Stdout, task.ID, string(task.Role), mergeStageName)
 			mergeInput := MergeFlowInput{
 				RepoRoot:     repoRoot,
 				WorktreePath: worktreePath,
@@ -423,7 +447,7 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, tr
 			mergeResult, err := ExecuteReviewMergeFlow(mergeInput)
 			if err != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to execute merge flow for task %s: %v\n", task.ID, err)
-				// Create a blocked result for merge flow failure
+				// Create a failed merge result to update task state
 				failedResult := worker.IngestResult{
 					Success:     false,
 					NewState:    index.TaskStateBlocked,
@@ -431,10 +455,10 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, tr
 				}
 				if updateErr := UpdateTaskStateFromReviewResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
 					fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
-				} else {
-					result.TasksBlocked++
-					fmt.Fprintf(opts.Stdout, "Task %s blocked: %s\n", task.ID, failedResult.BlockReason)
+					continue
 				}
+				result.TasksBlocked++
+				emitTaskFailure(opts.Stdout, task.ID, string(task.Role), mergeStageName, failedResult.BlockReason)
 				continue
 			}
 
@@ -451,21 +475,17 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, tr
 			}
 
 			if mergeResult.Success {
-				result.TasksReviewed++
-				fmt.Fprintf(opts.Stdout, "Task %s reviewed and merged successfully\n", task.ID)
+				emitTaskComplete(opts.Stdout, task.ID, string(task.Role), mergeStageName)
 			} else {
-				// Task moved to conflict state
-				fmt.Fprintf(opts.Stdout, "Task %s has merge conflicts: %s\n", task.ID, mergeResult.ConflictError)
+				emitTaskFailure(opts.Stdout, task.ID, string(task.Role), mergeStageName, mergeResult.ConflictError)
 			}
 		} else {
-			// Review failed, update task state
-			if err := UpdateTaskStateFromReviewResult(idx, task.ID, reviewResult, transitionAuditor); err != nil {
-				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, err)
-				continue
-			}
-
 			result.TasksBlocked++
-			fmt.Fprintf(opts.Stdout, "Task %s blocked: %s\n", task.ID, reviewResult.BlockReason)
+			if reviewResult.TimedOut {
+				emitTaskTimeout(opts.Stdout, task.ID, string(task.Role), string(roles.StageReview), reviewResult.BlockReason, cfg.Timeouts.WorkerSeconds)
+			} else {
+				emitTaskFailure(opts.Stdout, task.ID, string(task.Role), string(roles.StageReview), reviewResult.BlockReason)
+			}
 		}
 	}
 
@@ -556,6 +576,7 @@ func UpdateTaskStateFromReviewResult(idx *index.Index, taskID string, reviewResu
 
 	return nil
 }
+
 // ConflictResolutionStageResult captures the outcome of conflict resolution stage execution.
 type ConflictResolutionStageResult struct {
 	TasksProcessed int
@@ -597,7 +618,7 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 		}
 
 		// Execute conflict resolution agent for the task
-		resolutionResult, err := ExecuteConflictResolutionAgent(repoRoot, worktreePath, task, cfg, workerAuditor, opts)
+		resolutionResult, roleResult, err := ExecuteConflictResolutionAgent(repoRoot, worktreePath, task, cfg, workerAuditor, opts)
 		if err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to execute conflict resolution agent for task %s: %v\n", task.ID, err)
 			// Create a failed resolution result to update task state
@@ -610,7 +631,7 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
 			} else {
 				result.TasksBlocked++
-				fmt.Fprintf(opts.Stdout, "Task %s blocked: %s\n", task.ID, failedResult.BlockReason)
+				emitTaskFailure(opts.Stdout, task.ID, resolveRoleForLogs(roleResult.Role, task.Role), string(roles.StageResolve), failedResult.BlockReason)
 			}
 			continue
 		}
@@ -621,12 +642,17 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 			continue
 		}
 
+		roleForLogs := resolveRoleForLogs(roleResult.Role, task.Role)
 		if resolutionResult.Success {
 			result.TasksResolved++
-			fmt.Fprintf(opts.Stdout, "Task %s conflict resolved successfully\n", task.ID)
+			emitTaskComplete(opts.Stdout, task.ID, roleForLogs, string(roles.StageResolve))
 		} else {
 			result.TasksBlocked++
-			fmt.Fprintf(opts.Stdout, "Task %s blocked: %s\n", task.ID, resolutionResult.BlockReason)
+			if resolutionResult.TimedOut {
+				emitTaskTimeout(opts.Stdout, task.ID, roleForLogs, string(roles.StageResolve), resolutionResult.BlockReason, cfg.Timeouts.WorkerSeconds)
+			} else {
+				emitTaskFailure(opts.Stdout, task.ID, roleForLogs, string(roles.StageResolve), resolutionResult.BlockReason)
+			}
 		}
 	}
 
@@ -634,11 +660,11 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 }
 
 // ExecuteConflictResolutionAgent runs the conflict resolution agent for a specific task.
-func ExecuteConflictResolutionAgent(repoRoot, worktreePath string, task index.Task, cfg config.Config, auditor *audit.Logger, opts Options) (worker.IngestResult, error) {
+func ExecuteConflictResolutionAgent(repoRoot, worktreePath string, task index.Task, cfg config.Config, auditor *audit.Logger, opts Options) (worker.IngestResult, roles.RoleAssignmentResult, error) {
 	// Use role assignment to select appropriate role for conflict resolution
 	roleResult, err := SelectRoleForConflictResolution(repoRoot, task, cfg, opts)
 	if err != nil {
-		return worker.IngestResult{}, fmt.Errorf("select role for conflict resolution: %w", err)
+		return worker.IngestResult{}, roleResult, fmt.Errorf("select role for conflict resolution: %w", err)
 	}
 
 	// Stage environment and prompts for conflict resolution execution
@@ -655,15 +681,18 @@ func ExecuteConflictResolutionAgent(repoRoot, worktreePath string, task index.Ta
 
 	stageResult, err := worker.StageEnvAndPrompts(stageInput)
 	if err != nil {
-		return worker.IngestResult{}, fmt.Errorf("stage conflict resolution environment: %w", err)
+		return worker.IngestResult{}, roleResult, fmt.Errorf("stage conflict resolution environment: %w", err)
 	}
+
+	roleForLogs := resolveRoleForLogs(roleResult.Role, task.Role)
+	emitTaskStart(opts.Stdout, task.ID, roleForLogs, string(roles.StageResolve))
 
 	// Execute the conflict resolution worker
 	execResult, err := worker.ExecuteWorkerFromConfigWithAudit(cfg, task, stageResult, worktreePath, func(msg string) {
 		fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
 	}, auditor, worktreePath)
 	if err != nil {
-		return worker.IngestResult{}, fmt.Errorf("execute conflict resolution worker: %w", err)
+		return worker.IngestResult{}, roleResult, fmt.Errorf("execute conflict resolution worker: %w", err)
 	}
 
 	// Ingest the worker result
@@ -679,10 +708,10 @@ func ExecuteConflictResolutionAgent(repoRoot, worktreePath string, task index.Ta
 
 	ingestResult, err := worker.IngestWorkerResult(ingestInput)
 	if err != nil {
-		return worker.IngestResult{}, fmt.Errorf("ingest conflict resolution result: %w", err)
+		return worker.IngestResult{}, roleResult, fmt.Errorf("ingest conflict resolution result: %w", err)
 	}
 
-	return ingestResult, nil
+	return ingestResult, roleResult, nil
 }
 
 // UpdateTaskStateFromConflictResolution updates the task index based on conflict resolution results.
@@ -808,6 +837,17 @@ func (m *mockLLMInvoker) Invoke(ctx context.Context, prompt string) (string, err
 	return fmt.Sprintf(`{"role": "%s", "rationale": "Selected for conflict resolution based on task requirements"}`, m.fallbackRole), nil
 }
 
+// resolveRoleForLogs selects the best role string for logging purposes.
+func resolveRoleForLogs(primary index.Role, fallback index.Role) string {
+	if role := strings.TrimSpace(string(primary)); role != "" {
+		return role
+	}
+	if role := strings.TrimSpace(string(fallback)); role != "" {
+		return role
+	}
+	return ""
+}
+
 // MergeStageResult captures the outcome of merge stage execution.
 type MergeStageResult struct {
 	TasksProcessed int
@@ -848,6 +888,8 @@ func ExecuteMergeStage(repoRoot string, idx *index.Index, cfg config.Config, tra
 			continue
 		}
 
+		emitTaskStart(opts.Stdout, task.ID, string(task.Role), mergeStageName)
+
 		// Execute conflict resolution merge flow
 		mergeInput := MergeFlowInput{
 			RepoRoot:     repoRoot,
@@ -868,9 +910,9 @@ func ExecuteMergeStage(repoRoot string, idx *index.Index, cfg config.Config, tra
 			}
 			if updateErr := UpdateTaskStateFromMerge(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
-			} else {
-				fmt.Fprintf(opts.Stdout, "Task %s blocked: %s\n", task.ID, failedResult.BlockReason)
+				continue
 			}
+			emitTaskFailure(opts.Stdout, task.ID, string(task.Role), mergeStageName, failedResult.BlockReason)
 			continue
 		}
 
@@ -888,10 +930,10 @@ func ExecuteMergeStage(repoRoot string, idx *index.Index, cfg config.Config, tra
 
 		if mergeResult.Success {
 			result.TasksMerged++
-			fmt.Fprintf(opts.Stdout, "Task %s merged successfully\n", task.ID)
+			emitTaskComplete(opts.Stdout, task.ID, string(task.Role), mergeStageName)
 		} else {
 			result.TasksConflict++
-			fmt.Fprintf(opts.Stdout, "Task %s still has merge conflicts: %s\n", task.ID, mergeResult.ConflictError)
+			emitTaskFailure(opts.Stdout, task.ID, string(task.Role), mergeStageName, mergeResult.ConflictError)
 		}
 	}
 
@@ -936,6 +978,7 @@ func UpdateTaskStateFromMerge(idx *index.Index, taskID string, mergeResult worke
 
 	return nil
 }
+
 // BranchStageResult captures the outcome of branch creation for open tasks.
 type BranchStageResult struct {
 	BranchesCreated int

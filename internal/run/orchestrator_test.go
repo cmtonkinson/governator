@@ -4,12 +4,14 @@ package run
 import (
 	"bytes"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/cmtonkinson/governator/internal/digests"
 	"github.com/cmtonkinson/governator/internal/index"
 	"github.com/cmtonkinson/governator/internal/worktree"
 )
@@ -224,6 +226,64 @@ func TestRunNoResumeCandidates(t *testing.T) {
 	// Check the result message - should indicate branch creation for open tasks
 	if !strings.Contains(result.Message, "created 1 branch(es) for open tasks") {
 		t.Fatalf("result message = %q, want to contain 'created 1 branch(es) for open tasks'", result.Message)
+	}
+}
+
+// TestRunPlanningDriftMessage ensures run outputs a planning drift notice before failing.
+func TestRunPlanningDriftMessage(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := setupTestRepoWithConfig(t)
+
+	planDir := filepath.Join(repoRoot, "_governator", "plan")
+	if err := os.MkdirAll(planDir, 0o755); err != nil {
+		t.Fatalf("create plan dir: %v", err)
+	}
+
+	planFile := filepath.Join(planDir, "roadmap.md")
+	if err := os.WriteFile(planFile, []byte("initial plan"), 0o644); err != nil {
+		t.Fatalf("write plan file: %v", err)
+	}
+
+	stored, err := digests.Compute(repoRoot)
+	if err != nil {
+		t.Fatalf("compute digests: %v", err)
+	}
+
+	idx := index.Index{
+		SchemaVersion: 1,
+		Digests:       stored,
+	}
+
+	indexPath := filepath.Join(repoRoot, "_governator/task-index.json")
+	if err := index.Save(indexPath, idx); err != nil {
+		t.Fatalf("save index: %v", err)
+	}
+
+	if err := os.WriteFile(planFile, []byte("updated plan"), 0o644); err != nil {
+		t.Fatalf("update plan file: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	opts := Options{
+		Stdout: &stdout,
+		Stderr: &stderr,
+	}
+
+	_, err = Run(repoRoot, opts)
+	if err == nil {
+		t.Fatal("expected planning drift error")
+	}
+	if !errors.Is(err, ErrPlanningDrift) {
+		t.Fatalf("error = %v, want ErrPlanningDrift", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "planning=drift status=blocked") {
+		t.Fatalf("stdout = %q, want planning drift prefix", output)
+	}
+	if !strings.Contains(output, "governator plan") {
+		t.Fatalf("stdout = %q, want plan guidance", output)
 	}
 }
 
