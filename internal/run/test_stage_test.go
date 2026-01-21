@@ -522,3 +522,231 @@ func TestUpdateTaskStateFromReviewResultFailure(t *testing.T) {
 		t.Fatalf("transition to = %q, want %q", transition.to, index.TaskStateBlocked)
 	}
 }
+func TestExecuteConflictResolutionStage_NoResolvedTasks(t *testing.T) {
+	// Create test index with no resolved tasks
+	idx := &index.Index{
+		Tasks: []index.Task{
+			{ID: "task-01", State: index.TaskStateOpen},
+			{ID: "task-02", State: index.TaskStateWorked},
+			{ID: "task-03", State: index.TaskStateTested},
+			{ID: "task-04", State: index.TaskStateDone},
+		},
+	}
+
+	cfg := config.Config{}
+	auditor := &mockTransitionAuditor{}
+	opts := Options{
+		Stdout: &strings.Builder{},
+		Stderr: &strings.Builder{},
+	}
+
+	result, err := ExecuteConflictResolutionStage("/tmp", idx, cfg, auditor, nil, opts)
+	if err != nil {
+		t.Fatalf("ExecuteConflictResolutionStage failed: %v", err)
+	}
+
+	if result.TasksProcessed != 0 {
+		t.Errorf("expected 0 tasks processed, got %d", result.TasksProcessed)
+	}
+	if result.TasksResolved != 0 {
+		t.Errorf("expected 0 tasks resolved, got %d", result.TasksResolved)
+	}
+	if result.TasksBlocked != 0 {
+		t.Errorf("expected 0 tasks blocked, got %d", result.TasksBlocked)
+	}
+}
+
+func TestExecuteConflictResolutionStage_WithResolvedTasks(t *testing.T) {
+	// Create test index with resolved tasks
+	idx := &index.Index{
+		Tasks: []index.Task{
+			{
+				ID:    "task-01",
+				State: index.TaskStateResolved,
+				Role:  "generalist",
+				Title: "Test Task 1",
+				Attempts: index.AttemptCounters{Total: 1},
+			},
+			{
+				ID:    "task-02", 
+				State: index.TaskStateResolved,
+				Role:  "generalist",
+				Title: "Test Task 2",
+				Attempts: index.AttemptCounters{Total: 1},
+			},
+		},
+	}
+
+	cfg := config.Config{}
+	auditor := &mockTransitionAuditor{}
+	
+	var stdout strings.Builder
+	var stderr strings.Builder
+	opts := Options{
+		Stdout: &stdout,
+		Stderr: &stderr,
+	}
+
+	// This will fail because we don't have actual worktrees set up,
+	// but we can verify the function processes the resolved tasks
+	result, err := ExecuteConflictResolutionStage("/tmp", idx, cfg, auditor, nil, opts)
+	if err != nil {
+		t.Fatalf("ExecuteConflictResolutionStage failed: %v", err)
+	}
+
+	// Should have processed 2 resolved tasks
+	if result.TasksProcessed != 2 {
+		t.Errorf("expected 2 tasks processed, got %d", result.TasksProcessed)
+	}
+
+	// Check that some output was written to stderr (warnings about worktree failures)
+	stderrOutput := stderr.String()
+	if stderrOutput == "" {
+		t.Errorf("expected some warnings in stderr, got empty output")
+	}
+}
+
+func TestUpdateTaskStateFromConflictResolution_Success(t *testing.T) {
+	// Create test index
+	idx := &index.Index{
+		Tasks: []index.Task{
+			{
+				ID:    "task-01",
+				State: index.TaskStateResolved,
+				Role:  "generalist",
+			},
+		},
+	}
+
+	auditor := &mockTransitionAuditor{}
+	
+	// Test successful resolution (resolved -> done)
+	result := worker.IngestResult{
+		Success:  true,
+		NewState: index.TaskStateDone,
+	}
+
+	err := UpdateTaskStateFromConflictResolution(idx, "task-01", result, auditor)
+	if err != nil {
+		t.Fatalf("UpdateTaskStateFromConflictResolution failed: %v", err)
+	}
+
+	// Verify task state was updated
+	if idx.Tasks[0].State != index.TaskStateDone {
+		t.Errorf("expected task state %s, got %s", index.TaskStateDone, idx.Tasks[0].State)
+	}
+
+	// Verify audit log was called
+	if len(auditor.transitions) != 1 {
+		t.Errorf("expected 1 audit transition, got %d", len(auditor.transitions))
+	}
+	
+	transition := auditor.transitions[0]
+	if transition.taskID != "task-01" {
+		t.Errorf("expected task ID task-01, got %s", transition.taskID)
+	}
+	if transition.from != string(index.TaskStateResolved) {
+		t.Errorf("expected from state %s, got %s", index.TaskStateResolved, transition.from)
+	}
+	if transition.to != string(index.TaskStateDone) {
+		t.Errorf("expected to state %s, got %s", index.TaskStateDone, transition.to)
+	}
+}
+
+func TestUpdateTaskStateFromConflictResolution_Failure(t *testing.T) {
+	// Create test index
+	idx := &index.Index{
+		Tasks: []index.Task{
+			{
+				ID:    "task-01",
+				State: index.TaskStateResolved,
+				Role:  "generalist",
+			},
+		},
+	}
+
+	auditor := &mockTransitionAuditor{}
+	
+	// Test failed resolution (resolved -> conflict, not blocked)
+	result := worker.IngestResult{
+		Success:     false,
+		NewState:    index.TaskStateConflict,
+		BlockReason: "merge flow failed",
+	}
+
+	err := UpdateTaskStateFromConflictResolution(idx, "task-01", result, auditor)
+	if err != nil {
+		t.Fatalf("UpdateTaskStateFromConflictResolution failed: %v", err)
+	}
+
+	// Verify task state was updated
+	if idx.Tasks[0].State != index.TaskStateConflict {
+		t.Errorf("expected task state %s, got %s", index.TaskStateConflict, idx.Tasks[0].State)
+	}
+
+	// Verify audit log was called
+	if len(auditor.transitions) != 1 {
+		t.Errorf("expected 1 audit transition, got %d", len(auditor.transitions))
+	}
+	
+	transition := auditor.transitions[0]
+	if transition.from != string(index.TaskStateResolved) {
+		t.Errorf("expected from state %s, got %s", index.TaskStateResolved, transition.from)
+	}
+	if transition.to != string(index.TaskStateConflict) {
+		t.Errorf("expected to state %s, got %s", index.TaskStateConflict, transition.to)
+	}
+}
+
+func TestUpdateTaskStateFromConflictResolution_TaskNotFound(t *testing.T) {
+	// Create test index without the target task
+	idx := &index.Index{
+		Tasks: []index.Task{
+			{ID: "other-task", State: index.TaskStateOpen},
+		},
+	}
+
+	auditor := &mockTransitionAuditor{}
+	result := worker.IngestResult{
+		Success:  true,
+		NewState: index.TaskStateDone,
+	}
+
+	err := UpdateTaskStateFromConflictResolution(idx, "nonexistent-task", result, auditor)
+	if err == nil {
+		t.Fatal("expected error for nonexistent task, got nil")
+	}
+
+	expectedError := "task nonexistent-task not found in index"
+	if err.Error() != expectedError {
+		t.Errorf("expected error %q, got %q", expectedError, err.Error())
+	}
+}
+
+func TestUpdateTaskStateFromConflictResolution_InvalidTransition(t *testing.T) {
+	// Create test index with task in wrong state
+	idx := &index.Index{
+		Tasks: []index.Task{
+			{
+				ID:    "task-01",
+				State: index.TaskStateDone, // Invalid starting state for conflict resolution
+				Role:  "generalist",
+			},
+		},
+	}
+
+	auditor := &mockTransitionAuditor{}
+	result := worker.IngestResult{
+		Success:  true,
+		NewState: index.TaskStateDone,
+	}
+
+	err := UpdateTaskStateFromConflictResolution(idx, "task-01", result, auditor)
+	if err == nil {
+		t.Fatal("expected error for invalid transition, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "invalid state transition") {
+		t.Errorf("expected invalid state transition error, got: %v", err)
+	}
+}
