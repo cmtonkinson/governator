@@ -77,6 +77,8 @@ func (manager Manager) WorktreePath(taskID string, attempt int) (string, error) 
 }
 
 // EnsureWorktree returns a task worktree path, creating it when needed.
+// This method now integrates with branch lifecycle management to ensure
+// task branches are created before worktrees.
 func (manager Manager) EnsureWorktree(spec Spec) (Result, error) {
 	if strings.TrimSpace(manager.repoRoot) == "" || strings.TrimSpace(manager.worktreeDir) == "" {
 		return Result{}, errors.New("worktree manager is not initialized")

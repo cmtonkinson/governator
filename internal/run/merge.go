@@ -116,7 +116,23 @@ func ExecuteReviewMergeFlow(input MergeFlowInput) (MergeFlowResult, error) {
 		return MergeFlowResult{}, fmt.Errorf("commit squashed changes: %w", err)
 	}
 
-	// Step 6: Log successful transition to audit
+	// Step 6: Clean up task branch after successful merge
+	branchManager := NewBranchLifecycleManager(input.RepoRoot, input.Auditor)
+	if err := branchManager.CleanupTaskBranch(input.Task); err != nil {
+		// Log warning but don't fail the merge - branch cleanup is not critical
+		if input.Auditor != nil {
+			_ = input.Auditor.Log(audit.Entry{
+				TaskID: input.Task.ID,
+				Role:   string(input.Task.Role),
+				Event:  "branch.cleanup.warning",
+				Fields: []audit.Field{
+					{Key: "error", Value: err.Error()},
+				},
+			})
+		}
+	}
+
+	// Step 7: Log successful transition to audit
 	if input.Auditor != nil {
 		_ = input.Auditor.LogTaskTransition(
 			input.Task.ID,
@@ -143,6 +159,24 @@ func ExecuteConflictResolutionMergeFlow(input MergeFlowInput) (MergeFlowResult, 
 	result, err := ExecuteReviewMergeFlow(input)
 	if err != nil {
 		return result, err
+	}
+
+	// Clean up branch if merge was successful
+	if result.Success {
+		branchManager := NewBranchLifecycleManager(input.RepoRoot, input.Auditor)
+		if err := branchManager.CleanupTaskBranch(input.Task); err != nil {
+			// Log warning but don't fail the merge - branch cleanup is not critical
+			if input.Auditor != nil {
+				_ = input.Auditor.Log(audit.Entry{
+					TaskID: input.Task.ID,
+					Role:   string(input.Task.Role),
+					Event:  "branch.cleanup.warning",
+					Fields: []audit.Field{
+						{Key: "error", Value: err.Error()},
+					},
+				})
+			}
+		}
 	}
 
 	// Override audit logging for resolved → done/conflict transitions

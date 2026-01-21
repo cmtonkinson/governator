@@ -221,9 +221,9 @@ func TestRunNoResumeCandidates(t *testing.T) {
 		t.Fatalf("expected 0 blocked tasks, got %d", len(result.BlockedTasks))
 	}
 
-	// Check the result message
-	if !strings.Contains(result.Message, "No tasks to resume") {
-		t.Fatalf("result message = %q, want to contain 'No tasks to resume'", result.Message)
+	// Check the result message - should indicate branch creation for open tasks
+	if !strings.Contains(result.Message, "created 1 branch(es) for open tasks") {
+		t.Fatalf("result message = %q, want to contain 'created 1 branch(es) for open tasks'", result.Message)
 	}
 }
 

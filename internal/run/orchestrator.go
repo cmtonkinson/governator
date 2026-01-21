@@ -118,8 +118,14 @@ func Run(repoRoot string, opts Options) (Result, error) {
 		return Result{}, fmt.Errorf("execute conflict resolution stage: %w", err)
 	}
 
+	// Ensure branches exist for open tasks
+	branchResult, err := EnsureBranchesForOpenTasks(repoRoot, &idx, auditor, opts)
+	if err != nil {
+		return Result{}, fmt.Errorf("ensure branches for open tasks: %w", err)
+	}
+
 	// Save updated index
-	if len(resumedTasks) > 0 || len(blockedTasks) > 0 || testResult.TasksProcessed > 0 || reviewResult.TasksProcessed > 0 || conflictResult.TasksProcessed > 0 {
+	if len(resumedTasks) > 0 || len(blockedTasks) > 0 || testResult.TasksProcessed > 0 || reviewResult.TasksProcessed > 0 || conflictResult.TasksProcessed > 0 || branchResult.BranchesCreated > 0 {
 		if err := index.Save(indexPath, idx); err != nil {
 			return Result{}, fmt.Errorf("save task index: %w", err)
 		}
@@ -153,6 +159,12 @@ func Run(repoRoot string, opts Options) (Result, error) {
 			message.WriteString(", ")
 		}
 		message.WriteString(fmt.Sprintf("processed %d conflict resolution task(s)", conflictResult.TasksProcessed))
+	}
+	if branchResult.BranchesCreated > 0 {
+		if message.Len() > 0 {
+			message.WriteString(", ")
+		}
+		message.WriteString(fmt.Sprintf("created %d branch(es) for open tasks", branchResult.BranchesCreated))
 	}
 	if message.Len() == 0 {
 		message.WriteString("No tasks to resume or execute")
@@ -660,4 +672,56 @@ func UpdateTaskStateFromConflictResolution(idx *index.Index, taskID string, reso
 	}
 
 	return nil
+}
+// BranchStageResult captures the outcome of branch creation for open tasks.
+type BranchStageResult struct {
+	BranchesCreated int
+	BranchesSkipped int
+}
+
+// EnsureBranchesForOpenTasks creates branches for tasks in the open state.
+func EnsureBranchesForOpenTasks(repoRoot string, idx *index.Index, auditor *audit.Logger, opts Options) (BranchStageResult, error) {
+	result := BranchStageResult{}
+
+	// Find tasks in open state
+	var openTasks []index.Task
+	for _, task := range idx.Tasks {
+		if task.State == index.TaskStateOpen {
+			openTasks = append(openTasks, task)
+		}
+	}
+
+	if len(openTasks) == 0 {
+		return result, nil
+	}
+
+	// Create branch lifecycle manager
+	branchManager := NewBranchLifecycleManager(repoRoot, auditor)
+
+	// Process each open task to ensure it has a branch
+	for _, task := range openTasks {
+		// Check if branch already exists
+		branchName := branchManager.GetTaskBranchName(task.ID)
+		exists, err := branchManager.BranchExists(branchName)
+		if err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to check if branch exists for task %s: %v\n", task.ID, err)
+			continue
+		}
+
+		if exists {
+			result.BranchesSkipped++
+			continue
+		}
+
+		// Create branch for the task
+		if err := branchManager.CreateTaskBranch(task, "main"); err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to create branch for task %s: %v\n", task.ID, err)
+			continue
+		}
+
+		result.BranchesCreated++
+		fmt.Fprintf(opts.Stdout, "Created branch %s for task %s\n", branchName, task.ID)
+	}
+
+	return result, nil
 }

@@ -60,7 +60,7 @@
 60. [closed] work-v2/task-53-implement-test-agent-stage.md (epic 08, milestone 3)
 61. [closed] work-v2/task-54-implement-review-agent-stage.md (epic 08, milestone 3)
 62. [closed] work-v2/task-80-define-review-merge-flow.md (epic 08, milestone 3)
-63. [open] work-v2/task-70-implement-branch-lifecycle.md (epic 08, milestone 3)
+63. [closed] work-v2/task-70-implement-branch-lifecycle.md (epic 08, milestone 3)
 64. [open] work-v2/task-78-implement-conflict-resolution-stage.md (epic 08, milestone 3)
 65. [open] work-v2/task-33-implement-config-directory-init.md (epic 04, milestone 4)
 66. [open] work-v2/task-58-implement-init-command.md (epic 09, milestone 4)
