@@ -123,3 +123,31 @@ func TestOrderedEligibleTasksSkipsInFlight(t *testing.T) {
 		t.Fatalf("ordered[0] = %s, want task-b", ordered[0].ID)
 	}
 }
+
+// TestOrderedEligibleTasksRespectsDependencies verifies tasks are only eligible when their dependencies are done.
+func TestOrderedEligibleTasksRespectsDependencies(t *testing.T) {
+	idx := index.Index{
+		Tasks: []index.Task{
+			{ID: "task-base", State: index.TaskStateDone},
+			{ID: "task-ready", State: index.TaskStateOpen, Order: 2, Dependencies: []string{"task-base"}},
+			{ID: "task-no-deps", State: index.TaskStateOpen, Order: 1},
+			{ID: "task-blocked", State: index.TaskStateOpen, Order: 3, Dependencies: []string{"task-missing"}},
+		},
+	}
+
+	ordered, err := OrderedEligibleTasks(idx, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{"task-no-deps", "task-ready"}
+	got := taskIDs(ordered)
+	if len(got) != len(want) {
+		t.Fatalf("got %d tasks, want %d", len(got), len(want))
+	}
+	for i, id := range want {
+		if got[i] != id {
+			t.Fatalf("ordered[%d] = %s, want %s", i, got[i], id)
+		}
+	}
+}

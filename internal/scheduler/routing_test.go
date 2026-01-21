@@ -198,3 +198,87 @@ func TestRouteEligibleTasksOverlapAcrossStages(t *testing.T) {
 		}
 	}
 }
+
+// TestRouteEligibleTasksReasonRoleCapReached ensures decisions report skipping tasks when a role cap is reached.
+func TestRouteEligibleTasksReasonRoleCapReached(t *testing.T) {
+	idx := index.Index{
+		Tasks: []index.Task{
+			{ID: "task-1", State: index.TaskStateOpen, Role: "worker"},
+			{ID: "task-2", State: index.TaskStateOpen, Role: "worker"},
+			{ID: "task-3", State: index.TaskStateOpen, Role: "worker"},
+		},
+	}
+	caps := RoleCaps{
+		Global:      3,
+		DefaultRole: 1,
+	}
+
+	result, err := RouteEligibleTasks(idx, caps, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.Selected) != 1 || result.Selected[0].ID != "task-1" {
+		t.Fatalf("selected tasks = %v, want [task-1]", taskIDs(result.Selected))
+	}
+
+	reachedCount := 0
+	for _, decision := range result.Decisions {
+		if decision.Task.ID == "task-2" || decision.Task.ID == "task-3" {
+			if decision.Selected {
+				t.Fatalf("expected %s to be skipped", decision.Task.ID)
+			}
+			if decision.Reason != reasonRoleCapReached {
+				t.Fatalf("decision for %s = %q, want %q", decision.Task.ID, decision.Reason, reasonRoleCapReached)
+			}
+			reachedCount++
+		}
+	}
+
+	if reachedCount != 2 {
+		t.Fatalf("got %d role-cap decisions, want 2", reachedCount)
+	}
+}
+
+// TestRouteEligibleTasksReasonRoleCapDisabled ensures decisions report when a role cap is disabled.
+func TestRouteEligibleTasksReasonRoleCapDisabled(t *testing.T) {
+	idx := index.Index{
+		Tasks: []index.Task{
+			{ID: "disabled-1", State: index.TaskStateOpen, Role: "disabled"},
+			{ID: "enabled-1", State: index.TaskStateOpen, Role: "enabled"},
+		},
+	}
+	caps := RoleCaps{
+		Global:      2,
+		DefaultRole: 2,
+		Roles: map[index.Role]int{
+			"disabled": 0,
+		},
+	}
+
+	result, err := RouteEligibleTasks(idx, caps, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.Selected) != 1 || result.Selected[0].ID != "enabled-1" {
+		t.Fatalf("selected tasks = %v, want [enabled-1]", taskIDs(result.Selected))
+	}
+
+	disabledDecisionFound := false
+	for _, decision := range result.Decisions {
+		if decision.Task.ID == "disabled-1" {
+			disabledDecisionFound = true
+			if decision.Selected {
+				t.Fatalf("expected disabled-1 to be skipped")
+			}
+			if decision.Reason != reasonRoleCapDisabled {
+				t.Fatalf("decision for disabled-1 = %q, want %q", decision.Reason, reasonRoleCapDisabled)
+			}
+		}
+	}
+
+	if !disabledDecisionFound {
+		t.Fatalf("expected a decision for disabled-1")
+	}
+}
