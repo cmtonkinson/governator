@@ -1,80 +1,86 @@
 # Governator v2 Upgrade Notes
 
-These notes recap what operators and automation must adapt to when moving from
-the v1 Governator experience to v2.
+These notes help operators and automation teams move from the legacy v1
+Governator experience to the deterministic, file-backed v2 pipeline.
 
 ## Summary
 
-- Governator v2 is a system-installed CLI (`governator init`, `plan`, `run`,
-  `status`, `version`) whose state lives in `_governator/` and is driven by a
-  single canonical task index. All orchestration is deterministic and auditable.
-- Planning emits `_governator/task-index.<ext>` plus flat task files under
-  `_governator/tasks/`, then `run` iterates tasks until completion. There are no
-  longer nested state directories or opaque worktrees to inspect.
-- Install and config handling now follows a layered model (user defaults,
-  repo overrides, CLI flags) and the binary is shipped through Homebrew (macOS)
-  or dpkg/apt (Ubuntu). Updates are handled by the package manager.
+- Governator v2 is shipped as a system-installed CLI (`init`, `plan`, `run`,
+  `status`, `version`). All commands (except `version`) resolve the git root,
+  write only under `_governator/`, and report stable exit codes so automation
+  stays script-friendly.
+- State now lives in `_governator/task-index.json` plus flat task files under
+  `_governator/tasks/`. Task markdown is read-only intent, never a state machine.
+- Planning always runs bootstrap first, writes the planner prompt into
+  `_governator/_local_state/planner/plan-request.md`, and emits `plan ok
+  tasks=<n>` when finished. Planning drift is detected via digest checks and
+  surfaces a `planning=drift` message that points operators back to
+  `governator plan`.
+- The run command orchestrates tasks through the test → review →
+  conflict-resolution → merge pathway, respects dependencies/concurrency caps,
+  and logs every lifecycle transition as `task=<id> role=<role> stage=<stage>
+  status=<event>` for easy parsing.
+
+## Upgrade checklist
+
+1. **Install v2** — use your platform package manager (Homebrew for macOS or
+   dpkg/apt for Ubuntu, see `docs/system-install-distribution.md`). Verify the
+   binary via `governator version`.
+2. **Bootstrap** — from an existing repo run `governator init` to regenerate
+   `_governator/_durable_state/`, `_governator/_local_state/`, and the config
+   scaffolding. This never mutates tracked files outside `_governator`.
+3. **Replan** — run `governator plan`. Planning enforces the Power Six artifacts,
+   executes the configured planner command (must include `{task_path}`), and
+   writes `_governator/task-index.json` plus `_governator/tasks/`. Delete or
+   archive any v1 `work/` directories before committing; they are no longer
+   honored.
+4. **Exercise the new workflow** — use `governator run` to resume work and
+   rerun it whenever needed; use `governator status` for a quick tally.
 
 ## Key behavioral differences from v1
 
-1. **Canonical index replaces directories.** The only mutable state is the
-   centralized task index (e.g., `_governator/task-index.json`) and the outputs
-   under `_governator/_local_state/`. Task files under `_governator/tasks/` are
-   read-only intent. You no longer move `work/` folders around to track progress.
-2. **Explicit pipeline flow.** v2 always runs bootstrap → planning → execution,
-   and every command exits deterministically. Tasks are eligible based on
-   explicit dependencies and caps instead of implicit folder order.
-3. **Single CLI entry point.** There are five deterministic commands, each
-   returning stable exit codes (`0` success, `1` failure, `2` misuse) and plain
-   text output for automation.
-4. **Bootstrapped repo state.** Running `governator init` scaffolds the
-   `_governator/_durable_state/` config, enforces repo discovery, and never
-   mutates files outside of `_governator/` (aside from `~/.config/governator/`).
-5. **State discovery and retries.** `run` reads the index, logs lifecycle events,
-   preserves worktrees on failure, and creates follow-up tasks when it needs to
-   resume; there is no automatic background retry loop this version.
+- **Centralized index** — the only mutable orchestration state is
+  `_governator/task-index.json`. Updates flow through the index, not by moving
+  directories. Run automatically increments attempt counters, blocks tasks that
+  exceed retries, and records digests for drift detection. `status` reads the
+  same file and reports totals for `done`, `open`, and `blocked`.
+- **Deterministic pipeline** — every run is bootstrap → planning → execution.
+  Planning writes prompts into `_governator/_local_state/planner/`, saves the
+  canonical index, and prints `plan ok tasks=<n>` once everything lands. The
+  run command enforces planning drift detection and prints
+  `planning=drift ... next_step="governator plan"` when digests disagree.
+- **Stage logging** — `governator run` never prompts. Every agent emits
+  `task=<id> role=<role> stage=<stage> status=<start|complete|failure|timeout>`
+  plus optional `reason`/`timeout_seconds` fields so automation can react to
+  failures, timeouts, and retries.
+- **No background retries** — there is no hidden retry loop. Rerun `run` to
+  continue, and election of eligible work obeys explicit dependencies, role
+  caps, and overlap rules defined in `_governator/task-index.json`.
+- **Role-based config and guards** — `config.Config` layers user defaults,
+  repo overrides (`_governator/config/`), and CLI flags. Optional auto-rerun
+  guards enforce cooldowns and locks before starting work, preventing overlapping
+  runs.
+- **New status/metadata commands** — `governator status` provides a read-only
+  summary; `governator version` prints `version=<semver> commit=<git-sha>
+  built_at=<rfc3339>` for verification before invoking other commands.
 
-## Install and config layering
+## Automation guidance
 
-- **System install**: Acquire the CLI from the platform package manager (Homebrew
-  on macOS, dpkg/apt on Ubuntu). The binary lives in the standard `$PATH` and is
-  updated via `brew upgrade governator` or `apt upgrade governator`.
-- **Config layers**:
-  - Operator defaults are stored in `~/.config/governator/`.
-  - Per-repo overrides live in `_governator/config/` inside each repository.
-  - CLI flags override both layers during invocation.
-- **Repository requirements**: The CLI refuses to run outside a git repository.
-  Any automation that previously targeted non-git paths must now initialize git
-  first so `governator` can resolve the root and emit the durable state folders.
-
-## Migration guidance
-
-1. Install the v2 binary via your package manager and confirm `governator version`
-   reports the desired release.
-2. From your existing repo, run `governator init` to regenerate `_governator/`
-   and related scaffolding. This will not overwrite upstream files but will ensure
-   the durable state directories exist.
-3. Re-run planning (`governator plan`). Planning writes the new centralized index
-   and tasks, so your working tree will contain fresh intent files; discard any
-   lingering v1 state directories before committing.
-4. Use the new `plan` + `run` + `status` pattern for future work. Scripts that
-   inspected old work directories should be updated to read `_governator/task-index.*`
-   instead.
-
-## Breaking considerations (sad paths to call out)
-
-- There is no automated migration of v1 state. If you need history of prior
-  work, preserve the old directories externally before switching to v2’s index
-  model; otherwise the index starts from scratch and only records new lifecycle
-  events.
-- Any tooling that expected interactive prompts or ANSI-rich output must be
-  rewritten because v2 is strictly non-interactive and line-oriented.
-- The CLI enforces the git repo guard and index-based scheduling. If a script
-  tried to drive Governator on arbitrary paths or relied on implicit retries,
-  you must adjust it to call `governator init`, `plan`, and `run` explicitly.
+- Scripts that previously monitored `work/` directories should now read
+  `_governator/task-index.json` and honor the lifecycle fields there.
+- Any tooling that expected ANSI or interactive prompts should be refactored to
+  parse the line-oriented output (`task=...`, `planning=drift`, `tasks total=...`).
+- If you change `GOVERNATOR.md`, the planner digest will break. Re-run
+  `governator plan` before running `governator run`, and consider pinning the
+  planner command via `workers.commands.roles["planner"]` so automation controls
+  the prompt execution.
+- Expect `run` to surface blocked tasks (e.g., retry limit exceeded) as plain
+  text so operators can triage. Logistics that need build metadata refer to
+  `governator version` instead of parsing banners.
 
 ## Additional references
 
-- `docs/v2-cli.md` — the command reference for the deterministic surface.
-- `docs/system-install-distribution.md` — platform-specific install and update plan.
-- `GOVERNATOR.md` — the authoritative spec for v2’s behavior and audit model.
+- `GOVERNATOR.md` — the authoritative v2 spec.
+- `docs/v2-cli.md` — CLI semantics, command outputs, and pipeline detail.
+- `docs/system-install-distribution.md` — package-manager install and upgrade flow.
+- `docs/versioning-and-build-metadata.md` — how `governator version` is populated.
