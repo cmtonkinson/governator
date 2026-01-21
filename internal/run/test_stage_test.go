@@ -556,22 +556,58 @@ func TestExecuteConflictResolutionStage_NoResolvedTasks(t *testing.T) {
 	}
 }
 
-func TestExecuteConflictResolutionStage_WithResolvedTasks(t *testing.T) {
-	// Create test index with resolved tasks
+func TestExecuteConflictResolutionStage_WithConflictTasks(t *testing.T) {
+	// Create temporary directory for test
+	tempDir := t.TempDir()
+	
+	// Create task files
+	task1Path := filepath.Join(tempDir, "task-01.md")
+	task2Path := filepath.Join(tempDir, "task-02.md")
+	
+	if err := os.WriteFile(task1Path, []byte("# Task 1\nTest task content"), 0644); err != nil {
+		t.Fatalf("failed to create task file: %v", err)
+	}
+	if err := os.WriteFile(task2Path, []byte("# Task 2\nTest task content"), 0644); err != nil {
+		t.Fatalf("failed to create task file: %v", err)
+	}
+	
+	// Create role assignment prompt
+	promptDir := filepath.Join(tempDir, "_governator", "prompts")
+	if err := os.MkdirAll(promptDir, 0755); err != nil {
+		t.Fatalf("failed to create prompt dir: %v", err)
+	}
+	promptPath := filepath.Join(promptDir, "role-assignment.md")
+	if err := os.WriteFile(promptPath, []byte("# Role Assignment\nSelect appropriate role"), 0644); err != nil {
+		t.Fatalf("failed to create role assignment prompt: %v", err)
+	}
+	
+	// Create roles directory with a test role
+	rolesDir := filepath.Join(tempDir, "_governator", "roles")
+	if err := os.MkdirAll(rolesDir, 0755); err != nil {
+		t.Fatalf("failed to create roles dir: %v", err)
+	}
+	rolePath := filepath.Join(rolesDir, "generalist.md")
+	if err := os.WriteFile(rolePath, []byte("# Generalist Role\nGeneral purpose role"), 0644); err != nil {
+		t.Fatalf("failed to create role file: %v", err)
+	}
+
+	// Create test index with conflict tasks
 	idx := &index.Index{
 		Tasks: []index.Task{
 			{
 				ID:    "task-01",
-				State: index.TaskStateResolved,
+				State: index.TaskStateConflict,
 				Role:  "generalist",
 				Title: "Test Task 1",
+				Path:  "task-01.md",
 				Attempts: index.AttemptCounters{Total: 1},
 			},
 			{
 				ID:    "task-02", 
-				State: index.TaskStateResolved,
+				State: index.TaskStateConflict,
 				Role:  "generalist",
 				Title: "Test Task 2",
+				Path:  "task-02.md",
 				Attempts: index.AttemptCounters{Total: 1},
 			},
 		},
@@ -588,13 +624,13 @@ func TestExecuteConflictResolutionStage_WithResolvedTasks(t *testing.T) {
 	}
 
 	// This will fail because we don't have actual worktrees set up,
-	// but we can verify the function processes the resolved tasks
-	result, err := ExecuteConflictResolutionStage("/tmp", idx, cfg, auditor, nil, opts)
+	// but we can verify the function processes the conflict tasks
+	result, err := ExecuteConflictResolutionStage(tempDir, idx, cfg, auditor, nil, opts)
 	if err != nil {
 		t.Fatalf("ExecuteConflictResolutionStage failed: %v", err)
 	}
 
-	// Should have processed 2 resolved tasks
+	// Should have processed 2 conflict tasks
 	if result.TasksProcessed != 2 {
 		t.Errorf("expected 2 tasks processed, got %d", result.TasksProcessed)
 	}
