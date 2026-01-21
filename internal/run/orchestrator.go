@@ -73,6 +73,23 @@ func Run(repoRoot string, opts Options) (Result, error) {
 		return Result{}, fmt.Errorf("create audit logger: %w", err)
 	}
 
+	var guard *SelfRunGuard
+	if cfg.AutoRerun.Enabled {
+		guard = newSelfRunGuard(repoRoot, cfg.AutoRerun, auditor)
+		guardOutcome, err := guard.EnsureAllowed()
+		if err != nil {
+			return Result{}, fmt.Errorf("run guard: %w", err)
+		}
+		if !guardOutcome.Allowed {
+			return Result{Message: guardOutcome.Message}, nil
+		}
+		defer func() {
+			if releaseErr := guard.Release(); releaseErr != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to release run guard: %v\n", releaseErr)
+			}
+		}()
+	}
+
 	// Detect resume candidates
 	candidates, err := DetectResumeCandidates(repoRoot, idx, cfg)
 	if err != nil {

@@ -23,6 +23,8 @@ const (
 	localStateDirMode = 0o755
 )
 
+var ErrLockHeld = errors.New("run lock already held")
+
 // Lock holds the acquired run lock file handle.
 type Lock struct {
 	file *os.File
@@ -48,7 +50,7 @@ func Acquire(repoRoot string) (*Lock, error) {
 	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		_ = file.Close()
 		if isLockBusy(err) {
-			return nil, formatHeldLockError(lockPath)
+			return nil, fmt.Errorf("%w: %v", ErrLockHeld, formatHeldLockError(lockPath))
 		}
 		return nil, fmt.Errorf("lock run lock %s: %w", lockPath, err)
 	}

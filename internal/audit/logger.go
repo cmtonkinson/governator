@@ -41,6 +41,8 @@ const (
 	EventAgentOutcome = "agent.outcome"
 	// EventWorkerTimeout records worker process timeout.
 	EventWorkerTimeout = "worker.timeout"
+	// EventRunGuard records self-run guard decisions.
+	EventRunGuard = "run.guard"
 )
 
 // Logger appends audit entries to a log file.

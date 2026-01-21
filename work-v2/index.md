@@ -68,7 +68,7 @@
 68. [closed] work-v2/task-56-implement-status-output.md (epic 09, milestone 4)
 69. [closed] work-v2/task-57-implement-run-output-format.md (epic 09, milestone 4)
 70. [closed] work-v2/task-25-implement-version-command.md (epic 02, milestone 0)
-71. [open] work-v2/task-82-add-self-run-guard.md (epic 09, milestone 4)
+71. [closed] work-v2/task-82-add-self-run-guard.md (epic 09, milestone 4)
 72. [open] work-v2/task-63-add-test-helpers-temp-repos.md (epic 10, milestone 5)
 73. [open] work-v2/task-20-add-minimal-e2e-fixtures.md (epic 10, milestone 5)
 74. [open] work-v2/task-59-add-unit-tests-index-io.md (epic 10, milestone 5)
