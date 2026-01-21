@@ -214,3 +214,107 @@ func TestIndexLoadMalformedJSON(t *testing.T) {
 		t.Fatalf("expected error to mention task index read, got %q", err.Error())
 	}
 }
+
+// TestIndexLoadTrailingContentError verifies trailing data produces a parsing failure.
+func TestIndexLoadTrailingContentError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "index.json")
+	content := `{"schema_version":1,"digests":{"governator_md":"","planning_docs":{}},"tasks":[]}`
+	if err := os.WriteFile(path, []byte(content+"\n{}"), 0o644); err != nil {
+		t.Fatalf("write index with trailing content: %v", err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatalf("expected error for trailing content")
+	}
+	if !strings.Contains(err.Error(), "invalid trailing content after JSON object") {
+		t.Fatalf("expected trailing content error, got %q", err.Error())
+	}
+}
+
+// TestEncodePlanningDocsDeterministicOrder ensures planning doc keys are serialized in sorted order.
+func TestEncodePlanningDocsDeterministicOrder(t *testing.T) {
+	planningDocs := map[string]string{
+		"z": "last",
+		"a": "first",
+		"m": "middle",
+	}
+
+	encoded, err := encodePlanningDocs(planningDocs)
+	if err != nil {
+		t.Fatalf("encode planning docs: %v", err)
+	}
+
+	const want = `{"a":"first","m":"middle","z":"last"}`
+	if string(encoded) != want {
+		t.Fatalf("planning docs encoding not deterministic, got %s", encoded)
+	}
+}
+
+// TestNormalizeTasksForWriteTieBreakers covers deterministic ordering when tasks tie on order and id.
+func TestNormalizeTasksForWriteTieBreakers(t *testing.T) {
+	unordered := []Task{
+		{
+			ID:           "task-b",
+			Path:         "_governator/tasks/task-b.md",
+			Role:         "worker",
+			Order:        1,
+			Dependencies: []string{"dep-b", "dep-a"},
+			Overlap:      []string{"overlap-b", "overlap-a"},
+		},
+		{
+			ID:           "task-a",
+			Path:         "_governator/tasks/task-z.md",
+			Role:         "worker",
+			Order:        1,
+			Dependencies: []string{"dep-b", "dep-a"},
+			Overlap:      []string{"overlap-b", "overlap-a"},
+		},
+		{
+			ID:           "task-a",
+			Path:         "_governator/tasks/task-a.md",
+			Role:         "worker",
+			Order:        1,
+			Dependencies: []string{"dep-b", "dep-a"},
+			Overlap:      []string{"overlap-b", "overlap-a"},
+		},
+		{
+			ID:           "task-a",
+			Path:         "_governator/tasks/task-a.md",
+			Role:         "architect",
+			Order:        1,
+			Dependencies: []string{"dep-b", "dep-a"},
+			Overlap:      []string{"overlap-b", "overlap-a"},
+		},
+	}
+
+	normalized := normalizeTasksForWrite(unordered)
+	if len(normalized) != len(unordered) {
+		t.Fatalf("unexpected normalized task count, got %d", len(normalized))
+	}
+
+	want := []struct {
+		id   string
+		path string
+		role string
+	}{
+		{"task-a", "_governator/tasks/task-a.md", "architect"},
+		{"task-a", "_governator/tasks/task-a.md", "worker"},
+		{"task-a", "_governator/tasks/task-z.md", "worker"},
+		{"task-b", "_governator/tasks/task-b.md", "worker"},
+	}
+
+	for i, expected := range want {
+		task := normalized[i]
+		if task.ID != expected.id || task.Path != expected.path || string(task.Role) != expected.role {
+			t.Fatalf("normalized[%d] = (%s,%s,%s), expected (%s,%s,%s)", i, task.ID, task.Path, task.Role, expected.id, expected.path, expected.role)
+		}
+
+		if len(task.Dependencies) != 2 || task.Dependencies[0] != "dep-a" || task.Dependencies[1] != "dep-b" {
+			t.Fatalf("expected dependencies sorted for task %s, got %v", task.ID, task.Dependencies)
+		}
+		if len(task.Overlap) != 2 || task.Overlap[0] != "overlap-a" || task.Overlap[1] != "overlap-b" {
+			t.Fatalf("expected overlap sorted for task %s, got %v", task.ID, task.Overlap)
+		}
+	}
+}
