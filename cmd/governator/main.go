@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/cmtonkinson/governator/internal/buildinfo"
 	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/plan"
 	"github.com/cmtonkinson/governator/internal/repo"
 	"github.com/cmtonkinson/governator/internal/run"
+	"github.com/cmtonkinson/governator/internal/status"
 )
 
 const usageLine = "usage: governator <init|plan|run|status|version>"
@@ -26,6 +28,10 @@ func main() {
 		runPlan()
 	case "run":
 		runRun()
+	case "status":
+		runStatus()
+	case "version":
+		runVersion()
 	default:
 		emitUsage()
 		os.Exit(2)
@@ -70,6 +76,25 @@ func runRun() {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
+}
+
+func runStatus() {
+	repoRoot, err := repo.DiscoverRootFromCWD()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		emitUsage()
+		os.Exit(2)
+	}
+	summary, err := status.GetSummary(repoRoot)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	fmt.Println(summary.String())
+}
+
+func runVersion() {
+	fmt.Println(buildinfo.String())
 }
 
 func emitUsage() {

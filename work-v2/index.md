@@ -64,7 +64,7 @@
 64. [closed] work-v2/task-78-implement-conflict-resolution-stage.md (epic 08, milestone 3)
 65. [closed] work-v2/task-33-implement-config-directory-init.md (epic 04, milestone 4)
 66. [closed] work-v2/task-58-implement-init-command.md (epic 09, milestone 4)
-67. [open] work-v2/task-19-implement-cli-core.md (epic 09, milestone 4)
+67. [closed] work-v2/task-19-implement-cli-core.md (epic 09, milestone 4)
 68. [open] work-v2/task-56-implement-status-output.md (epic 09, milestone 4)
 69. [open] work-v2/task-57-implement-run-output-format.md (epic 09, milestone 4)
 70. [open] work-v2/task-25-implement-version-command.md (epic 02, milestone 0)
