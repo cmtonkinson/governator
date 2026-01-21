@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "digests": {
+    "governator_md": "sha256:single-task-flow",
+    "planning_docs": {
+      "_governator/tasks/T-001-single-task.md": "sha256:single-task-content"
+    }
+  },
+  "tasks": [
+    {
+      "id": "T-001",
+      "title": "Single task flow",
+      "path": "_governator/tasks/T-001-single-task.md",
+      "state": "open",
+      "role": "worker",
+      "dependencies": [],
+      "retries": {
+        "max_attempts": 1
+      },
+      "attempts": {
+        "total": 0,
+        "failed": 0
+      },
+      "order": 5,
+      "overlap": []
+    }
+  ]
+}

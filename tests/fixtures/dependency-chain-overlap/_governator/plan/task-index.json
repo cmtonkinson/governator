@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "digests": {
+    "governator_md": "sha256:dependency-chain-overlap",
+    "planning_docs": {
+      "_governator/tasks/T-201-foundation.md": "sha256:dependency-201",
+      "_governator/tasks/T-202-dependency-foundation.md": "sha256:dependency-202",
+      "_governator/tasks/T-203-chain-followup.md": "sha256:dependency-203",
+      "_governator/tasks/T-204-overlap-consumer.md": "sha256:overlap-204",
+      "_governator/tasks/T-205-overlap-monitor.md": "sha256:overlap-205"
+    }
+  },
+  "tasks": [
+    {
+      "id": "T-201",
+      "title": "Prepare the dependency foundation",
+      "path": "_governator/tasks/T-201-foundation.md",
+      "state": "done",
+      "role": "worker",
+      "dependencies": [],
+      "retries": {
+        "max_attempts": 2
+      },
+      "attempts": {
+        "total": 1,
+        "failed": 0
+      },
+      "order": 1,
+      "overlap": []
+    },
+    {
+      "id": "T-202",
+      "title": "Implement the dependent task",
+      "path": "_governator/tasks/T-202-dependency-foundation.md",
+      "state": "open",
+      "role": "worker",
+      "dependencies": ["T-201"],
+      "retries": {
+        "max_attempts": 2
+      },
+      "attempts": {
+        "total": 0,
+        "failed": 0
+      },
+      "order": 2,
+      "overlap": []
+    },
+    {
+      "id": "T-203",
+      "title": "Chain follow-up",
+      "path": "_governator/tasks/T-203-chain-followup.md",
+      "state": "open",
+      "role": "worker",
+      "dependencies": ["T-202"],
+      "retries": {
+        "max_attempts": 2
+      },
+      "attempts": {
+        "total": 0,
+        "failed": 0
+      },
+      "order": 3,
+      "overlap": []
+    },
+    {
+      "id": "T-204",
+      "title": "Overlap consumer A",
+      "path": "_governator/tasks/T-204-overlap-consumer.md",
+      "state": "open",
+      "role": "worker",
+      "dependencies": ["T-201"],
+      "retries": {
+        "max_attempts": 2
+      },
+      "attempts": {
+        "total": 0,
+        "failed": 0
+      },
+      "order": 4,
+      "overlap": ["shared-resource"]
+    },
+    {
+      "id": "T-205",
+      "title": "Overlap consumer B",
+      "path": "_governator/tasks/T-205-overlap-monitor.md",
+      "state": "open",
+      "role": "worker",
+      "dependencies": ["T-201"],
+      "retries": {
+        "max_attempts": 2
+      },
+      "attempts": {
+        "total": 0,
+        "failed": 0
+      },
+      "order": 5,
+      "overlap": ["shared-resource"]
+    }
+  ]
+}
