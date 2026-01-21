@@ -75,7 +75,7 @@
 75. [closed] work-v2/task-60-add-unit-tests-scheduler.md (epic 10, milestone 5)
 76. [closed] work-v2/task-61-add-unit-tests-worker-runner.md (epic 10, milestone 5)
 77. [closed] work-v2/task-62-add-integration-tests-pipeline.md (epic 10, milestone 5)
-78. [open] work-v2/task-21-add-end-to-end-tests.md (epic 10, milestone 5)
+78. [closed] work-v2/task-21-add-end-to-end-tests.md (epic 10, milestone 5)
 79. [open] work-v2/task-64-add-v2-cli-docs.md (epic 11, milestone 5)
 80. [open] work-v2/task-65-add-v2-upgrade-notes.md (epic 11, milestone 5)
 81. [open] work-v2/task-22-update-documentation-set.md (epic 11, milestone 5)
