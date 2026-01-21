@@ -77,7 +77,7 @@
 77. [closed] work-v2/task-62-add-integration-tests-pipeline.md (epic 10, milestone 5)
 78. [closed] work-v2/task-21-add-end-to-end-tests.md (epic 10, milestone 5)
 79. [closed] work-v2/task-64-add-v2-cli-docs.md (epic 11, milestone 5)
-80. [open] work-v2/task-65-add-v2-upgrade-notes.md (epic 11, milestone 5)
+80. [closed] work-v2/task-65-add-v2-upgrade-notes.md (epic 11, milestone 5)
 81. [open] work-v2/task-22-update-documentation-set.md (epic 11, milestone 5)
 82. [open] work-v2/task-74-design-distribution-packaging.md (epic 02, milestone 5)
 83. [open] work-v2/task-75-implement-release-scripts.md (epic 02, milestone 5)
