@@ -1,0 +1,28 @@
+{
+  "workers": {
+    "commands": {
+      "default": [
+        "codex",
+        "exec",
+        "--sandbox=danger-full-access",
+        "{task_path}"
+      ],
+      "roles": {}
+    }
+  },
+  "concurrency": {
+    "global": 5,
+    "default_role": 2,
+    "roles": {}
+  },
+  "timeouts": {
+    "worker_seconds": 900
+  },
+  "retries": {
+    "max_attempts": 2
+  },
+  "auto_rerun": {
+    "enabled": false,
+    "cooldown_seconds": 60
+  }
+}

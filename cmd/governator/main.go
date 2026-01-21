@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/plan"
 	"github.com/cmtonkinson/governator/internal/repo"
 	"github.com/cmtonkinson/governator/internal/run"
@@ -19,6 +20,8 @@ func main() {
 	}
 
 	switch os.Args[1] {
+	case "init":
+		runInit()
 	case "plan":
 		runPlan()
 	case "run":
@@ -27,6 +30,20 @@ func main() {
 		emitUsage()
 		os.Exit(2)
 	}
+}
+
+func runInit() {
+	repoRoot, err := repo.DiscoverRootFromCWD()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		emitUsage()
+		os.Exit(2)
+	}
+	if err := config.InitRepoConfig(repoRoot); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	fmt.Println("Initialized governator configuration")
 }
 
 func runPlan() {
