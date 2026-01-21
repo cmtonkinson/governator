@@ -1,0 +1,342 @@
+// Tests for the end-to-end pipeline that runs bootstrap, planning, and execution.
+package run
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/cmtonkinson/governator/internal/config"
+	"github.com/cmtonkinson/governator/internal/index"
+	"github.com/cmtonkinson/governator/internal/plan"
+	"github.com/cmtonkinson/governator/internal/testrepos"
+	"github.com/cmtonkinson/governator/internal/worktree"
+)
+
+const pipelinePlannerOutput = `{
+  "schema_version": 1,
+  "kind": "planner_output",
+  "architecture_baseline": {
+    "schema_version": 1,
+    "kind": "architecture_baseline",
+    "mode": "synthesis",
+    "summary": "Pipeline integration plan",
+    "sources": [
+      "GOVERNATOR.md"
+    ]
+  },
+  "roadmap": {
+    "schema_version": 1,
+    "kind": "roadmap_decomposition",
+    "depth_policy": "epic->task",
+    "width_policy": "1-2 days",
+    "items": [
+      {
+        "id": "epic-001",
+        "title": "Pipeline integration epic",
+        "type": "epic",
+        "order": 10
+      }
+    ]
+  },
+  "tasks": {
+    "schema_version": 1,
+    "kind": "task_generation",
+    "tasks": [
+      {
+        "id": "T-PIPE-001",
+        "title": "Pipeline integration task",
+        "summary": "Verify the bootstrap, planning, and run stages work end-to-end.",
+        "role": "worker",
+        "dependencies": [],
+        "order": 10,
+        "overlap": [],
+        "acceptance_criteria": [
+          "Pipeline commands execute without errors"
+        ],
+        "tests": [
+          "Integration pipeline test"
+        ]
+      }
+    ]
+  }
+}`
+
+// TestPipelineIntegrationHappyPath covers a full bootstrap, plan, and run execution.
+func TestPipelineIntegrationHappyPath(t *testing.T) {
+	if os.Getenv("GO_PIPELINE_PLANNER_HELPER") == "1" || os.Getenv("GO_PIPELINE_WORKER_HELPER") == "1" {
+		return
+	}
+
+	t.Setenv("GO_PIPELINE_PLANNER_HELPER", "1")
+	t.Setenv("GO_PIPELINE_WORKER_HELPER", "1")
+
+	workerCommand := []string{os.Args[0], "-test.run=TestPipelineWorkerHelper", "--", "{task_path}"}
+	repo := setupPipelineRepo(t, workerCommand)
+	repoRoot := repo.Root
+
+	plannerCommand := []string{os.Args[0], "-test.run=TestPipelinePlannerHelper", "--", "{task_path}"}
+	var planStdout bytes.Buffer
+	var planStderr bytes.Buffer
+	planResult, err := plan.Run(repoRoot, plan.Options{
+		PlannerCommand: plannerCommand,
+		Stdout:         &planStdout,
+		Stderr:         &planStderr,
+	})
+	if err != nil {
+		t.Fatalf("plan.Run failed: %v, stdout=%q, stderr=%q", err, planStdout.String(), planStderr.String())
+	}
+	if planResult.TaskCount != 1 {
+		t.Fatalf("plan returned %d tasks, want 1", planResult.TaskCount)
+	}
+
+	repo.RunGit(t, "add", "_governator/task-index.json", "_governator/plan", "_governator/tasks")
+	repo.RunGit(t, "commit", "-m", "Add plan outputs")
+
+	indexPath := filepath.Join(repoRoot, "_governator", "task-index.json")
+	idx, err := index.Load(indexPath)
+	if err != nil {
+		t.Fatalf("load index: %v", err)
+	}
+	if len(idx.Tasks) != 1 {
+		t.Fatalf("index contains %d tasks, want 1", len(idx.Tasks))
+	}
+
+	if err := prepareWorkedTask(t, repoRoot, &idx, repo); err != nil {
+		t.Fatalf("prepare worked task: %v", err)
+	}
+
+	if err := index.Save(indexPath, idx); err != nil {
+		t.Fatalf("save prepared index: %v", err)
+	}
+
+	var runStdout bytes.Buffer
+	var runStderr bytes.Buffer
+	result, err := Run(repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr})
+	if err != nil {
+		t.Fatalf("run.Run failed: %v, stdout=%q, stderr=%q", err, runStdout.String(), runStderr.String())
+	}
+
+	finalIdx, err := index.Load(indexPath)
+	if err != nil {
+		t.Fatalf("reload index: %v", err)
+	}
+	task := finalIdx.Tasks[0]
+	if task.State != index.TaskStateDone {
+		t.Fatalf("task state = %q, want %q", task.State, index.TaskStateDone)
+	}
+	if !strings.Contains(result.Message, "processed 1 review task(s)") {
+		t.Fatalf("expected review stage summary in result message, got %q", result.Message)
+	}
+}
+
+// TestPipelineIntegrationDrift ensures run halts when planning artifacts drift.
+func TestPipelineIntegrationDrift(t *testing.T) {
+	if os.Getenv("GO_PIPELINE_PLANNER_HELPER") == "1" || os.Getenv("GO_PIPELINE_WORKER_HELPER") == "1" {
+		return
+	}
+
+	t.Setenv("GO_PIPELINE_PLANNER_HELPER", "1")
+	t.Setenv("GO_PIPELINE_WORKER_HELPER", "1")
+
+	workerCommand := []string{os.Args[0], "-test.run=TestPipelineWorkerHelper", "--", "{task_path}"}
+	repo := setupPipelineRepo(t, workerCommand)
+	repoRoot := repo.Root
+
+	plannerCommand := []string{os.Args[0], "-test.run=TestPipelinePlannerHelper", "--", "{task_path}"}
+	if _, err := plan.Run(repoRoot, plan.Options{PlannerCommand: plannerCommand}); err != nil {
+		t.Fatalf("plan.Run failed: %v", err)
+	}
+
+	roadmapPath := filepath.Join(repoRoot, "_governator", "plan", "roadmap.json")
+	data, err := os.ReadFile(roadmapPath)
+	if err != nil {
+		t.Fatalf("read roadmap: %v", err)
+	}
+	if err := os.WriteFile(roadmapPath, append(data, ' '), 0o644); err != nil {
+		t.Fatalf("corrupt roadmap: %v", err)
+	}
+
+	var runStdout bytes.Buffer
+	var runStderr bytes.Buffer
+	_, err = Run(repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr})
+	if err == nil {
+		t.Fatal("expected planning drift error")
+	}
+	if !errors.Is(err, ErrPlanningDrift) {
+		t.Fatalf("error = %v, want ErrPlanningDrift", err)
+	}
+	output := runStdout.String()
+	if !strings.Contains(output, "planning=drift status=blocked") {
+		t.Fatalf("stdout = %q, want planning drift prefix", output)
+	}
+	if !strings.Contains(output, "governator plan") {
+		t.Fatalf("stdout = %q, want plan guidance", output)
+	}
+}
+
+// TestPipelinePlannerHelper emits planner JSON for integration tests.
+func TestPipelinePlannerHelper(t *testing.T) {
+	if os.Getenv("GO_PIPELINE_PLANNER_HELPER") != "1" {
+		return
+	}
+	t.Helper()
+	if _, err := os.Stat(os.Args[len(os.Args)-1]); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	fmt.Fprintln(os.Stdout, pipelinePlannerOutput)
+	os.Exit(0)
+}
+
+// TestPipelineWorkerHelper stages marker files for each worker stage.
+func TestPipelineWorkerHelper(t *testing.T) {
+	if os.Getenv("GO_PIPELINE_WORKER_HELPER") != "1" {
+		return
+	}
+	t.Helper()
+	stage := os.Getenv("GOVERNATOR_STAGE")
+	marker := markerFileForStage(stage)
+	if marker == "" {
+		fmt.Fprintf(os.Stderr, "unsupported stage %q\n", stage)
+		os.Exit(2)
+	}
+	markerPath := filepath.Join("_governator", "_local_state", marker)
+	if err := os.MkdirAll(filepath.Dir(markerPath), 0o755); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	if err := os.WriteFile(markerPath, []byte("pipeline mark\n"), 0o644); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	os.Exit(0)
+}
+
+// setupPipelineRepo configures a temporary repo with Governator defaults and worker config.
+func setupPipelineRepo(t *testing.T, workerCommand []string) *testrepos.TempRepo {
+	t.Helper()
+	repo := testrepos.New(t)
+	if err := config.InitFullLayout(repo.Root); err != nil {
+		t.Fatalf("init layout: %v", err)
+	}
+	governator := filepath.Join(repo.Root, "GOVERNATOR.md")
+	if err := os.WriteFile(governator, []byte("# Governator\n"), 0o644); err != nil {
+		t.Fatalf("write GOVERNATOR.md: %v", err)
+	}
+	repo.RunGit(t, "add", "GOVERNATOR.md")
+	repo.RunGit(t, "commit", "-m", "Add GOVERNATOR")
+	rolesDir := filepath.Join(repo.Root, "_governator", "roles")
+	if err := os.MkdirAll(rolesDir, 0o755); err != nil {
+		t.Fatalf("mkdir roles: %v", err)
+	}
+	roleFile := filepath.Join(rolesDir, "worker.md")
+	if err := os.WriteFile(roleFile, []byte("# Worker role prompt\n"), 0o644); err != nil {
+		t.Fatalf("write worker role: %v", err)
+	}
+	repo.RunGit(t, "add", filepath.Join("_governator", "roles", "worker.md"))
+	repo.RunGit(t, "commit", "-m", "Add worker role prompt")
+	writePipelineConfig(t, repo.Root, workerCommand)
+	repo.RunGit(t, "remote", "add", "origin", repo.Root)
+	return repo
+}
+
+// writePipelineConfig persists the provided worker command in the repo config.
+func writePipelineConfig(t *testing.T, repoRoot string, workerCommand []string) {
+	t.Helper()
+	cfg := config.Defaults()
+	cfg.Workers.Commands.Default = append([]string(nil), workerCommand...)
+	cfgPath := filepath.Join(repoRoot, "_governator", "config", "config.json")
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+	if err := os.WriteFile(cfgPath, append(data, '\n'), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+}
+
+// prepareWorkedTask transitions the planned task into a ready state for run execution.
+func prepareWorkedTask(t *testing.T, repoRoot string, idx *index.Index, repo *testrepos.TempRepo) error {
+	t.Helper()
+	opts := Options{Stdout: io.Discard, Stderr: io.Discard}
+	if _, err := EnsureBranchesForOpenTasks(repoRoot, idx, nil, opts); err != nil {
+		return fmt.Errorf("ensure branches: %w", err)
+	}
+	repo.RunGit(t, "checkout", "main")
+	manager, err := worktree.NewManager(repoRoot)
+	if err != nil {
+		return fmt.Errorf("worktree manager: %w", err)
+	}
+	for i := range idx.Tasks {
+		task := &idx.Tasks[i]
+		task.State = index.TaskStateWorked
+		task.Attempts.Total = 1
+		branchName := fmt.Sprintf("task-%s", task.ID)
+		spec := worktree.Spec{
+			TaskID:     task.ID,
+			Attempt:    task.Attempts.Total,
+			Branch:     branchName,
+			BaseBranch: "main",
+		}
+		worktreeResult, err := manager.EnsureWorktree(spec)
+		if err != nil {
+			return fmt.Errorf("ensure worktree: %w", err)
+		}
+		if err := commitWorktreeChange(t, worktreeResult.Path, task.ID); err != nil {
+			return fmt.Errorf("commit worktree change: %w", err)
+		}
+	}
+	return nil
+}
+
+// markerFileForStage maps a worker stage to its expected marker file.
+func markerFileForStage(stage string) string {
+	switch stage {
+	case "work":
+		return "worked.md"
+	case "test":
+		return "tested.md"
+	case "review":
+		return "reviewed.md"
+	case "resolve":
+		return "resolved.md"
+	default:
+		return ""
+	}
+}
+
+func commitWorktreeChange(t *testing.T, worktreePath, taskID string) error {
+	t.Helper()
+	markerPath := filepath.Join(worktreePath, "_governator", "_local_state", "worked.md")
+	if err := os.MkdirAll(filepath.Dir(markerPath), 0o755); err != nil {
+		return fmt.Errorf("mkdir marker dir: %w", err)
+	}
+	if err := os.WriteFile(markerPath, []byte("workstage marker\n"), 0o644); err != nil {
+		return fmt.Errorf("write worked marker: %w", err)
+	}
+	if _, err := execGitCommand(worktreePath, "add", "_governator/_local_state/worked.md"); err != nil {
+		return err
+	}
+	if _, err := execGitCommand(worktreePath, "commit", "-m", fmt.Sprintf("Work for %s", taskID)); err != nil {
+		return err
+	}
+	return nil
+}
+
+func execGitCommand(dir string, args ...string) (string, error) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(output), fmt.Errorf("git %s failed: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
+	}
+	return string(output), nil
+}
