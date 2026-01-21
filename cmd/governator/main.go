@@ -39,11 +39,11 @@ func runInit() {
 		emitUsage()
 		os.Exit(2)
 	}
-	if err := config.InitRepoConfig(repoRoot); err != nil {
+	if err := config.InitFullLayout(repoRoot); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
-	fmt.Println("Initialized governator configuration")
+	fmt.Println("init ok")
 }
 
 func runPlan() {

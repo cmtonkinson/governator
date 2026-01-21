@@ -116,3 +116,128 @@ func TestInitRepoConfig(t *testing.T) {
 		}
 	})
 }
+
+func TestInitFullLayout(t *testing.T) {
+	t.Run("creates complete directory structure in clean repo", func(t *testing.T) {
+		// Create temporary directory for test
+		tempDir := t.TempDir()
+		
+		// Run full layout init
+		err := InitFullLayout(tempDir)
+		if err != nil {
+			t.Fatalf("InitFullLayout failed: %v", err)
+		}
+		
+		// Verify all required directories exist
+		for _, dir := range v2DirectoryStructure {
+			dirPath := filepath.Join(tempDir, dir)
+			if _, err := os.Stat(dirPath); os.IsNotExist(err) {
+				t.Errorf("Directory %s was not created", dir)
+			}
+		}
+		
+		// Verify config file was created
+		configPath := filepath.Join(tempDir, repoConfigDir, repoConfigFileName)
+		if _, err := os.Stat(configPath); os.IsNotExist(err) {
+			t.Errorf("Config file was not created")
+		}
+		
+		// Verify .keep files were created
+		keepFiles := []string{
+			"_governator/docs/adr/.keep",
+			"_governator/_local_state/logs/.keep",
+		}
+		
+		for _, keepFile := range keepFiles {
+			keepPath := filepath.Join(tempDir, keepFile)
+			if _, err := os.Stat(keepPath); os.IsNotExist(err) {
+				t.Errorf(".keep file %s was not created", keepFile)
+			}
+		}
+	})
+	
+	t.Run("is idempotent - does not fail on existing directories", func(t *testing.T) {
+		// Create temporary directory for test
+		tempDir := t.TempDir()
+		
+		// Run init twice
+		err := InitFullLayout(tempDir)
+		if err != nil {
+			t.Fatalf("First InitFullLayout failed: %v", err)
+		}
+		
+		err = InitFullLayout(tempDir)
+		if err != nil {
+			t.Fatalf("Second InitFullLayout failed: %v", err)
+		}
+		
+		// Verify directories still exist
+		for _, dir := range v2DirectoryStructure {
+			dirPath := filepath.Join(tempDir, dir)
+			if _, err := os.Stat(dirPath); os.IsNotExist(err) {
+				t.Errorf("Directory %s was not preserved after second init", dir)
+			}
+		}
+	})
+	
+	t.Run("preserves existing files", func(t *testing.T) {
+		// Create temporary directory for test
+		tempDir := t.TempDir()
+		
+		// Create some existing files
+		configDir := filepath.Join(tempDir, "_governator", "config")
+		if err := os.MkdirAll(configDir, 0755); err != nil {
+			t.Fatalf("Failed to create config dir: %v", err)
+		}
+		
+		configPath := filepath.Join(configDir, "config.json")
+		customConfig := `{"concurrency": {"global": 10}}`
+		if err := os.WriteFile(configPath, []byte(customConfig), 0644); err != nil {
+			t.Fatalf("Failed to write custom config: %v", err)
+		}
+		
+		keepPath := filepath.Join(tempDir, "_governator", "docs", "adr", ".keep")
+		if err := os.MkdirAll(filepath.Dir(keepPath), 0755); err != nil {
+			t.Fatalf("Failed to create adr dir: %v", err)
+		}
+		if err := os.WriteFile(keepPath, []byte("existing"), 0644); err != nil {
+			t.Fatalf("Failed to write existing .keep: %v", err)
+		}
+		
+		// Run init
+		err := InitFullLayout(tempDir)
+		if err != nil {
+			t.Fatalf("InitFullLayout failed: %v", err)
+		}
+		
+		// Verify existing config is preserved
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			t.Fatalf("Failed to read config file: %v", err)
+		}
+		
+		if string(data) != customConfig {
+			t.Errorf("Existing config was overwritten: got %s, want %s", string(data), customConfig)
+		}
+		
+		// Verify existing .keep file is preserved
+		keepData, err := os.ReadFile(keepPath)
+		if err != nil {
+			t.Fatalf("Failed to read .keep file: %v", err)
+		}
+		
+		if string(keepData) != "existing" {
+			t.Errorf("Existing .keep file was overwritten: got %s, want %s", string(keepData), "existing")
+		}
+	})
+	
+	t.Run("handles empty repo root", func(t *testing.T) {
+		err := InitFullLayout("")
+		if err == nil {
+			t.Error("Expected error for empty repo root, got nil")
+		}
+		if err.Error() != "repo root cannot be empty" {
+			t.Errorf("Unexpected error message: %v", err)
+		}
+	})
+}
