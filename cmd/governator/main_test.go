@@ -77,6 +77,26 @@ func TestCLICommands(t *testing.T) {
 	}
 }
 
+func TestVersionCommandWithMetadata(t *testing.T) {
+	binaryPath := filepath.Join(t.TempDir(), "governator-version-metadata")
+	ldflags := "-X github.com/cmtonkinson/governator/internal/buildinfo.Version=1.2.3 -X github.com/cmtonkinson/governator/internal/buildinfo.Commit=8d3f2a1 -X github.com/cmtonkinson/governator/internal/buildinfo.BuiltAt=2025-02-14T09:30:00Z"
+	cmd := exec.Command("go", "build", "-ldflags", ldflags, "-o", binaryPath, ".")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Failed to build CLI binary with metadata: %v", err)
+	}
+
+	output, err := exec.Command(binaryPath, "version").CombinedOutput()
+	if err != nil {
+		t.Fatalf("Version command failed: %v, output: %s", err, output)
+	}
+
+	outputStr := strings.TrimSpace(string(output))
+	expected := "version=1.2.3 commit=8d3f2a1 built_at=2025-02-14T09:30:00Z"
+	if outputStr != expected {
+		t.Fatalf("Expected %q, got %q", expected, outputStr)
+	}
+}
+
 func TestInitCommand(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "governator-init-test")
