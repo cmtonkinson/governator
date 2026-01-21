@@ -146,6 +146,18 @@ func (registry Registry) Roles() []index.Role {
 	return roles
 }
 
+// RolePromptPath returns the repo-relative prompt path for a role, if present.
+func (registry Registry) RolePromptPath(role index.Role) (string, bool) {
+	if role == "" {
+		return "", false
+	}
+	def, ok := registry.roles[role]
+	if !ok || def.PromptPath == "" {
+		return "", false
+	}
+	return def.PromptPath, true
+}
+
 // PromptFiles returns the ordered prompt files for the supplied role.
 //
 // Prompt order:

@@ -52,7 +52,7 @@
 52. [closed] work-v2/task-48-implement-worker-command-resolution.md (epic 08, milestone 3)
 53. [closed] work-v2/task-49-implement-worktree-management.md (epic 08, milestone 3)
 54. [closed] work-v2/task-50-implement-worker-env-staging.md (epic 08, milestone 3)
-55. [open] work-v2/task-51-implement-worker-process-exec.md (epic 08, milestone 3)
+55. [closed] work-v2/task-51-implement-worker-process-exec.md (epic 08, milestone 3)
 56. [open] work-v2/task-52-implement-worker-result-ingest.md (epic 08, milestone 3)
 57. [open] work-v2/task-79-implement-work-stage-marker.md (epic 08, milestone 3)
 58. [open] work-v2/task-17-implement-timeout-logging.md (epic 08, milestone 3)
