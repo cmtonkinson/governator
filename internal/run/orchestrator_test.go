@@ -13,6 +13,7 @@ import (
 
 	"github.com/cmtonkinson/governator/internal/digests"
 	"github.com/cmtonkinson/governator/internal/index"
+	"github.com/cmtonkinson/governator/internal/testrepos"
 	"github.com/cmtonkinson/governator/internal/worktree"
 )
 
@@ -333,7 +334,7 @@ func TestRunValidation(t *testing.T) {
 // setupTestRepoWithConfig creates a temporary git repository with config for testing.
 func setupTestRepoWithConfig(t *testing.T) string {
 	t.Helper()
-	repoRoot := setupTestRepo(t)
+	repoRoot := testrepos.New(t).Root
 
 	// Create config directory and file
 	configDir := filepath.Join(repoRoot, "_governator")

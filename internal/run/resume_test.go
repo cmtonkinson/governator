@@ -2,15 +2,13 @@
 package run
 
 import (
-	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/index"
+	"github.com/cmtonkinson/governator/internal/testrepos"
 	"github.com/cmtonkinson/governator/internal/worktree"
 )
 
@@ -336,51 +334,13 @@ func TestPrepareTaskForResumeValidation(t *testing.T) {
 	}
 }
 
-// setupTestRepo creates a temporary git repository for testing.
-func setupTestRepo(t *testing.T) string {
-	t.Helper()
-	repoRoot := t.TempDir()
-
-	// Initialize git repo
-	if err := runGit(t, repoRoot, "init"); err != nil {
-		t.Fatalf("git init: %v", err)
-	}
-
-	// Configure git user for commits
-	if err := runGit(t, repoRoot, "config", "user.name", "Test User"); err != nil {
-		t.Fatalf("git config user.name: %v", err)
-	}
-	if err := runGit(t, repoRoot, "config", "user.email", "test@example.com"); err != nil {
-		t.Fatalf("git config user.email: %v", err)
-	}
-
-	// Create initial commit
-	readmePath := filepath.Join(repoRoot, "README.md")
-	if err := os.WriteFile(readmePath, []byte("# Test Repo\n"), 0o644); err != nil {
-		t.Fatalf("write README: %v", err)
-	}
-	if err := runGit(t, repoRoot, "add", "README.md"); err != nil {
-		t.Fatalf("git add: %v", err)
-	}
-	if err := runGit(t, repoRoot, "commit", "-m", "Initial commit"); err != nil {
-		t.Fatalf("git commit: %v", err)
-	}
-
-	return repoRoot
-}
-
-// runGit executes a git command in the provided directory.
-func runGit(t *testing.T, dir string, args ...string) error {
-	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git %s failed: %w: %s", strings.Join(args, " "), err, string(output))
-	}
-	return nil
-}
-
 // containsString reports whether s contains substr.
 func containsString(s, substr string) bool {
 	return strings.Contains(s, substr)
+}
+
+// setupTestRepo creates a temporary git repository for testing.
+func setupTestRepo(t *testing.T) string {
+	t.Helper()
+	return testrepos.New(t).Root
 }
