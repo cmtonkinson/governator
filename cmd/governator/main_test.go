@@ -148,3 +148,127 @@ func TestInitCommand(t *testing.T) {
 		t.Error("Expected config.json was not created")
 	}
 }
+
+func TestStatusCommand(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir, err := os.MkdirTemp("", "governator-status-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Build the CLI binary for testing
+	binaryPath := filepath.Join(t.TempDir(), "governator-test")
+	cmd := exec.Command("go", "build", "-o", binaryPath, ".")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Failed to build CLI binary: %v", err)
+	}
+
+	// Change to temp directory
+	originalDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get current directory: %v", err)
+	}
+	defer os.Chdir(originalDir)
+
+	// Create a git repo in temp dir (required for repo discovery)
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("Failed to change to temp dir: %v", err)
+	}
+	
+	// Initialize git repo
+	gitCmd := exec.Command("git", "init")
+	if err := gitCmd.Run(); err != nil {
+		t.Fatalf("Failed to init git repo: %v", err)
+	}
+
+	t.Run("status without index fails", func(t *testing.T) {
+		cmd := exec.Command(binaryPath, "status")
+		output, err := cmd.CombinedOutput()
+		
+		var exitCode int
+		if err != nil {
+			if exitError, ok := err.(*exec.ExitError); ok {
+				exitCode = exitError.ExitCode()
+			} else {
+				t.Fatalf("Unexpected error type: %v", err)
+			}
+		}
+		
+		if exitCode != 1 {
+			t.Errorf("Expected exit code 1, got %d", exitCode)
+		}
+		
+		outputStr := strings.TrimSpace(string(output))
+		if !strings.Contains(outputStr, "load task index") {
+			t.Errorf("Expected error about loading task index, got %q", outputStr)
+		}
+	})
+
+	// Initialize the repo structure first
+	initCmd := exec.Command(binaryPath, "init")
+	if _, err := initCmd.CombinedOutput(); err != nil {
+		t.Fatalf("Init command failed: %v", err)
+	}
+
+	t.Run("status with empty index", func(t *testing.T) {
+		// Create an empty task index
+		planDir := filepath.Join(tempDir, "_governator", "plan")
+		if err := os.MkdirAll(planDir, 0755); err != nil {
+			t.Fatalf("Failed to create plan dir: %v", err)
+		}
+
+		// Write empty index file
+		indexPath := filepath.Join(planDir, "task-index.json")
+		emptyIndex := `{"schema_version":1,"tasks":[]}`
+		if err := os.WriteFile(indexPath, []byte(emptyIndex), 0644); err != nil {
+			t.Fatalf("Failed to write empty index: %v", err)
+		}
+
+		cmd := exec.Command(binaryPath, "status")
+		output, err := cmd.CombinedOutput()
+		
+		if err != nil {
+			t.Fatalf("Status command failed: %v, output: %s", err, output)
+		}
+		
+		outputStr := strings.TrimSpace(string(output))
+		expected := "tasks total=0 done=0 open=0 blocked=0"
+		if outputStr != expected {
+			t.Errorf("Expected %q, got %q", expected, outputStr)
+		}
+	})
+
+	t.Run("status with populated index", func(t *testing.T) {
+		// Create a populated task index
+		indexPath := filepath.Join(tempDir, "_governator", "plan", "task-index.json")
+		populatedIndex := `{
+			"schema_version": 1,
+			"tasks": [
+				{"id": "T-001", "state": "done"},
+				{"id": "T-002", "state": "done"},
+				{"id": "T-003", "state": "open"},
+				{"id": "T-004", "state": "open"},
+				{"id": "T-005", "state": "blocked"},
+				{"id": "T-006", "state": "worked"},
+				{"id": "T-007", "state": "conflict"}
+			]
+		}`
+		if err := os.WriteFile(indexPath, []byte(populatedIndex), 0644); err != nil {
+			t.Fatalf("Failed to write populated index: %v", err)
+		}
+
+		cmd := exec.Command(binaryPath, "status")
+		output, err := cmd.CombinedOutput()
+		
+		if err != nil {
+			t.Fatalf("Status command failed: %v, output: %s", err, output)
+		}
+		
+		outputStr := strings.TrimSpace(string(output))
+		expected := "tasks total=7 done=2 open=3 blocked=2"
+		if outputStr != expected {
+			t.Errorf("Expected %q, got %q", expected, outputStr)
+		}
+	})
+}

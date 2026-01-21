@@ -65,7 +65,7 @@
 65. [closed] work-v2/task-33-implement-config-directory-init.md (epic 04, milestone 4)
 66. [closed] work-v2/task-58-implement-init-command.md (epic 09, milestone 4)
 67. [closed] work-v2/task-19-implement-cli-core.md (epic 09, milestone 4)
-68. [open] work-v2/task-56-implement-status-output.md (epic 09, milestone 4)
+68. [closed] work-v2/task-56-implement-status-output.md (epic 09, milestone 4)
 69. [open] work-v2/task-57-implement-run-output-format.md (epic 09, milestone 4)
 70. [open] work-v2/task-25-implement-version-command.md (epic 02, milestone 0)
 71. [open] work-v2/task-82-add-self-run-guard.md (epic 09, milestone 4)
