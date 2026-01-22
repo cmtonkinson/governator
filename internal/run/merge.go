@@ -2,9 +2,13 @@
 package run
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/cmtonkinson/governator/internal/audit"
 	"github.com/cmtonkinson/governator/internal/index"
@@ -42,10 +46,16 @@ func ExecuteReviewMergeFlow(input MergeFlowInput) (MergeFlowResult, error) {
 	if strings.TrimSpace(input.MainBranch) == "" {
 		input.MainBranch = "main" // Default to main branch
 	}
+	if strings.TrimSpace(input.Task.Title) == "" {
+		return MergeFlowResult{}, fmt.Errorf("task title is required")
+	}
+	if err := ensureCleanWorktree(input.WorktreePath); err != nil {
+		return MergeFlowResult{}, err
+	}
 
 	// Step 1: Fetch latest main to ensure we have up-to-date refs
-	if err := runGitInWorktree(input.WorktreePath, "fetch", "origin", input.MainBranch); err != nil {
-		return MergeFlowResult{}, fmt.Errorf("fetch main branch: %w", err)
+	if err := fetchBranch(input.WorktreePath, "origin", input.MainBranch); err != nil {
+		return MergeFlowResult{}, err
 	}
 
 	// Step 2: Attempt rebase on main
@@ -55,7 +65,7 @@ func ExecuteReviewMergeFlow(input MergeFlowInput) (MergeFlowResult, error) {
 		if isRebaseConflict(rebaseErr) {
 			// Abort the rebase to leave worktree in clean state
 			_ = runGitInWorktree(input.WorktreePath, "rebase", "--abort")
-			
+
 			// Log the conflict to audit
 			if input.Auditor != nil {
 				_ = input.Auditor.LogTaskTransition(
@@ -76,20 +86,31 @@ func ExecuteReviewMergeFlow(input MergeFlowInput) (MergeFlowResult, error) {
 		return MergeFlowResult{}, fmt.Errorf("rebase failed: %w", rebaseErr)
 	}
 
-	// Step 3: Switch to main branch in repo root for merge
-	if err := runGitInRepo(input.RepoRoot, "checkout", input.MainBranch); err != nil {
-		return MergeFlowResult{}, fmt.Errorf("checkout main branch: %w", err)
+	// Step 3: Create an isolated merge worktree on the main branch.
+	mergeWorktreePath, cleanupMergeWorktree, err := createMergeWorktree(input.RepoRoot, input.MainBranch, input.Task.ID)
+	if err != nil {
+		return MergeFlowResult{}, err
 	}
+	defer func() {
+		if cleanupErr := cleanupMergeWorktree(); cleanupErr != nil && input.Auditor != nil {
+			_ = input.Auditor.Log(audit.Entry{
+				TaskID: input.Task.ID,
+				Role:   string(input.Task.Role),
+				Event:  "merge.worktree.cleanup.warning",
+				Fields: []audit.Field{{Key: "error", Value: cleanupErr.Error()}},
+			})
+		}
+	}()
 
-	// Step 4: Perform squash merge of task branch
+	// Step 4: Perform squash merge of task branch in the isolated worktree.
 	taskBranch := fmt.Sprintf("task-%s", input.Task.ID)
-	mergeErr := runGitInRepo(input.RepoRoot, "merge", "--squash", taskBranch)
+	mergeErr := runGitInWorktree(mergeWorktreePath, "merge", "--squash", taskBranch)
 	if mergeErr != nil {
 		// Check if this is a merge conflict
 		if isMergeConflict(mergeErr) {
-			// Reset to clean state
-			_ = runGitInRepo(input.RepoRoot, "reset", "--hard", "HEAD")
-			
+			// Reset the merge worktree to a clean state.
+			_ = runGitInWorktree(mergeWorktreePath, "reset", "--hard", "HEAD")
+
 			// Log the conflict to audit
 			if input.Auditor != nil {
 				_ = input.Auditor.LogTaskTransition(
@@ -112,7 +133,7 @@ func ExecuteReviewMergeFlow(input MergeFlowInput) (MergeFlowResult, error) {
 
 	// Step 5: Commit the squashed changes
 	commitMsg := fmt.Sprintf("governator: %s - %s", input.Task.ID, input.Task.Title)
-	if err := runGitInRepo(input.RepoRoot, "commit", "-m", commitMsg); err != nil {
+	if err := runGitInWorktree(mergeWorktreePath, "commit", "-m", commitMsg); err != nil {
 		return MergeFlowResult{}, fmt.Errorf("commit squashed changes: %w", err)
 	}
 
@@ -212,7 +233,7 @@ func runGitInWorktree(worktreePath string, args ...string) error {
 
 	cmd := exec.Command("git", args...)
 	cmd.Dir = worktreePath
-	
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("git %s failed: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
@@ -231,12 +252,95 @@ func runGitInRepo(repoRoot string, args ...string) error {
 
 	cmd := exec.Command("git", args...)
 	cmd.Dir = repoRoot
-	
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("git %s failed: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
 	}
 	return nil
+}
+
+// fetchBranch fetches the named branch from the configured remote.
+func fetchBranch(worktreePath string, remote string, branch string) error {
+	if strings.TrimSpace(remote) == "" || strings.TrimSpace(branch) == "" {
+		return errors.New("remote and branch are required")
+	}
+	if err := runGitInWorktree(worktreePath, "remote", "get-url", remote); err != nil {
+		return fmt.Errorf("remote %s is not configured: %w", remote, err)
+	}
+	if err := runGitInWorktree(worktreePath, "fetch", remote, branch); err != nil {
+		return fmt.Errorf("fetch %s/%s: %w", remote, branch, err)
+	}
+	return nil
+}
+
+// ensureCleanWorktree verifies the worktree has no uncommitted changes.
+func ensureCleanWorktree(worktreePath string) error {
+	if strings.TrimSpace(worktreePath) == "" {
+		return errors.New("worktree path is required")
+	}
+	cmd := exec.Command("git", "status", "--porcelain")
+	cmd.Dir = worktreePath
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("check worktree status: %w", err)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		if line == "" {
+			continue
+		}
+		path := strings.TrimSpace(line[3:])
+		if strings.HasPrefix(path, "_governator/_local_state") {
+			continue
+		}
+		return fmt.Errorf("worktree %s has uncommitted changes: %s", worktreePath, line)
+	}
+	return nil
+}
+
+// createMergeWorktree creates a temporary worktree on the main branch for safe merges.
+func createMergeWorktree(repoRoot string, mainBranch string, taskID string) (string, func() error, error) {
+	if strings.TrimSpace(repoRoot) == "" {
+		return "", nil, fmt.Errorf("repo root is required")
+	}
+	if strings.TrimSpace(mainBranch) == "" {
+		return "", nil, fmt.Errorf("main branch is required")
+	}
+	if strings.TrimSpace(taskID) == "" {
+		return "", nil, fmt.Errorf("task id is required")
+	}
+
+	mergeDir := filepath.Join(repoRoot, "_governator", "_local_state", "merge-worktrees")
+	if err := os.MkdirAll(mergeDir, 0o755); err != nil {
+		return "", nil, fmt.Errorf("create merge worktree dir %s: %w", mergeDir, err)
+	}
+
+	suffix := time.Now().UTC().Format("20060102-150405")
+	worktreePath := filepath.Join(mergeDir, fmt.Sprintf("%s-%s", taskID, suffix))
+	if _, err := os.Stat(worktreePath); err == nil {
+		return "", nil, fmt.Errorf("merge worktree path %s already exists", worktreePath)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", nil, fmt.Errorf("stat merge worktree path %s: %w", worktreePath, err)
+	}
+
+	if err := runGitInRepo(repoRoot, "fetch", "origin", mainBranch); err != nil {
+		return "", nil, fmt.Errorf("fetch main branch %s: %w", mainBranch, err)
+	}
+
+	if err := runGitInRepo(repoRoot, "worktree", "add", "--detach", worktreePath, "origin/"+mainBranch); err != nil {
+		return "", nil, fmt.Errorf("create merge worktree: %w", err)
+	}
+
+	cleanup := func() error {
+		return runGitInRepo(repoRoot, "worktree", "remove", "--force", worktreePath)
+	}
+
+	if err := ensureCleanWorktree(worktreePath); err != nil {
+		_ = cleanup()
+		return "", nil, err
+	}
+
+	return worktreePath, cleanup, nil
 }
 
 // isRebaseConflict determines if a git error indicates a rebase conflict.
@@ -245,9 +349,9 @@ func isRebaseConflict(err error) bool {
 		return false
 	}
 	errStr := strings.ToLower(err.Error())
-	return strings.Contains(errStr, "conflict") || 
-		   strings.Contains(errStr, "could not apply") ||
-		   strings.Contains(errStr, "merge conflict")
+	return strings.Contains(errStr, "conflict") ||
+		strings.Contains(errStr, "could not apply") ||
+		strings.Contains(errStr, "merge conflict")
 }
 
 // isMergeConflict determines if a git error indicates a merge conflict.
@@ -256,7 +360,7 @@ func isMergeConflict(err error) bool {
 		return false
 	}
 	errStr := strings.ToLower(err.Error())
-	return strings.Contains(errStr, "conflict") || 
-		   strings.Contains(errStr, "automatic merge failed") ||
-		   strings.Contains(errStr, "merge conflict")
+	return strings.Contains(errStr, "conflict") ||
+		strings.Contains(errStr, "automatic merge failed") ||
+		strings.Contains(errStr, "merge conflict")
 }

@@ -2,16 +2,87 @@ package run
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/cmtonkinson/governator/internal/index"
+	"github.com/cmtonkinson/governator/internal/testrepos"
+	"github.com/cmtonkinson/governator/internal/worktree"
 )
 
 func TestExecuteReviewMergeFlow_Success(t *testing.T) {
-	// Skip this test for now as it requires complex git setup
-	// The validation tests cover the important logic
-	t.Skip("Skipping integration test - validation tests cover the core logic")
+	repo := testrepos.New(t)
+	repoRoot := repo.Root
+
+	originRoot := filepath.Join(repoRoot, "origin.git")
+	repo.RunGit(t, "init", "--bare", originRoot)
+	repo.RunGit(t, "remote", "add", "origin", originRoot)
+	repo.RunGit(t, "push", "-u", "origin", "main")
+
+	task := index.Task{
+		ID:    "T-MERGE-001",
+		Title: "Add merge flow coverage",
+		Role:  "generalist",
+		State: index.TaskStateTested,
+	}
+
+	repo.RunGit(t, "checkout", "-b", "task-"+task.ID)
+	featureFile := filepath.Join(repoRoot, "FEATURE.md")
+	if err := os.WriteFile(featureFile, []byte("merge flow\n"), 0o644); err != nil {
+		t.Fatalf("write feature file: %v", err)
+	}
+	repo.RunGit(t, "add", "FEATURE.md")
+	repo.RunGit(t, "commit", "-m", "Add feature")
+
+	repo.RunGit(t, "checkout", "main")
+
+	manager, err := worktree.NewManager(repoRoot)
+	if err != nil {
+		t.Fatalf("create worktree manager: %v", err)
+	}
+	worktreeResult, err := manager.EnsureWorktree(worktree.Spec{
+		TaskID:     task.ID,
+		Attempt:    1,
+		Branch:     "task-" + task.ID,
+		BaseBranch: "main",
+	})
+	if err != nil {
+		t.Fatalf("ensure worktree: %v", err)
+	}
+
+	input := MergeFlowInput{
+		RepoRoot:     repoRoot,
+		WorktreePath: worktreeResult.Path,
+		Task:         task,
+		MainBranch:   "main",
+	}
+
+	result, err := ExecuteReviewMergeFlow(input)
+	if err != nil {
+		t.Fatalf("execute merge flow: %v", err)
+	}
+	if !result.Success || result.NewState != index.TaskStateDone {
+		t.Fatalf("unexpected merge result: %+v", result)
+	}
+
+	if branch := strings.TrimSpace(repo.RunGit(t, "rev-parse", "--abbrev-ref", "HEAD")); branch != "main" {
+		t.Fatalf("repo root branch = %q, want main", branch)
+	}
+	if status := strings.TrimSpace(repo.RunGit(t, "status", "--porcelain")); status != "" {
+		for _, line := range strings.Split(status, "\n") {
+			if line == "" {
+				continue
+			}
+			fields := strings.Fields(line)
+			path := fields[len(fields)-1]
+			if strings.HasPrefix(path, "_governator/") || strings.HasPrefix(path, "origin.git/") {
+				continue
+			}
+			t.Fatalf("repo root dirty after merge: %q", status)
+		}
+	}
 }
 
 func TestExecuteReviewMergeFlow_ValidationErrors(t *testing.T) {
@@ -34,6 +105,11 @@ func TestExecuteReviewMergeFlow_ValidationErrors(t *testing.T) {
 			name:        "empty task ID",
 			input:       MergeFlowInput{RepoRoot: "/path", WorktreePath: "/path", Task: index.Task{ID: ""}},
 			expectError: "task ID is required",
+		},
+		{
+			name:        "empty task title",
+			input:       MergeFlowInput{RepoRoot: "/path", WorktreePath: "/path", Task: index.Task{ID: "T-001", Title: ""}},
+			expectError: "task title is required",
 		},
 	}
 
@@ -164,22 +240,22 @@ func TestIsMergeConflict(t *testing.T) {
 
 func TestRunGitInWorktree_ValidationErrors(t *testing.T) {
 	tests := []struct {
-		name        string
+		name         string
 		worktreePath string
-		args        []string
-		expectError string
+		args         []string
+		expectError  string
 	}{
 		{
-			name:        "empty worktree path",
+			name:         "empty worktree path",
 			worktreePath: "",
-			args:        []string{"status"},
-			expectError: "worktree path is required",
+			args:         []string{"status"},
+			expectError:  "worktree path is required",
 		},
 		{
-			name:        "no git arguments",
+			name:         "no git arguments",
 			worktreePath: "/tmp",
-			args:        []string{},
-			expectError: "git arguments are required",
+			args:         []string{},
+			expectError:  "git arguments are required",
 		},
 	}
 

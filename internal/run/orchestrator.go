@@ -327,6 +327,9 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 					BlockReason: formatTimeoutReason(cfg.Timeouts.WorkerSeconds),
 					TimedOut:    true,
 				}
+				logAgentOutcome(workerAuditor, task.ID, task.Role, roles.StageWork, statusFromIngestResult(failedResult), exitCodeForOutcome(-1, true), func(message string) {
+					fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+				})
 				if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
 					fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
 				}
@@ -367,6 +370,10 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 				continue
 			}
 		}
+
+		logAgentOutcome(workerAuditor, task.ID, task.Role, roles.StageWork, statusFromIngestResult(ingestResult), exitCodeForOutcome(exitStatus.ExitCode, ingestResult.TimedOut), func(message string) {
+			fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+		})
 
 		if err := UpdateTaskStateFromWorkResult(idx, task.ID, ingestResult, transitionAuditor); err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, err)
@@ -523,6 +530,10 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 			continue
 		}
 
+		logAgentInvoke(workerAuditor, task.ID, task.Role, roles.StageWork, attempt, func(message string) {
+			fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+		})
+
 		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath); err == nil {
 			result.InFlightUpdated = true
 		}
@@ -545,6 +556,10 @@ func ExecuteWorkAgent(repoRoot, worktreePath string, task index.Task, cfg config
 			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
 		},
 	}
+
+	logAgentInvoke(auditor, task.ID, task.Role, roles.StageWork, maxInt(task.Attempts.Total, 1), func(message string) {
+		fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+	})
 
 	stageResult, err := worker.StageEnvAndPrompts(stageInput)
 	if err != nil {
@@ -572,6 +587,10 @@ func ExecuteWorkAgent(repoRoot, worktreePath string, task index.Task, cfg config
 	if err != nil {
 		return worker.IngestResult{}, fmt.Errorf("ingest work result: %w", err)
 	}
+
+	logAgentOutcome(auditor, task.ID, task.Role, roles.StageWork, statusFromIngestResult(ingestResult), exitCodeForOutcome(execResult.ExitCode, execResult.TimedOut), func(message string) {
+		fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+	})
 
 	return ingestResult, nil
 }
@@ -626,6 +645,9 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 					BlockReason: formatTimeoutReason(cfg.Timeouts.WorkerSeconds),
 					TimedOut:    true,
 				}
+				logAgentOutcome(workerAuditor, task.ID, task.Role, roles.StageTest, statusFromIngestResult(failedResult), exitCodeForOutcome(-1, true), func(message string) {
+					fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+				})
 				if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
 					fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
 				}
@@ -666,6 +688,10 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 				continue
 			}
 		}
+
+		logAgentOutcome(workerAuditor, task.ID, task.Role, roles.StageTest, statusFromIngestResult(ingestResult), exitCodeForOutcome(exitStatus.ExitCode, ingestResult.TimedOut), func(message string) {
+			fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+		})
 
 		if err := UpdateTaskStateFromTestResult(idx, task.ID, ingestResult, transitionAuditor); err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, err)
@@ -768,6 +794,10 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 			continue
 		}
 
+		logAgentInvoke(workerAuditor, task.ID, task.Role, roles.StageTest, maxInt(task.Attempts.Total, 1), func(message string) {
+			fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+		})
+
 		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath); err == nil {
 			result.InFlightUpdated = true
 		}
@@ -790,6 +820,10 @@ func ExecuteTestAgent(repoRoot, worktreePath string, task index.Task, cfg config
 			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
 		},
 	}
+
+	logAgentInvoke(auditor, task.ID, task.Role, roles.StageTest, maxInt(task.Attempts.Total, 1), func(message string) {
+		fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+	})
 
 	stageResult, err := worker.StageEnvAndPrompts(stageInput)
 	if err != nil {
@@ -819,6 +853,10 @@ func ExecuteTestAgent(repoRoot, worktreePath string, task index.Task, cfg config
 	if err != nil {
 		return worker.IngestResult{}, fmt.Errorf("ingest test result: %w", err)
 	}
+
+	logAgentOutcome(auditor, task.ID, task.Role, roles.StageTest, statusFromIngestResult(ingestResult), exitCodeForOutcome(execResult.ExitCode, execResult.TimedOut), func(message string) {
+		fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+	})
 
 	return ingestResult, nil
 }
@@ -881,6 +919,9 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 					BlockReason: formatTimeoutReason(cfg.Timeouts.WorkerSeconds),
 					TimedOut:    true,
 				}
+				logAgentOutcome(workerAuditor, task.ID, task.Role, roles.StageReview, statusFromIngestResult(failedResult), exitCodeForOutcome(-1, true), func(message string) {
+					fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+				})
 				if err := UpdateTaskStateFromReviewResult(idx, task.ID, failedResult, transitionAuditor); err != nil {
 					fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, err)
 				} else {
@@ -918,6 +959,10 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 				continue
 			}
 		}
+
+		logAgentOutcome(workerAuditor, task.ID, task.Role, roles.StageReview, statusFromIngestResult(reviewResult), exitCodeForOutcome(exitStatus.ExitCode, reviewResult.TimedOut), func(message string) {
+			fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+		})
 
 		if reviewResult.Success {
 			result.TasksReviewed++
@@ -1047,6 +1092,10 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 			continue
 		}
 
+		logAgentInvoke(workerAuditor, task.ID, task.Role, roles.StageReview, maxInt(task.Attempts.Total, 1), func(message string) {
+			fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+		})
+
 		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath); err == nil {
 			result.InFlightUpdated = true
 		}
@@ -1069,6 +1118,10 @@ func ExecuteReviewAgent(repoRoot, worktreePath string, task index.Task, cfg conf
 			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
 		},
 	}
+
+	logAgentInvoke(auditor, task.ID, task.Role, roles.StageReview, maxInt(task.Attempts.Total, 1), func(message string) {
+		fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+	})
 
 	stageResult, err := worker.StageEnvAndPrompts(stageInput)
 	if err != nil {
@@ -1098,6 +1151,10 @@ func ExecuteReviewAgent(repoRoot, worktreePath string, task index.Task, cfg conf
 	if err != nil {
 		return worker.IngestResult{}, fmt.Errorf("ingest review result: %w", err)
 	}
+
+	logAgentOutcome(auditor, task.ID, task.Role, roles.StageReview, statusFromIngestResult(ingestResult), exitCodeForOutcome(execResult.ExitCode, execResult.TimedOut), func(message string) {
+		fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+	})
 
 	return ingestResult, nil
 }
@@ -1157,6 +1214,9 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 					BlockReason: formatTimeoutReason(cfg.Timeouts.WorkerSeconds),
 					TimedOut:    true,
 				}
+				logAgentOutcome(workerAuditor, task.ID, task.Role, roles.StageResolve, statusFromIngestResult(failedResult), exitCodeForOutcome(-1, true), func(message string) {
+					fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+				})
 				if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
 					fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
 				}
@@ -1197,6 +1257,10 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 				continue
 			}
 		}
+
+		logAgentOutcome(workerAuditor, task.ID, task.Role, roles.StageResolve, statusFromIngestResult(ingestResult), exitCodeForOutcome(exitStatus.ExitCode, ingestResult.TimedOut), func(message string) {
+			fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+		})
 
 		if err := UpdateTaskStateFromConflictResolution(idx, task.ID, ingestResult, transitionAuditor); err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, err)
@@ -1316,6 +1380,10 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 			continue
 		}
 
+		logAgentInvoke(workerAuditor, task.ID, roleResult.Role, roles.StageResolve, maxInt(task.Attempts.Total, 1), func(message string) {
+			fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+		})
+
 		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath); err == nil {
 			result.InFlightUpdated = true
 		}
@@ -1353,6 +1421,10 @@ func ExecuteConflictResolutionAgent(repoRoot, worktreePath string, task index.Ta
 	roleForLogs := resolveRoleForLogs(roleResult.Role, task.Role)
 	emitTaskStart(opts.Stdout, task.ID, roleForLogs, string(roles.StageResolve))
 
+	logAgentInvoke(auditor, task.ID, roleResult.Role, roles.StageResolve, maxInt(task.Attempts.Total, 1), func(message string) {
+		fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+	})
+
 	// Execute the conflict resolution worker
 	execResult, err := worker.ExecuteWorkerFromConfigWithAudit(cfg, task, stageResult, worktreePath, func(msg string) {
 		fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
@@ -1376,6 +1448,10 @@ func ExecuteConflictResolutionAgent(repoRoot, worktreePath string, task index.Ta
 	if err != nil {
 		return worker.IngestResult{}, roleResult, fmt.Errorf("ingest conflict resolution result: %w", err)
 	}
+
+	logAgentOutcome(auditor, task.ID, roleResult.Role, roles.StageResolve, statusFromIngestResult(ingestResult), exitCodeForOutcome(execResult.ExitCode, execResult.TimedOut), func(message string) {
+		fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+	})
 
 	return ingestResult, roleResult, nil
 }
