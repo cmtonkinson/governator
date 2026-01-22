@@ -73,7 +73,7 @@ The authoritative task state is a centralized index file. It must:
 ## Worker Output and Resilience
 - Timeouts and failures are always logged and surfaced in standard output.
 - Work is preserved (worktree retained or partial branch committed).
-- A follow-up task is created to resume work, rather than silently retrying.
+- Follow-up work reuses the same task entry—failed work is left incomplete so it can be explicitly resumed or re-dispatched.
 
 ## Success Criteria
 - A new user can read the index and understand the system state in minutes.
