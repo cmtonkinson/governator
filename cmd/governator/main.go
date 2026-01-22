@@ -13,17 +13,31 @@ import (
 	"github.com/cmtonkinson/governator/internal/status"
 )
 
-const usageLine = "usage: governator <init|plan|run|status|version>"
+const usageLine = "usage: governator [-v|--verbose] <init|plan|run|status|version>"
 
 func main() {
-	if len(os.Args) < 2 {
+	verbose := false
+	args := os.Args[1:]
+
+flagLoop:
+	for len(args) > 0 {
+		switch args[0] {
+		case "-v", "--verbose":
+			verbose = true
+			args = args[1:]
+		default:
+			break flagLoop
+		}
+	}
+
+	if len(args) == 0 {
 		emitUsage()
 		os.Exit(2)
 	}
 
-	switch os.Args[1] {
+	switch args[0] {
 	case "init":
-		runInit()
+		runInit(verbose)
 	case "plan":
 		runPlan()
 	case "run":
@@ -38,14 +52,14 @@ func main() {
 	}
 }
 
-func runInit() {
+func runInit(verbose bool) {
 	repoRoot, err := repo.DiscoverRootFromCWD()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		emitUsage()
 		os.Exit(2)
 	}
-	if err := config.InitFullLayout(repoRoot); err != nil {
+	if err := config.InitFullLayout(repoRoot, config.InitOptions{Verbose: verbose}); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}

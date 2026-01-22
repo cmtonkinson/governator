@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/cmtonkinson/governator/internal/templates"
 )
 
 func TestInitRepoConfig(t *testing.T) {
@@ -13,7 +15,7 @@ func TestInitRepoConfig(t *testing.T) {
 		tempDir := t.TempDir()
 
 		// Run init
-		err := InitRepoConfig(tempDir)
+		err := InitRepoConfig(tempDir, InitOptions{})
 		if err != nil {
 			t.Fatalf("InitRepoConfig failed: %v", err)
 		}
@@ -68,7 +70,7 @@ func TestInitRepoConfig(t *testing.T) {
 		}
 
 		// Run init
-		err := InitRepoConfig(tempDir)
+		err := InitRepoConfig(tempDir, InitOptions{})
 		if err != nil {
 			t.Fatalf("InitRepoConfig failed: %v", err)
 		}
@@ -85,7 +87,7 @@ func TestInitRepoConfig(t *testing.T) {
 	})
 
 	t.Run("handles empty repo root", func(t *testing.T) {
-		err := InitRepoConfig("")
+		err := InitRepoConfig("", InitOptions{})
 		if err == nil {
 			t.Error("Expected error for empty repo root, got nil")
 		}
@@ -99,7 +101,7 @@ func TestInitRepoConfig(t *testing.T) {
 		tempDir := t.TempDir()
 
 		// Run init
-		err := InitRepoConfig(tempDir)
+		err := InitRepoConfig(tempDir, InitOptions{})
 		if err != nil {
 			t.Fatalf("InitRepoConfig failed: %v", err)
 		}
@@ -123,7 +125,7 @@ func TestInitFullLayout(t *testing.T) {
 		tempDir := t.TempDir()
 
 		// Run full layout init
-		err := InitFullLayout(tempDir)
+		err := InitFullLayout(tempDir, InitOptions{})
 		if err != nil {
 			t.Fatalf("InitFullLayout failed: %v", err)
 		}
@@ -157,17 +159,32 @@ func TestInitFullLayout(t *testing.T) {
 		}
 	})
 
+	t.Run("copies embedded templates into _governator/templates", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		if err := InitFullLayout(tempDir, InitOptions{}); err != nil {
+			t.Fatalf("InitFullLayout failed: %v", err)
+		}
+
+		for _, name := range templates.Required() {
+			templatePath := filepath.Join(tempDir, templatesDirName, filepath.FromSlash(name))
+			if _, err := os.Stat(templatePath); os.IsNotExist(err) {
+				t.Errorf("template %s was not copied", name)
+			}
+		}
+	})
+
 	t.Run("is idempotent - does not fail on existing directories", func(t *testing.T) {
 		// Create temporary directory for test
 		tempDir := t.TempDir()
 
 		// Run init twice
-		err := InitFullLayout(tempDir)
+		err := InitFullLayout(tempDir, InitOptions{})
 		if err != nil {
 			t.Fatalf("First InitFullLayout failed: %v", err)
 		}
 
-		err = InitFullLayout(tempDir)
+		err = InitFullLayout(tempDir, InitOptions{})
 		if err != nil {
 			t.Fatalf("Second InitFullLayout failed: %v", err)
 		}
@@ -206,7 +223,7 @@ func TestInitFullLayout(t *testing.T) {
 		}
 
 		// Run init
-		err := InitFullLayout(tempDir)
+		err := InitFullLayout(tempDir, InitOptions{})
 		if err != nil {
 			t.Fatalf("InitFullLayout failed: %v", err)
 		}
@@ -233,7 +250,7 @@ func TestInitFullLayout(t *testing.T) {
 	})
 
 	t.Run("handles empty repo root", func(t *testing.T) {
-		err := InitFullLayout("")
+		err := InitFullLayout("", InitOptions{})
 		if err == nil {
 			t.Error("Expected error for empty repo root, got nil")
 		}

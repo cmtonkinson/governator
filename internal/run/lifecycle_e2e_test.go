@@ -296,7 +296,7 @@ func TestLifecycleEndToEndTimeoutResume(t *testing.T) {
 func setupLifecycleRepo(t *testing.T, workerCommand []string, timeoutSeconds int) *testrepos.TempRepo {
 	t.Helper()
 	repo := testrepos.New(t)
-	if err := config.InitFullLayout(repo.Root); err != nil {
+	if err := config.InitFullLayout(repo.Root, config.InitOptions{}); err != nil {
 		t.Fatalf("init layout: %v", err)
 	}
 

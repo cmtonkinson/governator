@@ -118,5 +118,5 @@ governator v2.0.0+build.123
 
 **Output (example)**
 ```
-usage: governator <init|plan|run|status|version>
+usage: governator [-v|--verbose] <init|plan|run|status|version>
 ```

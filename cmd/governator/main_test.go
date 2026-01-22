@@ -8,6 +8,8 @@ import (
 	"testing"
 )
 
+const usageMessage = "usage: governator [-v|--verbose] <init|plan|run|status|version>"
+
 func TestCLICommands(t *testing.T) {
 	// Build the CLI binary for testing
 	binaryPath := filepath.Join(t.TempDir(), "governator-test")
@@ -27,13 +29,13 @@ func TestCLICommands(t *testing.T) {
 			name:          "no arguments shows usage",
 			args:          []string{},
 			expectedExit:  2,
-			expectedError: "usage: governator <init|plan|run|status|version>",
+			expectedError: usageMessage,
 		},
 		{
 			name:          "unknown command shows usage",
 			args:          []string{"unknown"},
 			expectedExit:  2,
-			expectedError: "usage: governator <init|plan|run|status|version>",
+			expectedError: usageMessage,
 		},
 		{
 			name:           "version command",
