@@ -10,16 +10,17 @@ import (
 
 	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/index"
+	"github.com/cmtonkinson/governator/internal/scheduler"
 	"github.com/cmtonkinson/governator/internal/worker"
 )
 
 // TestExecuteTestStageHappyPath ensures test stage processes worked tasks correctly.
 func TestExecuteTestStageHappyPath(t *testing.T) {
 	t.Parallel()
-	
+
 	// This test focuses on the test stage orchestration logic
 	// We'll test the worker execution separately
-	
+
 	repoRoot := setupTestRepoWithConfig(t)
 
 	// Create a test index with a worked task
@@ -57,10 +58,11 @@ func TestExecuteTestStageHappyPath(t *testing.T) {
 
 	// Create mock auditor
 	auditor := &mockTransitionAuditor{}
+	caps := scheduler.RoleCapsFromConfig(cfg)
 
 	// Execute test stage - this will fail because we don't have proper worktrees set up,
 	// but we can verify that it processes the worked task
-	result, err := ExecuteTestStage(repoRoot, &idx, cfg, auditor, nil, opts)
+	result, err := ExecuteTestStage(repoRoot, &idx, cfg, caps, auditor, nil, opts)
 	if err != nil {
 		t.Fatalf("execute test stage: %v", err)
 	}
@@ -115,8 +117,9 @@ func TestExecuteTestStageNoWorkedTasks(t *testing.T) {
 	}
 
 	auditor := &mockTransitionAuditor{}
+	caps := scheduler.RoleCapsFromConfig(cfg)
 
-	result, err := ExecuteTestStage(repoRoot, &idx, cfg, auditor, nil, opts)
+	result, err := ExecuteTestStage(repoRoot, &idx, cfg, caps, auditor, nil, opts)
 	if err != nil {
 		t.Fatalf("execute test stage: %v", err)
 	}
@@ -261,13 +264,14 @@ func loadTestConfig(repoRoot string) (config.Config, error) {
 	// Load the config that was created in setupTestRepoWithConfig
 	return config.Load(repoRoot, nil, nil)
 }
+
 // TestExecuteReviewStageHappyPath ensures review stage processes tested tasks correctly.
 func TestExecuteReviewStageHappyPath(t *testing.T) {
 	t.Parallel()
-	
+
 	// This test focuses on the review stage orchestration logic
 	// We'll test the worker execution separately
-	
+
 	repoRoot := setupTestRepoWithConfig(t)
 
 	// Create a test index with a tested task
@@ -305,10 +309,11 @@ func TestExecuteReviewStageHappyPath(t *testing.T) {
 
 	// Create mock auditor
 	auditor := &mockTransitionAuditor{}
+	caps := scheduler.RoleCapsFromConfig(cfg)
 
 	// Execute review stage - this will fail because we don't have proper worktrees set up,
 	// but we can verify that it processes the tested task
-	result, err := ExecuteReviewStage(repoRoot, &idx, cfg, auditor, nil, opts)
+	result, err := ExecuteReviewStage(repoRoot, &idx, cfg, caps, auditor, nil, opts)
 	if err != nil {
 		t.Fatalf("execute review stage: %v", err)
 	}
@@ -363,8 +368,9 @@ func TestExecuteReviewStageNoTestedTasks(t *testing.T) {
 	}
 
 	auditor := &mockTransitionAuditor{}
+	caps := scheduler.RoleCapsFromConfig(cfg)
 
-	result, err := ExecuteReviewStage(repoRoot, &idx, cfg, auditor, nil, opts)
+	result, err := ExecuteReviewStage(repoRoot, &idx, cfg, caps, auditor, nil, opts)
 	if err != nil {
 		t.Fatalf("execute review stage: %v", err)
 	}
@@ -533,14 +539,21 @@ func TestExecuteConflictResolutionStage_NoResolvedTasks(t *testing.T) {
 		},
 	}
 
-	cfg := config.Config{}
+	cfg := config.Config{
+		Concurrency: config.ConcurrencyConfig{
+			Global:      2,
+			DefaultRole: 2,
+			Roles:       map[string]int{"generalist": 2},
+		},
+	}
 	auditor := &mockTransitionAuditor{}
+	caps := scheduler.RoleCapsFromConfig(cfg)
 	opts := Options{
 		Stdout: &strings.Builder{},
 		Stderr: &strings.Builder{},
 	}
 
-	result, err := ExecuteConflictResolutionStage("/tmp", idx, cfg, auditor, nil, opts)
+	result, err := ExecuteConflictResolutionStage("/tmp", idx, cfg, caps, auditor, nil, opts)
 	if err != nil {
 		t.Fatalf("ExecuteConflictResolutionStage failed: %v", err)
 	}
@@ -559,18 +572,18 @@ func TestExecuteConflictResolutionStage_NoResolvedTasks(t *testing.T) {
 func TestExecuteConflictResolutionStage_WithConflictTasks(t *testing.T) {
 	// Create temporary directory for test
 	tempDir := t.TempDir()
-	
+
 	// Create task files
 	task1Path := filepath.Join(tempDir, "task-01.md")
 	task2Path := filepath.Join(tempDir, "task-02.md")
-	
+
 	if err := os.WriteFile(task1Path, []byte("# Task 1\nTest task content"), 0644); err != nil {
 		t.Fatalf("failed to create task file: %v", err)
 	}
 	if err := os.WriteFile(task2Path, []byte("# Task 2\nTest task content"), 0644); err != nil {
 		t.Fatalf("failed to create task file: %v", err)
 	}
-	
+
 	// Create role assignment prompt
 	promptDir := filepath.Join(tempDir, "_governator", "prompts")
 	if err := os.MkdirAll(promptDir, 0755); err != nil {
@@ -580,7 +593,7 @@ func TestExecuteConflictResolutionStage_WithConflictTasks(t *testing.T) {
 	if err := os.WriteFile(promptPath, []byte("# Role Assignment\nSelect appropriate role"), 0644); err != nil {
 		t.Fatalf("failed to create role assignment prompt: %v", err)
 	}
-	
+
 	// Create roles directory with a test role
 	rolesDir := filepath.Join(tempDir, "_governator", "roles")
 	if err := os.MkdirAll(rolesDir, 0755); err != nil {
@@ -595,27 +608,36 @@ func TestExecuteConflictResolutionStage_WithConflictTasks(t *testing.T) {
 	idx := &index.Index{
 		Tasks: []index.Task{
 			{
-				ID:    "task-01",
-				State: index.TaskStateConflict,
-				Role:  "generalist",
-				Title: "Test Task 1",
-				Path:  "task-01.md",
+				ID:       "task-01",
+				State:    index.TaskStateConflict,
+				Role:     "generalist",
+				Title:    "Test Task 1",
+				Path:     "task-01.md",
 				Attempts: index.AttemptCounters{Total: 1},
 			},
 			{
-				ID:    "task-02", 
-				State: index.TaskStateConflict,
-				Role:  "generalist",
-				Title: "Test Task 2",
-				Path:  "task-02.md",
+				ID:       "task-02",
+				State:    index.TaskStateConflict,
+				Role:     "generalist",
+				Title:    "Test Task 2",
+				Path:     "task-02.md",
 				Attempts: index.AttemptCounters{Total: 1},
 			},
 		},
 	}
 
-	cfg := config.Config{}
+	cfg := config.Config{
+		Concurrency: config.ConcurrencyConfig{
+			Global:      2,
+			DefaultRole: 2,
+			Roles: map[string]int{
+				"generalist": 2,
+			},
+		},
+	}
 	auditor := &mockTransitionAuditor{}
-	
+	caps := scheduler.RoleCapsFromConfig(cfg)
+
 	var stdout strings.Builder
 	var stderr strings.Builder
 	opts := Options{
@@ -625,7 +647,7 @@ func TestExecuteConflictResolutionStage_WithConflictTasks(t *testing.T) {
 
 	// This will fail because we don't have actual worktrees set up,
 	// but we can verify the function processes the conflict tasks
-	result, err := ExecuteConflictResolutionStage(tempDir, idx, cfg, auditor, nil, opts)
+	result, err := ExecuteConflictResolutionStage(tempDir, idx, cfg, caps, auditor, nil, opts)
 	if err != nil {
 		t.Fatalf("ExecuteConflictResolutionStage failed: %v", err)
 	}
@@ -655,7 +677,7 @@ func TestUpdateTaskStateFromConflictResolution_Success(t *testing.T) {
 	}
 
 	auditor := &mockTransitionAuditor{}
-	
+
 	// Test successful resolution (resolved -> done)
 	result := worker.IngestResult{
 		Success:  true,
@@ -676,7 +698,7 @@ func TestUpdateTaskStateFromConflictResolution_Success(t *testing.T) {
 	if len(auditor.transitions) != 1 {
 		t.Errorf("expected 1 audit transition, got %d", len(auditor.transitions))
 	}
-	
+
 	transition := auditor.transitions[0]
 	if transition.taskID != "task-01" {
 		t.Errorf("expected task ID task-01, got %s", transition.taskID)
@@ -702,7 +724,7 @@ func TestUpdateTaskStateFromConflictResolution_Failure(t *testing.T) {
 	}
 
 	auditor := &mockTransitionAuditor{}
-	
+
 	// Test failed resolution (resolved -> conflict, not blocked)
 	result := worker.IngestResult{
 		Success:     false,
@@ -724,7 +746,7 @@ func TestUpdateTaskStateFromConflictResolution_Failure(t *testing.T) {
 	if len(auditor.transitions) != 1 {
 		t.Errorf("expected 1 audit transition, got %d", len(auditor.transitions))
 	}
-	
+
 	transition := auditor.transitions[0]
 	if transition.from != string(index.TaskStateResolved) {
 		t.Errorf("expected from state %s, got %s", index.TaskStateResolved, transition.from)
@@ -753,7 +775,7 @@ func TestUpdateTaskStateFromConflictResolution_TaskNotFound(t *testing.T) {
 		t.Fatal("expected error for nonexistent task, got nil")
 	}
 
-	expectedError := "task nonexistent-task not found in index"
+	expectedError := "task \"nonexistent-task\": task \"nonexistent-task\" not found in index"
 	if err.Error() != expectedError {
 		t.Errorf("expected error %q, got %q", expectedError, err.Error())
 	}
@@ -765,7 +787,7 @@ func TestUpdateTaskStateFromConflictResolution_InvalidTransition(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "task-01",
-				State: index.TaskStateDone, // Invalid starting state for conflict resolution
+				State: index.TaskStateResolved, // Starting state where worked is invalid
 				Role:  "generalist",
 			},
 		},
@@ -774,7 +796,7 @@ func TestUpdateTaskStateFromConflictResolution_InvalidTransition(t *testing.T) {
 	auditor := &mockTransitionAuditor{}
 	result := worker.IngestResult{
 		Success:  true,
-		NewState: index.TaskStateDone,
+		NewState: index.TaskStateWorked,
 	}
 
 	err := UpdateTaskStateFromConflictResolution(idx, "task-01", result, auditor)
@@ -782,7 +804,7 @@ func TestUpdateTaskStateFromConflictResolution_InvalidTransition(t *testing.T) {
 		t.Fatal("expected error for invalid transition, got nil")
 	}
 
-	if !strings.Contains(err.Error(), "invalid state transition") {
+	if !strings.Contains(err.Error(), "invalid task state transition") {
 		t.Errorf("expected invalid state transition error, got: %v", err)
 	}
 }

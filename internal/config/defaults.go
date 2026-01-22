@@ -10,6 +10,7 @@ const (
 	defaultRetriesMaxAttempts     = 2
 	defaultAutoRerunEnabled       = false
 	defaultAutoRerunCooldown      = 60
+	defaultBranchBase             = "main"
 )
 
 var defaultWorkerCommand = []string{
@@ -53,6 +54,9 @@ func Defaults() Config {
 		AutoRerun: AutoRerunConfig{
 			Enabled:         defaultAutoRerunEnabled,
 			CooldownSeconds: defaultAutoRerunCooldown,
+		},
+		Branches: BranchConfig{
+			Base: defaultBranchBase,
 		},
 	}
 }
@@ -106,6 +110,12 @@ func ApplyDefaults(cfg Config, warn func(string)) Config {
 		cfg.AutoRerun.CooldownSeconds,
 		defaults.AutoRerun.CooldownSeconds,
 		"auto_rerun.cooldown_seconds",
+		warn,
+	)
+	cfg.Branches.Base = normalizeBranchBase(
+		cfg.Branches.Base,
+		defaults.Branches.Base,
+		"branches.base",
 		warn,
 	)
 	if cfg.Workers.Commands.Roles == nil {
@@ -185,6 +195,16 @@ func cloneStrings(values []string) []string {
 	clone := make([]string, len(values))
 	copy(clone, values)
 	return clone
+}
+
+// normalizeBranchBase ensures the configured base branch is non-empty.
+func normalizeBranchBase(value string, fallback string, key string, warn func(string)) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		emitWarning(warn, "invalid "+key+"; using default branch")
+		return fallback
+	}
+	return trimmed
 }
 
 // emitWarning forwards warnings to the provided sink.

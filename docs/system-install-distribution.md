@@ -5,7 +5,7 @@ Define how Governator v2 ships as a system-installed CLI on macOS and Ubuntu.
 
 ## Config Locations
 - User defaults live in `~/.config/governator/`.
-- Per-repo overrides live in `_governator/config/` within the repo.
+- Per-repo overrides live in `_governator/_durable_state/config/` (legacy `_governator/config/` is still supported for overrides).
 - The CLI does not write outside the repo except for user defaults.
 
 ## Platforms

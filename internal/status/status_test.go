@@ -50,9 +50,9 @@ func TestGetSummary(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create the expected directory structure
-	planDir := filepath.Join(tempDir, "_governator", "plan")
-	if err := os.MkdirAll(planDir, 0755); err != nil {
-		t.Fatalf("Failed to create plan dir: %v", err)
+	stateDir := filepath.Join(tempDir, "_governator")
+	if err := os.MkdirAll(stateDir, 0755); err != nil {
+		t.Fatalf("Failed to create state dir: %v", err)
 	}
 
 	// Create a test index with various task states
@@ -73,7 +73,7 @@ func TestGetSummary(t *testing.T) {
 	}
 
 	// Write the test index to disk
-	indexPath := filepath.Join(planDir, "task-index.json")
+	indexPath := filepath.Join(tempDir, "_governator", "task-index.json")
 	if err := index.Save(indexPath, testIndex); err != nil {
 		t.Fatalf("Failed to save test index: %v", err)
 	}
@@ -86,9 +86,9 @@ func TestGetSummary(t *testing.T) {
 
 	expected := Summary{
 		Total:   10,
-		Done:    2,  // T-001, T-002
-		Open:    6,  // T-003, T-004, T-005, T-007, T-008, T-010
-		Blocked: 2,  // T-006, T-009
+		Done:    2, // T-001, T-002
+		Open:    6, // T-003, T-004, T-005, T-007, T-008, T-010
+		Blocked: 2, // T-006, T-009
 	}
 
 	if summary != expected {
@@ -120,9 +120,9 @@ func TestGetSummaryEmptyIndex(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create the expected directory structure
-	planDir := filepath.Join(tempDir, "_governator", "plan")
-	if err := os.MkdirAll(planDir, 0755); err != nil {
-		t.Fatalf("Failed to create plan dir: %v", err)
+	stateDir := filepath.Join(tempDir, "_governator")
+	if err := os.MkdirAll(stateDir, 0755); err != nil {
+		t.Fatalf("Failed to create state dir: %v", err)
 	}
 
 	// Create an empty index
@@ -132,7 +132,7 @@ func TestGetSummaryEmptyIndex(t *testing.T) {
 	}
 
 	// Write the empty index to disk
-	indexPath := filepath.Join(planDir, "task-index.json")
+	indexPath := filepath.Join(tempDir, "_governator", "task-index.json")
 	if err := index.Save(indexPath, emptyIndex); err != nil {
 		t.Fatalf("Failed to save empty index: %v", err)
 	}

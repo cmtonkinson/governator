@@ -8,8 +8,6 @@ import (
 	"github.com/cmtonkinson/governator/internal/index"
 )
 
-const taskIndexFileName = "task-index.json"
-
 // Summary represents task counts by state.
 type Summary struct {
 	Total   int
@@ -26,8 +24,8 @@ func (s Summary) String() string {
 
 // GetSummary reads the task index and returns a summary of task states.
 func GetSummary(repoRoot string) (Summary, error) {
-	indexPath := filepath.Join(repoRoot, "_governator", "plan", taskIndexFileName)
-	
+	indexPath := filepath.Join(repoRoot, "_governator", "task-index.json")
+
 	idx, err := index.Load(indexPath)
 	if err != nil {
 		return Summary{}, fmt.Errorf("load task index: %w", err)

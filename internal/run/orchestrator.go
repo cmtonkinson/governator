@@ -14,7 +14,7 @@ import (
 	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/index"
 	"github.com/cmtonkinson/governator/internal/roles"
-	"github.com/cmtonkinson/governator/internal/state"
+	"github.com/cmtonkinson/governator/internal/scheduler"
 	"github.com/cmtonkinson/governator/internal/worker"
 	"github.com/cmtonkinson/governator/internal/worktree"
 )
@@ -51,6 +51,10 @@ func Run(repoRoot string, opts Options) (Result, error) {
 	if err != nil {
 		return Result{}, fmt.Errorf("load config: %w", err)
 	}
+
+	// Build role caps before executing stages
+	caps := scheduler.RoleCapsFromConfig(cfg)
+	baseBranch := baseBranchName(cfg)
 
 	// Load task index
 	indexPath := filepath.Join(repoRoot, indexFilePath)
@@ -124,31 +128,31 @@ func Run(repoRoot string, opts Options) (Result, error) {
 	}
 
 	// Execute test stage for worked tasks
-	testResult, err := ExecuteTestStage(repoRoot, &idx, cfg, auditor, auditor, opts)
+	testResult, err := ExecuteTestStage(repoRoot, &idx, cfg, caps, auditor, auditor, opts)
 	if err != nil {
 		return Result{}, fmt.Errorf("execute test stage: %w", err)
 	}
 
 	// Execute review stage for tested tasks
-	reviewResult, err := ExecuteReviewStage(repoRoot, &idx, cfg, auditor, auditor, opts)
+	reviewResult, err := ExecuteReviewStage(repoRoot, &idx, cfg, caps, auditor, auditor, opts)
 	if err != nil {
 		return Result{}, fmt.Errorf("execute review stage: %w", err)
 	}
 
 	// Execute conflict resolution stage for conflict tasks
-	conflictResult, err := ExecuteConflictResolutionStage(repoRoot, &idx, cfg, auditor, auditor, opts)
+	conflictResult, err := ExecuteConflictResolutionStage(repoRoot, &idx, cfg, caps, auditor, auditor, opts)
 	if err != nil {
 		return Result{}, fmt.Errorf("execute conflict resolution stage: %w", err)
 	}
 
 	// Execute merge stage for resolved tasks
-	mergeResult, err := ExecuteMergeStage(repoRoot, &idx, cfg, auditor, auditor, opts)
+	mergeResult, err := ExecuteMergeStage(repoRoot, &idx, cfg, caps, auditor, auditor, opts)
 	if err != nil {
 		return Result{}, fmt.Errorf("execute merge stage: %w", err)
 	}
 
 	// Ensure branches exist for open tasks
-	branchResult, err := EnsureBranchesForOpenTasks(repoRoot, &idx, auditor, opts)
+	branchResult, err := EnsureBranchesForOpenTasks(repoRoot, &idx, auditor, opts, baseBranch)
 	if err != nil {
 		return Result{}, fmt.Errorf("ensure branches for open tasks: %w", err)
 	}
@@ -220,18 +224,15 @@ type TestStageResult struct {
 }
 
 // ExecuteTestStage processes tasks in the worked state through the test stage.
-func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, transitionAuditor index.TransitionAuditor, workerAuditor *audit.Logger, opts Options) (TestStageResult, error) {
+func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps scheduler.RoleCaps, transitionAuditor index.TransitionAuditor, workerAuditor *audit.Logger, opts Options) (TestStageResult, error) {
 	result := TestStageResult{}
 
-	// Find tasks eligible for testing (in worked state)
-	var workedTasks []index.Task
-	for _, task := range idx.Tasks {
-		if task.State == index.TaskStateWorked {
-			workedTasks = append(workedTasks, task)
-		}
+	selectedTasks, err := selectTasksForStage(*idx, caps, index.TaskStateWorked)
+	if err != nil {
+		return result, fmt.Errorf("schedule test tasks: %w", err)
 	}
 
-	if len(workedTasks) == 0 {
+	if len(selectedTasks) == 0 {
 		return result, nil
 	}
 
@@ -242,7 +243,7 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, tran
 	}
 
 	// Process each worked task through test stage
-	for _, task := range workedTasks {
+	for _, task := range selectedTasks {
 		result.TasksProcessed++
 
 		// Get the worktree path for the task
@@ -343,40 +344,13 @@ func ExecuteTestAgent(repoRoot, worktreePath string, task index.Task, cfg config
 
 // UpdateTaskStateFromTestResult updates the task index based on test execution results.
 func UpdateTaskStateFromTestResult(idx *index.Index, taskID string, testResult worker.IngestResult, auditor index.TransitionAuditor) error {
-	// Find the task in the index
-	taskIndex := -1
-	for i, task := range idx.Tasks {
-		if task.ID == taskID {
-			taskIndex = i
-			break
-		}
-	}
-
-	if taskIndex == -1 {
-		return fmt.Errorf("task %s not found in index", taskID)
-	}
-
-	task := &idx.Tasks[taskIndex]
-	oldState := task.State
-
-	// Update task state based on test result
+	target := index.TaskStateBlocked
 	if testResult.Success {
-		task.State = testResult.NewState // Should be TaskStateTested
-	} else {
-		task.State = index.TaskStateBlocked
-		// Note: BlockReason is not persisted in the task index, only used for logging
+		target = testResult.NewState
 	}
-
-	// Validate the state transition
-	if err := state.ValidateTransition(oldState, task.State); err != nil {
-		return fmt.Errorf("invalid state transition for task %s: %w", taskID, err)
+	if err := applyTaskStateTransition(idx, taskID, target, auditor); err != nil {
+		return fmt.Errorf("task %q: %w", taskID, err)
 	}
-
-	// Log the state change to audit
-	if auditor != nil {
-		_ = auditor.LogTaskTransition(taskID, string(task.Role), string(oldState), string(task.State))
-	}
-
 	return nil
 }
 
@@ -388,18 +362,15 @@ type ReviewStageResult struct {
 }
 
 // ExecuteReviewStage processes tasks in the tested state through the review stage.
-func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, transitionAuditor index.TransitionAuditor, workerAuditor *audit.Logger, opts Options) (ReviewStageResult, error) {
+func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, caps scheduler.RoleCaps, transitionAuditor index.TransitionAuditor, workerAuditor *audit.Logger, opts Options) (ReviewStageResult, error) {
 	result := ReviewStageResult{}
 
-	// Find tasks eligible for review (in tested state)
-	var testedTasks []index.Task
-	for _, task := range idx.Tasks {
-		if task.State == index.TaskStateTested {
-			testedTasks = append(testedTasks, task)
-		}
+	selectedTasks, err := selectTasksForStage(*idx, caps, index.TaskStateTested)
+	if err != nil {
+		return result, fmt.Errorf("schedule review tasks: %w", err)
 	}
 
-	if len(testedTasks) == 0 {
+	if len(selectedTasks) == 0 {
 		return result, nil
 	}
 
@@ -410,7 +381,7 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, tr
 	}
 
 	// Process each tested task through review stage
-	for _, task := range testedTasks {
+	for _, task := range selectedTasks {
 		result.TasksProcessed++
 
 		// Get the worktree path for the task
@@ -457,7 +428,7 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, tr
 				RepoRoot:     repoRoot,
 				WorktreePath: worktreePath,
 				Task:         task,
-				MainBranch:   "main", // TODO: Make this configurable
+				MainBranch:   baseBranchName(cfg),
 				Auditor:      workerAuditor,
 			}
 
@@ -557,40 +528,13 @@ func ExecuteReviewAgent(repoRoot, worktreePath string, task index.Task, cfg conf
 
 // UpdateTaskStateFromReviewResult updates the task index based on review execution results.
 func UpdateTaskStateFromReviewResult(idx *index.Index, taskID string, reviewResult worker.IngestResult, auditor index.TransitionAuditor) error {
-	// Find the task in the index
-	taskIndex := -1
-	for i, task := range idx.Tasks {
-		if task.ID == taskID {
-			taskIndex = i
-			break
-		}
-	}
-
-	if taskIndex == -1 {
-		return fmt.Errorf("task %s not found in index", taskID)
-	}
-
-	task := &idx.Tasks[taskIndex]
-	oldState := task.State
-
-	// Update task state based on review result
+	target := index.TaskStateBlocked
 	if reviewResult.Success {
-		task.State = reviewResult.NewState // Can be TaskStateDone or TaskStateConflict based on merge flow
-	} else {
-		task.State = index.TaskStateBlocked
-		// Note: BlockReason is not persisted in the task index, only used for logging
+		target = reviewResult.NewState
 	}
-
-	// Validate the state transition
-	if err := state.ValidateTransition(oldState, task.State); err != nil {
-		return fmt.Errorf("invalid state transition for task %s: %w", taskID, err)
+	if err := applyTaskStateTransition(idx, taskID, target, auditor); err != nil {
+		return fmt.Errorf("task %q: %w", taskID, err)
 	}
-
-	// Log the state change to audit
-	if auditor != nil {
-		_ = auditor.LogTaskTransition(taskID, string(task.Role), string(oldState), string(task.State))
-	}
-
 	return nil
 }
 
@@ -602,18 +546,15 @@ type ConflictResolutionStageResult struct {
 }
 
 // ExecuteConflictResolutionStage processes tasks in the conflict state by dispatching conflict resolution agents.
-func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg config.Config, transitionAuditor index.TransitionAuditor, workerAuditor *audit.Logger, opts Options) (ConflictResolutionStageResult, error) {
+func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg config.Config, caps scheduler.RoleCaps, transitionAuditor index.TransitionAuditor, workerAuditor *audit.Logger, opts Options) (ConflictResolutionStageResult, error) {
 	result := ConflictResolutionStageResult{}
 
-	// Find tasks eligible for conflict resolution (in conflict state)
-	var conflictTasks []index.Task
-	for _, task := range idx.Tasks {
-		if task.State == index.TaskStateConflict {
-			conflictTasks = append(conflictTasks, task)
-		}
+	selectedTasks, err := selectTasksForStage(*idx, caps, index.TaskStateConflict)
+	if err != nil {
+		return result, fmt.Errorf("schedule conflict resolution tasks: %w", err)
 	}
 
-	if len(conflictTasks) == 0 {
+	if len(selectedTasks) == 0 {
 		return result, nil
 	}
 
@@ -624,7 +565,7 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 	}
 
 	// Process each conflict task through conflict resolution
-	for _, task := range conflictTasks {
+	for _, task := range selectedTasks {
 		result.TasksProcessed++
 
 		// Get the worktree path for the task
@@ -635,7 +576,7 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 		}
 
 		// Execute conflict resolution agent for the task
-		resolutionResult, roleResult, err := ExecuteConflictResolutionAgent(repoRoot, worktreePath, task, cfg, workerAuditor, opts)
+		resolutionResult, roleResult, err := ExecuteConflictResolutionAgent(repoRoot, worktreePath, task, cfg, *idx, workerAuditor, opts)
 		if err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to execute conflict resolution agent for task %s: %v\n", task.ID, err)
 			// Create a failed resolution result to update task state
@@ -677,9 +618,9 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 }
 
 // ExecuteConflictResolutionAgent runs the conflict resolution agent for a specific task.
-func ExecuteConflictResolutionAgent(repoRoot, worktreePath string, task index.Task, cfg config.Config, auditor *audit.Logger, opts Options) (worker.IngestResult, roles.RoleAssignmentResult, error) {
+func ExecuteConflictResolutionAgent(repoRoot, worktreePath string, task index.Task, cfg config.Config, idx index.Index, auditor *audit.Logger, opts Options) (worker.IngestResult, roles.RoleAssignmentResult, error) {
 	// Use role assignment to select appropriate role for conflict resolution
-	roleResult, err := SelectRoleForConflictResolution(repoRoot, task, cfg, opts)
+	roleResult, err := SelectRoleForConflictResolution(repoRoot, task, cfg, idx, auditor, opts)
 	if err != nil {
 		return worker.IngestResult{}, roleResult, fmt.Errorf("select role for conflict resolution: %w", err)
 	}
@@ -733,47 +674,18 @@ func ExecuteConflictResolutionAgent(repoRoot, worktreePath string, task index.Ta
 
 // UpdateTaskStateFromConflictResolution updates the task index based on conflict resolution results.
 func UpdateTaskStateFromConflictResolution(idx *index.Index, taskID string, resolutionResult worker.IngestResult, auditor index.TransitionAuditor) error {
-	// Find the task in the index
-	taskIndex := -1
-	for i, task := range idx.Tasks {
-		if task.ID == taskID {
-			taskIndex = i
-			break
-		}
-	}
-
-	if taskIndex == -1 {
-		return fmt.Errorf("task %s not found in index", taskID)
-	}
-
-	task := &idx.Tasks[taskIndex]
-	oldState := task.State
-
-	// Update task state based on resolution result
+	target := index.TaskStateConflict
 	if resolutionResult.Success {
-		task.State = resolutionResult.NewState // Should be TaskStateResolved
-	} else {
-		// For conflict resolution failures, we should transition back to conflict state
-		// since conflict can only go to resolved or blocked, but the test expects conflict
-		task.State = index.TaskStateConflict
-		// Note: BlockReason is not persisted in the task index, only used for logging
+		target = resolutionResult.NewState
 	}
-
-	// Validate the state transition
-	if err := state.ValidateTransition(oldState, task.State); err != nil {
-		return fmt.Errorf("invalid state transition for task %s: %w", taskID, err)
+	if err := applyTaskStateTransition(idx, taskID, target, auditor); err != nil {
+		return fmt.Errorf("task %q: %w", taskID, err)
 	}
-
-	// Log the state change to audit
-	if auditor != nil {
-		_ = auditor.LogTaskTransition(taskID, string(task.Role), string(oldState), string(task.State))
-	}
-
 	return nil
 }
 
 // SelectRoleForConflictResolution uses the role assignment LLM to select an appropriate role for conflict resolution.
-func SelectRoleForConflictResolution(repoRoot string, task index.Task, cfg config.Config, opts Options) (roles.RoleAssignmentResult, error) {
+func SelectRoleForConflictResolution(repoRoot string, task index.Task, cfg config.Config, idx index.Index, auditor *audit.Logger, opts Options) (roles.RoleAssignmentResult, error) {
 	// Load role assignment prompt
 	promptTemplate, err := roles.LoadRoleAssignmentPrompt(repoRoot)
 	if err != nil {
@@ -813,7 +725,7 @@ func SelectRoleForConflictResolution(repoRoot string, task index.Task, cfg confi
 			Global:      cfg.Concurrency.Global,
 			DefaultRole: cfg.Concurrency.DefaultRole,
 			Roles:       make(map[index.Role]int),
-			InFlight:    make(map[index.Role]int), // TODO: Calculate actual in-flight counts
+			InFlight:    buildRoleInFlightCounts(idx),
 		},
 	}
 
@@ -822,10 +734,13 @@ func SelectRoleForConflictResolution(repoRoot string, task index.Task, cfg confi
 		request.Caps.Roles[index.Role(role)] = cap
 	}
 
-	// Create LLM invoker (placeholder - would need actual implementation)
-	invoker := &mockLLMInvoker{fallbackRole: availableRoles[0]}
+	invoker, err := newWorkerCommandInvoker(cfg, repoRoot, func(msg string) {
+		fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
+	})
+	if err != nil {
+		return roles.RoleAssignmentResult{}, fmt.Errorf("create role assignment invoker: %w", err)
+	}
 
-	// Select role using LLM
 	result, err := roles.SelectRole(
 		context.Background(),
 		invoker,
@@ -834,24 +749,13 @@ func SelectRoleForConflictResolution(repoRoot string, task index.Task, cfg confi
 		func(msg string) {
 			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
 		},
-		nil, // TODO: Pass audit logger if needed
+		auditor,
 	)
 	if err != nil {
 		return roles.RoleAssignmentResult{}, fmt.Errorf("select role for conflict resolution: %w", err)
 	}
 
 	return result, nil
-}
-
-// mockLLMInvoker is a placeholder implementation for role selection
-type mockLLMInvoker struct {
-	fallbackRole index.Role
-}
-
-func (m *mockLLMInvoker) Invoke(ctx context.Context, prompt string) (string, error) {
-	// For now, return a simple JSON response with the fallback role
-	// In a real implementation, this would call an actual LLM
-	return fmt.Sprintf(`{"role": "%s", "rationale": "Selected for conflict resolution based on task requirements"}`, m.fallbackRole), nil
 }
 
 // resolveRoleForLogs selects the best role string for logging purposes.
@@ -865,6 +769,38 @@ func resolveRoleForLogs(primary index.Role, fallback index.Role) string {
 	return ""
 }
 
+func baseBranchName(cfg config.Config) string {
+	branch := strings.TrimSpace(cfg.Branches.Base)
+	if branch != "" {
+		return branch
+	}
+	return config.Defaults().Branches.Base
+}
+
+func buildRoleInFlightCounts(idx index.Index) map[index.Role]int {
+	counts := map[index.Role]int{}
+	for _, task := range idx.Tasks {
+		if !isRoleInFlight(task.State) {
+			continue
+		}
+		role := strings.TrimSpace(string(task.Role))
+		if role == "" {
+			continue
+		}
+		counts[task.Role]++
+	}
+	return counts
+}
+
+func isRoleInFlight(state index.TaskState) bool {
+	switch state {
+	case index.TaskStateWorked, index.TaskStateTested, index.TaskStateConflict, index.TaskStateResolved:
+		return true
+	default:
+		return false
+	}
+}
+
 // MergeStageResult captures the outcome of merge stage execution.
 type MergeStageResult struct {
 	TasksProcessed int
@@ -873,18 +809,15 @@ type MergeStageResult struct {
 }
 
 // ExecuteMergeStage processes tasks in the resolved state through the merge flow.
-func ExecuteMergeStage(repoRoot string, idx *index.Index, cfg config.Config, transitionAuditor index.TransitionAuditor, workerAuditor *audit.Logger, opts Options) (MergeStageResult, error) {
+func ExecuteMergeStage(repoRoot string, idx *index.Index, cfg config.Config, caps scheduler.RoleCaps, transitionAuditor index.TransitionAuditor, workerAuditor *audit.Logger, opts Options) (MergeStageResult, error) {
 	result := MergeStageResult{}
 
-	// Find tasks eligible for merge (in resolved state)
-	var resolvedTasks []index.Task
-	for _, task := range idx.Tasks {
-		if task.State == index.TaskStateResolved {
-			resolvedTasks = append(resolvedTasks, task)
-		}
+	selectedTasks, err := selectTasksForStage(*idx, caps, index.TaskStateResolved)
+	if err != nil {
+		return result, fmt.Errorf("schedule merge tasks: %w", err)
 	}
 
-	if len(resolvedTasks) == 0 {
+	if len(selectedTasks) == 0 {
 		return result, nil
 	}
 
@@ -895,7 +828,7 @@ func ExecuteMergeStage(repoRoot string, idx *index.Index, cfg config.Config, tra
 	}
 
 	// Process each resolved task through merge flow
-	for _, task := range resolvedTasks {
+	for _, task := range selectedTasks {
 		result.TasksProcessed++
 
 		// Get the worktree path for the task
@@ -912,7 +845,7 @@ func ExecuteMergeStage(repoRoot string, idx *index.Index, cfg config.Config, tra
 			RepoRoot:     repoRoot,
 			WorktreePath: worktreePath,
 			Task:         task,
-			MainBranch:   "main", // TODO: Make this configurable
+			MainBranch:   baseBranchName(cfg),
 			Auditor:      workerAuditor,
 		}
 
@@ -957,42 +890,72 @@ func ExecuteMergeStage(repoRoot string, idx *index.Index, cfg config.Config, tra
 	return result, nil
 }
 
-// UpdateTaskStateFromMerge updates the task index based on merge results.
-func UpdateTaskStateFromMerge(idx *index.Index, taskID string, mergeResult worker.IngestResult, auditor index.TransitionAuditor) error {
-	// Find the task in the index
-	taskIndex := -1
-	for i, task := range idx.Tasks {
-		if task.ID == taskID {
-			taskIndex = i
-			break
+func selectTasksForStage(idx index.Index, caps scheduler.RoleCaps, states ...index.TaskState) ([]index.Task, error) {
+	if len(states) == 0 {
+		return nil, nil
+	}
+	ordered, err := scheduler.OrderedEligibleTasks(idx, nil)
+	if err != nil {
+		return nil, err
+	}
+	stateSet := make(map[index.TaskState]struct{}, len(states))
+	for _, state := range states {
+		stateSet[state] = struct{}{}
+	}
+	filtered := make([]index.Task, 0, len(ordered))
+	for _, task := range ordered {
+		if _, ok := stateSet[task.State]; ok {
+			filtered = append(filtered, task)
 		}
 	}
-
-	if taskIndex == -1 {
-		return fmt.Errorf("task %s not found in index", taskID)
+	if len(filtered) == 0 {
+		return nil, nil
 	}
+	result := scheduler.RouteOrderedTasks(filtered, caps)
+	return result.Selected, nil
+}
 
-	task := &idx.Tasks[taskIndex]
-	oldState := task.State
+func applyTaskStateTransition(idx *index.Index, taskID string, target index.TaskState, auditor index.TransitionAuditor) error {
+	if idx == nil {
+		return fmt.Errorf("index is nil")
+	}
+	task, err := findIndexTask(idx, taskID)
+	if err != nil {
+		return err
+	}
+	if task.State == target {
+		return nil
+	}
+	if err := index.TransitionTaskStateWithAudit(idx, taskID, target, auditor); err != nil {
+		return err
+	}
+	return nil
+}
 
-	// Update task state based on merge result
+func findIndexTask(idx *index.Index, taskID string) (*index.Task, error) {
+	if idx == nil {
+		return nil, fmt.Errorf("index is nil")
+	}
+	if strings.TrimSpace(taskID) == "" {
+		return nil, fmt.Errorf("task id is required")
+	}
+	for i := range idx.Tasks {
+		if idx.Tasks[i].ID == taskID {
+			return &idx.Tasks[i], nil
+		}
+	}
+	return nil, fmt.Errorf("task %q not found in index", taskID)
+}
+
+// UpdateTaskStateFromMerge updates the task index based on merge results.
+func UpdateTaskStateFromMerge(idx *index.Index, taskID string, mergeResult worker.IngestResult, auditor index.TransitionAuditor) error {
+	target := index.TaskStateConflict
 	if mergeResult.Success {
-		task.State = mergeResult.NewState // Should be TaskStateDone
-	} else {
-		// For merge failures from resolved state, we should transition back to conflict state
-		task.State = index.TaskStateConflict
+		target = mergeResult.NewState
 	}
-
-	// Validate the state transition
-	if err := state.ValidateTransition(oldState, task.State); err != nil {
-		return fmt.Errorf("invalid state transition for task %s: %w", taskID, err)
+	if err := applyTaskStateTransition(idx, taskID, target, auditor); err != nil {
+		return fmt.Errorf("task %q: %w", taskID, err)
 	}
-
-	// Log the state change to audit
-	if auditor != nil {
-		_ = auditor.LogTaskTransition(taskID, string(task.Role), string(oldState), string(task.State))
-	}
-
 	return nil
 }
 
@@ -1003,7 +966,7 @@ type BranchStageResult struct {
 }
 
 // EnsureBranchesForOpenTasks creates branches for tasks in the open state.
-func EnsureBranchesForOpenTasks(repoRoot string, idx *index.Index, auditor *audit.Logger, opts Options) (BranchStageResult, error) {
+func EnsureBranchesForOpenTasks(repoRoot string, idx *index.Index, auditor *audit.Logger, opts Options, baseBranch string) (BranchStageResult, error) {
 	result := BranchStageResult{}
 
 	// Find tasks in open state
@@ -1016,6 +979,11 @@ func EnsureBranchesForOpenTasks(repoRoot string, idx *index.Index, auditor *audi
 
 	if len(openTasks) == 0 {
 		return result, nil
+	}
+
+	effectiveBranch := strings.TrimSpace(baseBranch)
+	if effectiveBranch == "" {
+		effectiveBranch = config.Defaults().Branches.Base
 	}
 
 	// Create branch lifecycle manager
@@ -1037,7 +1005,7 @@ func EnsureBranchesForOpenTasks(repoRoot string, idx *index.Index, auditor *audi
 		}
 
 		// Create branch for the task
-		if err := branchManager.CreateTaskBranch(task, "main"); err != nil {
+		if err := branchManager.CreateTaskBranch(task, effectiveBranch); err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to create branch for task %s: %v\n", task.ID, err)
 			continue
 		}

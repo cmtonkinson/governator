@@ -53,7 +53,8 @@ The authoritative task state is a centralized index file. It must:
 - Package manager installs (Homebrew, dpkg) are expected; binary updates are
   handled externally.
 - User defaults live under `~/.config/governator/` and are layered with
-  per-project overrides from `_governator/config/`.
+- per-project overrides from `_governator/_durable_state/config/` (legacy
+  `_governator/config/` directories are still honored).
 - Config precedence: user defaults -> project overrides -> CLI flags.
 - Repo-local state remains under `_governator/`; no writes outside the repo
   except user defaults in the config dir.

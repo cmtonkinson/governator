@@ -8,6 +8,7 @@ type Config struct {
 	Timeouts    TimeoutsConfig    `json:"timeouts"`
 	Retries     RetriesConfig     `json:"retries"`
 	AutoRerun   AutoRerunConfig   `json:"auto_rerun"`
+	Branches    BranchConfig      `json:"branches"`
 }
 
 // WorkersConfig captures worker execution settings.
@@ -42,4 +43,9 @@ type RetriesConfig struct {
 type AutoRerunConfig struct {
 	Enabled         bool `json:"enabled"`
 	CooldownSeconds int  `json:"cooldown_seconds"`
+}
+
+// BranchConfig describes how branches should be created for tasks.
+type BranchConfig struct {
+	Base string `json:"base"`
 }

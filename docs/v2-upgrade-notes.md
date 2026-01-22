@@ -57,7 +57,8 @@ Governator experience to the deterministic, file-backed v2 pipeline.
   continue, and election of eligible work obeys explicit dependencies, role
   caps, and overlap rules defined in `_governator/task-index.json`.
 - **Role-based config and guards** — `config.Config` layers user defaults,
-  repo overrides (`_governator/config/`), and CLI flags. Optional auto-rerun
+  repo overrides (`_governator/_durable_state/config/`, with `_governator/config/`
+  still supported for backwards compatibility), and CLI flags. Optional auto-rerun
   guards enforce cooldowns and locks before starting work, preventing overlapping
   runs.
 - **New status/metadata commands** — `governator status` provides a read-only

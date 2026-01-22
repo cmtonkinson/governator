@@ -9,13 +9,18 @@ import (
 )
 
 const (
-	repoConfigDir      = "_governator/config"
-	repoConfigFileName = "config.json"
+	repoDurableStateDir = "_governator/_durable_state"
+	repoConfigDir       = repoDurableStateDir + "/config"
+	repoLegacyConfigDir = "_governator/config"
+	repoConfigFileName  = "config.json"
 )
 
 // v2DirectoryStructure defines the complete directory layout for Governator v2
 var v2DirectoryStructure = []string{
-	"_governator/config",
+	repoDurableStateDir,
+	repoConfigDir,
+	repoDurableStateDir + "/migrations",
+	repoLegacyConfigDir,
 	"_governator/docs",
 	"_governator/docs/adr",
 	"_governator/plan",
@@ -31,6 +36,11 @@ var v2DirectoryStructure = []string{
 func InitRepoConfig(repoRoot string) error {
 	if repoRoot == "" {
 		return fmt.Errorf("repo root cannot be empty")
+	}
+
+	legacyDir := filepath.Join(repoRoot, repoLegacyConfigDir)
+	if err := os.MkdirAll(legacyDir, 0o755); err != nil {
+		return fmt.Errorf("create legacy config dir %s: %w", legacyDir, err)
 	}
 
 	configDir := filepath.Join(repoRoot, repoConfigDir)
@@ -87,6 +97,7 @@ func InitFullLayout(repoRoot string) error {
 	keepDirs := []string{
 		"_governator/docs/adr",
 		"_governator/_local_state/logs",
+		repoDurableStateDir + "/migrations",
 	}
 
 	for _, dir := range keepDirs {

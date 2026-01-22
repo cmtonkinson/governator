@@ -110,7 +110,7 @@ func TestLifecycleEndToEndHappyPath(t *testing.T) {
 		t.Fatalf("index contains %d tasks, want %d", len(idx.Tasks), lifecycleTaskCount)
 	}
 
-	if err := prepareWorkedTask(t, repoRoot, &idx, repo); err != nil {
+	if err := prepareWorkedTask(t, repoRoot, &idx, repo, config.Defaults().Branches.Base); err != nil {
 		t.Fatalf("prepare worked tasks: %v", err)
 	}
 	if err := index.Save(indexPath, idx); err != nil {
@@ -176,7 +176,7 @@ func TestLifecycleEndToEndTimeoutResume(t *testing.T) {
 		t.Fatalf("index contains %d tasks, want %d", len(idx.Tasks), lifecycleTaskCount)
 	}
 
-	if err := prepareWorkedTask(t, repoRoot, &idx, repo); err != nil {
+	if err := prepareWorkedTask(t, repoRoot, &idx, repo, config.Defaults().Branches.Base); err != nil {
 		t.Fatalf("prepare worked tasks: %v", err)
 	}
 	if err := index.Save(indexPath, idx); err != nil {

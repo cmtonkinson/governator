@@ -39,6 +39,9 @@ func TestDefaultsDocumentedValues(t *testing.T) {
 	if cfg.Workers.Commands.Roles == nil || len(cfg.Workers.Commands.Roles) != 0 {
 		t.Fatal("workers.commands.roles should default to empty map")
 	}
+	if cfg.Branches.Base != defaultBranchBase {
+		t.Fatalf("branches.base = %q, want %q", cfg.Branches.Base, defaultBranchBase)
+	}
 }
 
 // TestApplyDefaultsMissingConfig verifies defaults apply to an empty config.
@@ -84,6 +87,9 @@ func TestApplyDefaultsInvalidValues(t *testing.T) {
 		AutoRerun: AutoRerunConfig{
 			Enabled:         true,
 			CooldownSeconds: -5,
+		},
+		Branches: BranchConfig{
+			Base: "",
 		},
 	}
 
@@ -139,6 +145,9 @@ func TestApplyDefaultsInvalidValues(t *testing.T) {
 	if !warningsContain(warnings, "auto_rerun.cooldown_seconds") {
 		t.Fatal("expected warning for auto_rerun.cooldown_seconds")
 	}
+	if !warningsContain(warnings, "branches.base") {
+		t.Fatal("expected warning for branches.base")
+	}
 }
 
 // configsEqual compares configs by value without relying on reflect.DeepEqual.
@@ -149,6 +158,9 @@ func configsEqual(left Config, right Config) bool {
 		left.Retries.MaxAttempts != right.Retries.MaxAttempts ||
 		left.AutoRerun.Enabled != right.AutoRerun.Enabled ||
 		left.AutoRerun.CooldownSeconds != right.AutoRerun.CooldownSeconds {
+		return false
+	}
+	if left.Branches.Base != right.Branches.Base {
 		return false
 	}
 

@@ -109,7 +109,7 @@ func TestPipelineIntegrationHappyPath(t *testing.T) {
 		t.Fatalf("index contains %d tasks, want 1", len(idx.Tasks))
 	}
 
-	if err := prepareWorkedTask(t, repoRoot, &idx, repo); err != nil {
+	if err := prepareWorkedTask(t, repoRoot, &idx, repo, config.Defaults().Branches.Base); err != nil {
 		t.Fatalf("prepare worked task: %v", err)
 	}
 
@@ -264,16 +264,20 @@ func writePipelineConfig(t *testing.T, repoRoot string, workerCommand []string) 
 }
 
 // prepareWorkedTask transitions the planned task into a ready state for run execution.
-func prepareWorkedTask(t *testing.T, repoRoot string, idx *index.Index, repo *testrepos.TempRepo) error {
+func prepareWorkedTask(t *testing.T, repoRoot string, idx *index.Index, repo *testrepos.TempRepo, baseBranch string) error {
 	t.Helper()
 	opts := Options{Stdout: io.Discard, Stderr: io.Discard}
-	if _, err := EnsureBranchesForOpenTasks(repoRoot, idx, nil, opts); err != nil {
+	if _, err := EnsureBranchesForOpenTasks(repoRoot, idx, nil, opts, baseBranch); err != nil {
 		return fmt.Errorf("ensure branches: %w", err)
 	}
 	repo.RunGit(t, "checkout", "main")
 	manager, err := worktree.NewManager(repoRoot)
 	if err != nil {
 		return fmt.Errorf("worktree manager: %w", err)
+	}
+	effectiveBranch := strings.TrimSpace(baseBranch)
+	if effectiveBranch == "" {
+		effectiveBranch = config.Defaults().Branches.Base
 	}
 	for i := range idx.Tasks {
 		task := &idx.Tasks[i]
@@ -284,7 +288,7 @@ func prepareWorkedTask(t *testing.T, repoRoot string, idx *index.Index, repo *te
 			TaskID:     task.ID,
 			Attempt:    task.Attempts.Total,
 			Branch:     branchName,
-			BaseBranch: "main",
+			BaseBranch: effectiveBranch,
 		}
 		worktreeResult, err := manager.EnsureWorktree(spec)
 		if err != nil {

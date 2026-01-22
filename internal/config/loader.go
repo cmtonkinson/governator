@@ -9,12 +9,14 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const (
-	userConfigDirName  = ".config"
-	userConfigFileName = "config.json"
-	repoConfigDirName  = "_governator/config"
+	userConfigDirName       = ".config"
+	userConfigFileName      = "config.json"
+	repoConfigDirName       = "_governator/_durable_state/config"
+	repoLegacyConfigDirName = "_governator/config"
 )
 
 // Load resolves configuration from user defaults, repo overrides, and CLI overrides.
@@ -33,6 +35,12 @@ func Load(repoRoot string, cliOverrides map[string]any, warn func(string)) (Conf
 	if repoRoot != "" {
 		repoConfigPath := filepath.Join(repoRoot, repoConfigDirName, userConfigFileName)
 		merged, err = mergeConfigLayer(merged, repoConfigPath, "repo overrides")
+		if err != nil {
+			return Config{}, err
+		}
+
+		legacyConfigPath := filepath.Join(repoRoot, repoLegacyConfigDirName, userConfigFileName)
+		merged, err = mergeConfigLayer(merged, legacyConfigPath, "repo legacy overrides")
 		if err != nil {
 			return Config{}, err
 		}
@@ -161,6 +169,9 @@ func decodeConfig(raw map[string]any) Config {
 	cfg.AutoRerun.Enabled = parseBool(autoRerun["enabled"])
 	cfg.AutoRerun.CooldownSeconds = parseInt(autoRerun["cooldown_seconds"])
 
+	branches := toConfigMap(raw["branches"])
+	cfg.Branches.Base = parseString(branches["base"])
+
 	return cfg
 }
 
@@ -282,4 +293,13 @@ func parseBool(value any) bool {
 		return false
 	}
 	return typed
+}
+
+// parseString returns trimmed string values from config maps.
+func parseString(value any) string {
+	typed, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(typed)
 }

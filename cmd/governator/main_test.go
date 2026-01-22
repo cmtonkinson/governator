@@ -24,16 +24,16 @@ func TestCLICommands(t *testing.T) {
 		expectedError  string
 	}{
 		{
-			name:           "no arguments shows usage",
-			args:           []string{},
-			expectedExit:   2,
-			expectedError:  "usage: governator <init|plan|run|status|version>",
+			name:          "no arguments shows usage",
+			args:          []string{},
+			expectedExit:  2,
+			expectedError: "usage: governator <init|plan|run|status|version>",
 		},
 		{
-			name:           "unknown command shows usage",
-			args:           []string{"unknown"},
-			expectedExit:   2,
-			expectedError:  "usage: governator <init|plan|run|status|version>",
+			name:          "unknown command shows usage",
+			args:          []string{"unknown"},
+			expectedExit:  2,
+			expectedError: "usage: governator <init|plan|run|status|version>",
 		},
 		{
 			name:           "version command",
@@ -47,7 +47,7 @@ func TestCLICommands(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cmd := exec.Command(binaryPath, tt.args...)
 			output, err := cmd.CombinedOutput()
-			
+
 			// Check exit code
 			var exitCode int
 			if err != nil {
@@ -57,18 +57,18 @@ func TestCLICommands(t *testing.T) {
 					t.Fatalf("Unexpected error type: %v", err)
 				}
 			}
-			
+
 			if exitCode != tt.expectedExit {
 				t.Errorf("Expected exit code %d, got %d", tt.expectedExit, exitCode)
 			}
-			
+
 			outputStr := strings.TrimSpace(string(output))
-			
+
 			// Check expected output
 			if tt.expectedOutput != "" && !strings.Contains(outputStr, tt.expectedOutput) {
 				t.Errorf("Expected output to contain %q, got %q", tt.expectedOutput, outputStr)
 			}
-			
+
 			// Check expected error
 			if tt.expectedError != "" && !strings.Contains(outputStr, tt.expectedError) {
 				t.Errorf("Expected error to contain %q, got %q", tt.expectedError, outputStr)
@@ -123,7 +123,7 @@ func TestInitCommand(t *testing.T) {
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatalf("Failed to change to temp dir: %v", err)
 	}
-	
+
 	// Initialize git repo
 	gitCmd := exec.Command("git", "init")
 	if err := gitCmd.Run(); err != nil {
@@ -133,18 +133,21 @@ func TestInitCommand(t *testing.T) {
 	// Run init command
 	cmd = exec.Command(binaryPath, "init")
 	output, err := cmd.CombinedOutput()
-	
+
 	if err != nil {
 		t.Fatalf("Init command failed: %v, output: %s", err, output)
 	}
-	
+
 	outputStr := strings.TrimSpace(string(output))
 	if outputStr != "init ok" {
 		t.Errorf("Expected 'init ok', got %q", outputStr)
 	}
-	
+
 	// Check that directories were created
 	expectedDirs := []string{
+		"_governator/_durable_state",
+		"_governator/_durable_state/config",
+		"_governator/_durable_state/migrations",
 		"_governator/config",
 		"_governator/docs",
 		"_governator/docs/adr",
@@ -155,15 +158,15 @@ func TestInitCommand(t *testing.T) {
 		"_governator/_local_state",
 		"_governator/_local_state/logs",
 	}
-	
+
 	for _, dir := range expectedDirs {
 		if _, err := os.Stat(dir); os.IsNotExist(err) {
 			t.Errorf("Expected directory %s was not created", dir)
 		}
 	}
-	
+
 	// Check that config file was created
-	configPath := filepath.Join("_governator", "config", "config.json")
+	configPath := filepath.Join("_governator", "_durable_state", "config", "config.json")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Error("Expected config.json was not created")
 	}
@@ -195,7 +198,7 @@ func TestStatusCommand(t *testing.T) {
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatalf("Failed to change to temp dir: %v", err)
 	}
-	
+
 	// Initialize git repo
 	gitCmd := exec.Command("git", "init")
 	if err := gitCmd.Run(); err != nil {
@@ -205,7 +208,7 @@ func TestStatusCommand(t *testing.T) {
 	t.Run("status without index fails", func(t *testing.T) {
 		cmd := exec.Command(binaryPath, "status")
 		output, err := cmd.CombinedOutput()
-		
+
 		var exitCode int
 		if err != nil {
 			if exitError, ok := err.(*exec.ExitError); ok {
@@ -214,11 +217,11 @@ func TestStatusCommand(t *testing.T) {
 				t.Fatalf("Unexpected error type: %v", err)
 			}
 		}
-		
+
 		if exitCode != 1 {
 			t.Errorf("Expected exit code 1, got %d", exitCode)
 		}
-		
+
 		outputStr := strings.TrimSpace(string(output))
 		if !strings.Contains(outputStr, "load task index") {
 			t.Errorf("Expected error about loading task index, got %q", outputStr)
@@ -233,13 +236,13 @@ func TestStatusCommand(t *testing.T) {
 
 	t.Run("status with empty index", func(t *testing.T) {
 		// Create an empty task index
-		planDir := filepath.Join(tempDir, "_governator", "plan")
-		if err := os.MkdirAll(planDir, 0755); err != nil {
-			t.Fatalf("Failed to create plan dir: %v", err)
+		stateDir := filepath.Join(tempDir, "_governator")
+		if err := os.MkdirAll(stateDir, 0755); err != nil {
+			t.Fatalf("Failed to create state dir: %v", err)
 		}
 
 		// Write empty index file
-		indexPath := filepath.Join(planDir, "task-index.json")
+		indexPath := filepath.Join(stateDir, "task-index.json")
 		emptyIndex := `{"schema_version":1,"tasks":[]}`
 		if err := os.WriteFile(indexPath, []byte(emptyIndex), 0644); err != nil {
 			t.Fatalf("Failed to write empty index: %v", err)
@@ -247,11 +250,11 @@ func TestStatusCommand(t *testing.T) {
 
 		cmd := exec.Command(binaryPath, "status")
 		output, err := cmd.CombinedOutput()
-		
+
 		if err != nil {
 			t.Fatalf("Status command failed: %v, output: %s", err, output)
 		}
-		
+
 		outputStr := strings.TrimSpace(string(output))
 		expected := "tasks total=0 done=0 open=0 blocked=0"
 		if outputStr != expected {
@@ -261,7 +264,7 @@ func TestStatusCommand(t *testing.T) {
 
 	t.Run("status with populated index", func(t *testing.T) {
 		// Create a populated task index
-		indexPath := filepath.Join(tempDir, "_governator", "plan", "task-index.json")
+		indexPath := filepath.Join(tempDir, "_governator", "task-index.json")
 		populatedIndex := `{
 			"schema_version": 1,
 			"tasks": [
@@ -280,11 +283,11 @@ func TestStatusCommand(t *testing.T) {
 
 		cmd := exec.Command(binaryPath, "status")
 		output, err := cmd.CombinedOutput()
-		
+
 		if err != nil {
 			t.Fatalf("Status command failed: %v, output: %s", err, output)
 		}
-		
+
 		outputStr := strings.TrimSpace(string(output))
 		expected := "tasks total=7 done=2 open=3 blocked=2"
 		if outputStr != expected {

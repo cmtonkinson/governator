@@ -2,7 +2,7 @@
 package run
 
 import (
-	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/index"
+	"github.com/cmtonkinson/governator/internal/scheduler"
 	"github.com/cmtonkinson/governator/internal/worker"
 )
 
@@ -69,7 +70,7 @@ func TestExecuteConflictResolutionAgent_Success(t *testing.T) {
 
 	// This will fail at the worker execution stage since we don't have a real worker setup,
 	// but we can verify the role selection and staging works
-	_, _, err := ExecuteConflictResolutionAgent(tempDir, tempDir, task, cfg, nil, opts)
+	_, _, err := ExecuteConflictResolutionAgent(tempDir, tempDir, task, cfg, index.Index{Tasks: []index.Task{task}}, nil, opts)
 
 	// We expect this to fail at the worker execution stage, which is fine for this test
 	if err == nil {
@@ -133,6 +134,10 @@ func TestSelectRoleForConflictResolution_Success(t *testing.T) {
 		},
 	}
 
+	cfg.Workers.Commands.Default = helperRoleAssignmentCommand()
+	t.Setenv("GO_ROLE_ASSIGNMENT_HELPER", "1")
+	t.Setenv("GO_ROLE_ASSIGNMENT_MODE", "valid")
+
 	var stdout strings.Builder
 	var stderr strings.Builder
 	opts := Options{
@@ -140,7 +145,7 @@ func TestSelectRoleForConflictResolution_Success(t *testing.T) {
 		Stderr: &stderr,
 	}
 
-	result, err := SelectRoleForConflictResolution(tempDir, task, cfg, opts)
+	result, err := SelectRoleForConflictResolution(tempDir, task, cfg, index.Index{Tasks: []index.Task{task}}, nil, opts)
 	if err != nil {
 		t.Fatalf("SelectRoleForConflictResolution failed: %v", err)
 	}
@@ -161,6 +166,68 @@ func TestSelectRoleForConflictResolution_Success(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("selected role %s is not in available roles %v", result.Role, validRoles)
+	}
+}
+
+func TestSelectRoleForConflictResolution_LLMFallback(t *testing.T) {
+	tempDir := t.TempDir()
+
+	taskPath := filepath.Join(tempDir, "task-01.md")
+	if err := os.WriteFile(taskPath, []byte("# Task 1\nTest task content"), 0644); err != nil {
+		t.Fatalf("failed to create task file: %v", err)
+	}
+
+	promptDir := filepath.Join(tempDir, "_governator", "prompts")
+	if err := os.MkdirAll(promptDir, 0755); err != nil {
+		t.Fatalf("failed to create prompt dir: %v", err)
+	}
+	promptPath := filepath.Join(promptDir, "role-assignment.md")
+	if err := os.WriteFile(promptPath, []byte("# Role Assignment\nSelect appropriate role"), 0644); err != nil {
+		t.Fatalf("failed to create role assignment prompt: %v", err)
+	}
+
+	rolesDir := filepath.Join(tempDir, "_governator", "roles")
+	if err := os.MkdirAll(rolesDir, 0755); err != nil {
+		t.Fatalf("failed to create roles dir: %v", err)
+	}
+	rolePath := filepath.Join(rolesDir, "generalist.md")
+	if err := os.WriteFile(rolePath, []byte("# Generalist Role\nGeneral purpose role"), 0644); err != nil {
+		t.Fatalf("failed to create role file: %v", err)
+	}
+
+	task := index.Task{
+		ID:   "task-01",
+		Path: "task-01.md",
+	}
+
+	cfg := config.Config{
+		Concurrency: config.ConcurrencyConfig{
+			Global:      1,
+			DefaultRole: 1,
+		},
+	}
+	cfg.Workers.Commands.Default = helperRoleAssignmentCommand()
+
+	var stdout strings.Builder
+	var stderr strings.Builder
+	opts := Options{
+		Stdout: &stdout,
+		Stderr: &stderr,
+	}
+
+	t.Setenv("GO_ROLE_ASSIGNMENT_HELPER", "1")
+	t.Setenv("GO_ROLE_ASSIGNMENT_MODE", "invalid")
+
+	result, err := SelectRoleForConflictResolution(tempDir, task, cfg, index.Index{}, nil, opts)
+	if err != nil {
+		t.Fatalf("SelectRoleForConflictResolution failed: %v", err)
+	}
+
+	if !result.Fallback {
+		t.Fatalf("expected fallback result, got %v", result)
+	}
+	if result.Role != "generalist" {
+		t.Fatalf("fallback role = %q, want %q", result.Role, "generalist")
 	}
 }
 
@@ -221,7 +288,7 @@ func TestSelectRoleForConflictResolution_ValidationErrors(t *testing.T) {
 				Stderr: &stderr,
 			}
 
-			_, err := SelectRoleForConflictResolution(tempDir, task, cfg, opts)
+			_, err := SelectRoleForConflictResolution(tempDir, task, cfg, index.Index{}, nil, opts)
 			if err == nil {
 				t.Fatal("expected error, got nil")
 			}
@@ -229,23 +296,6 @@ func TestSelectRoleForConflictResolution_ValidationErrors(t *testing.T) {
 				t.Errorf("expected error containing %q, got %q", tt.expectError, err.Error())
 			}
 		})
-	}
-}
-
-func TestMockLLMInvoker_Invoke(t *testing.T) {
-	invoker := &mockLLMInvoker{fallbackRole: "generalist"}
-
-	response, err := invoker.Invoke(context.Background(), "test prompt")
-	if err != nil {
-		t.Fatalf("Invoke failed: %v", err)
-	}
-
-	// Verify response contains expected JSON structure
-	if !strings.Contains(response, `"role": "generalist"`) {
-		t.Errorf("expected response to contain role generalist, got: %s", response)
-	}
-	if !strings.Contains(response, `"rationale"`) {
-		t.Errorf("expected response to contain rationale field, got: %s", response)
 	}
 }
 
@@ -265,6 +315,7 @@ func TestExecuteMergeStage_Success(t *testing.T) {
 
 	cfg := config.Config{}
 	auditor := &mockTransitionAuditor{}
+	caps := scheduler.RoleCapsFromConfig(cfg)
 
 	var stdout strings.Builder
 	var stderr strings.Builder
@@ -275,7 +326,7 @@ func TestExecuteMergeStage_Success(t *testing.T) {
 
 	// This will fail because we don't have actual worktrees set up,
 	// but we can verify the function processes the resolved tasks
-	result, err := ExecuteMergeStage("/tmp", idx, cfg, auditor, nil, opts)
+	result, err := ExecuteMergeStage("/tmp", idx, cfg, caps, auditor, nil, opts)
 	if err != nil {
 		t.Fatalf("ExecuteMergeStage failed: %v", err)
 	}
@@ -379,4 +430,25 @@ func TestUpdateTaskStateFromMerge_Failure(t *testing.T) {
 	if transition.to != string(index.TaskStateConflict) {
 		t.Errorf("expected to state %s, got %s", index.TaskStateConflict, transition.to)
 	}
+}
+
+func helperRoleAssignmentCommand() []string {
+	return []string{os.Args[0], "-test.run=TestRoleAssignmentHelper", "--", "{task_path}"}
+}
+
+func TestRoleAssignmentHelper(t *testing.T) {
+	if os.Getenv("GO_ROLE_ASSIGNMENT_HELPER") != "1" {
+		return
+	}
+	mode := os.Getenv("GO_ROLE_ASSIGNMENT_MODE")
+	if mode == "invalid" {
+		fmt.Println("not json")
+		os.Exit(0)
+	}
+	role := os.Getenv("GO_ROLE_ASSIGNMENT_ROLE")
+	if role == "" {
+		role = "architect"
+	}
+	fmt.Printf(`{"role":"%s","rationale":"helper picked %s"}`+"\n", role, role)
+	os.Exit(0)
 }
