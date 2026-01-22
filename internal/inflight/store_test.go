@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // TestStoreAddAndLoadRoundTrip ensures in-flight entries persist correctly.
@@ -106,5 +107,41 @@ func TestStoreSaveCreatesDirectory(t *testing.T) {
 	path := filepath.Join(root, localStateDirName, inFlightFileName)
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("expected in-flight file to exist: %v", err)
+	}
+}
+
+// TestStoreAddWithStartPersistsTimestamp ensures AddWithStart stores started_at metadata.
+func TestStoreAddWithStartPersistsTimestamp(t *testing.T) {
+	store := newTempStore(t)
+	startedAt := time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC)
+
+	if err := store.Save(Set{}); err != nil {
+		t.Fatalf("save empty: %v", err)
+	}
+
+	loaded, err := store.Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if err := loaded.AddWithStart("task-a", startedAt); err != nil {
+		t.Fatalf("add with start: %v", err)
+	}
+	if err := store.Save(loaded); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	reloaded, err := store.Load()
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if !reloaded.Contains("task-a") {
+		t.Fatalf("expected task-a in set")
+	}
+	got, ok := reloaded.StartedAt("task-a")
+	if !ok {
+		t.Fatalf("expected started_at to be present")
+	}
+	if !got.Equal(startedAt) {
+		t.Fatalf("started_at = %s, want %s", got.Format(time.RFC3339), startedAt.Format(time.RFC3339))
 	}
 }

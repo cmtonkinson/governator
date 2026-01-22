@@ -10,6 +10,7 @@ import (
 
 	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/index"
+	"github.com/cmtonkinson/governator/internal/inflight"
 	"github.com/cmtonkinson/governator/internal/scheduler"
 	"github.com/cmtonkinson/governator/internal/worker"
 )
@@ -62,20 +63,19 @@ func TestExecuteTestStageHappyPath(t *testing.T) {
 
 	// Execute test stage - this will fail because we don't have proper worktrees set up,
 	// but we can verify that it processes the worked task
-	result, err := ExecuteTestStage(repoRoot, &idx, cfg, caps, auditor, nil, opts)
+	inFlight := inflight.Set{}
+	result, err := ExecuteTestStage(repoRoot, &idx, cfg, caps, inFlight, nil, auditor, nil, opts)
 	if err != nil {
 		t.Fatalf("execute test stage: %v", err)
 	}
 
-	// Verify that the worked task was processed (even if it failed)
-	if result.TasksProcessed != 1 {
-		t.Fatalf("tasks processed = %d, want 1", result.TasksProcessed)
-	}
-
-	// The task should be blocked because the worker execution will fail
+	// The task should be sent back to open because the worker execution will fail
 	// This is expected in this test setup
 	if result.TasksBlocked != 1 {
 		t.Fatalf("tasks blocked = %d, want 1", result.TasksBlocked)
+	}
+	if result.TasksDispatched != 0 {
+		t.Fatalf("tasks dispatched = %d, want 0", result.TasksDispatched)
 	}
 
 	// Verify task state was updated to blocked
@@ -119,20 +119,20 @@ func TestExecuteTestStageNoWorkedTasks(t *testing.T) {
 	auditor := &mockTransitionAuditor{}
 	caps := scheduler.RoleCapsFromConfig(cfg)
 
-	result, err := ExecuteTestStage(repoRoot, &idx, cfg, caps, auditor, nil, opts)
+	inFlight := inflight.Set{}
+	result, err := ExecuteTestStage(repoRoot, &idx, cfg, caps, inFlight, nil, auditor, nil, opts)
 	if err != nil {
 		t.Fatalf("execute test stage: %v", err)
 	}
 
-	// Verify no tasks were processed
-	if result.TasksProcessed != 0 {
-		t.Fatalf("tasks processed = %d, want 0", result.TasksProcessed)
-	}
 	if result.TasksTested != 0 {
 		t.Fatalf("tasks tested = %d, want 0", result.TasksTested)
 	}
 	if result.TasksBlocked != 0 {
 		t.Fatalf("tasks blocked = %d, want 0", result.TasksBlocked)
+	}
+	if result.TasksDispatched != 0 {
+		t.Fatalf("tasks dispatched = %d, want 0", result.TasksDispatched)
 	}
 }
 
@@ -313,14 +313,10 @@ func TestExecuteReviewStageHappyPath(t *testing.T) {
 
 	// Execute review stage - this will fail because we don't have proper worktrees set up,
 	// but we can verify that it processes the tested task
-	result, err := ExecuteReviewStage(repoRoot, &idx, cfg, caps, auditor, nil, opts)
+	inFlight := inflight.Set{}
+	result, err := ExecuteReviewStage(repoRoot, &idx, cfg, caps, inFlight, nil, auditor, nil, opts)
 	if err != nil {
 		t.Fatalf("execute review stage: %v", err)
-	}
-
-	// Verify that the tested task was processed (even if it failed)
-	if result.TasksProcessed != 1 {
-		t.Fatalf("tasks processed = %d, want 1", result.TasksProcessed)
 	}
 
 	// The task should be blocked because the worker execution will fail
@@ -328,10 +324,13 @@ func TestExecuteReviewStageHappyPath(t *testing.T) {
 	if result.TasksBlocked != 1 {
 		t.Fatalf("tasks blocked = %d, want 1", result.TasksBlocked)
 	}
+	if result.TasksDispatched != 0 {
+		t.Fatalf("tasks dispatched = %d, want 0", result.TasksDispatched)
+	}
 
-	// Verify task state was updated to blocked
-	if idx.Tasks[0].State != index.TaskStateBlocked {
-		t.Fatalf("task state = %q, want %q", idx.Tasks[0].State, index.TaskStateBlocked)
+	// Verify task state was updated back to open
+	if idx.Tasks[0].State != index.TaskStateOpen {
+		t.Fatalf("task state = %q, want %q", idx.Tasks[0].State, index.TaskStateOpen)
 	}
 }
 
@@ -370,20 +369,21 @@ func TestExecuteReviewStageNoTestedTasks(t *testing.T) {
 	auditor := &mockTransitionAuditor{}
 	caps := scheduler.RoleCapsFromConfig(cfg)
 
-	result, err := ExecuteReviewStage(repoRoot, &idx, cfg, caps, auditor, nil, opts)
+	inFlight := inflight.Set{}
+	result, err := ExecuteReviewStage(repoRoot, &idx, cfg, caps, inFlight, nil, auditor, nil, opts)
 	if err != nil {
 		t.Fatalf("execute review stage: %v", err)
 	}
 
 	// Verify no tasks were processed
-	if result.TasksProcessed != 0 {
-		t.Fatalf("tasks processed = %d, want 0", result.TasksProcessed)
-	}
 	if result.TasksReviewed != 0 {
 		t.Fatalf("tasks reviewed = %d, want 0", result.TasksReviewed)
 	}
 	if result.TasksBlocked != 0 {
 		t.Fatalf("tasks blocked = %d, want 0", result.TasksBlocked)
+	}
+	if result.TasksDispatched != 0 {
+		t.Fatalf("tasks dispatched = %d, want 0", result.TasksDispatched)
 	}
 }
 
@@ -482,7 +482,7 @@ func TestUpdateTaskStateFromReviewResult(t *testing.T) {
 	}
 }
 
-// TestUpdateTaskStateFromReviewResultFailure ensures failed review results block tasks.
+// TestUpdateTaskStateFromReviewResultFailure ensures failed review results return tasks to open.
 func TestUpdateTaskStateFromReviewResultFailure(t *testing.T) {
 	t.Parallel()
 
@@ -511,9 +511,9 @@ func TestUpdateTaskStateFromReviewResultFailure(t *testing.T) {
 		t.Fatalf("update task state from review result: %v", err)
 	}
 
-	// Verify task state was updated to blocked
-	if idx.Tasks[0].State != index.TaskStateBlocked {
-		t.Fatalf("task state = %q, want %q", idx.Tasks[0].State, index.TaskStateBlocked)
+	// Verify task state was updated to open
+	if idx.Tasks[0].State != index.TaskStateOpen {
+		t.Fatalf("task state = %q, want %q", idx.Tasks[0].State, index.TaskStateOpen)
 	}
 
 	// Verify audit log was called
@@ -524,8 +524,8 @@ func TestUpdateTaskStateFromReviewResultFailure(t *testing.T) {
 	if transition.from != string(index.TaskStateTested) {
 		t.Fatalf("transition from = %q, want %q", transition.from, index.TaskStateTested)
 	}
-	if transition.to != string(index.TaskStateBlocked) {
-		t.Fatalf("transition to = %q, want %q", transition.to, index.TaskStateBlocked)
+	if transition.to != string(index.TaskStateOpen) {
+		t.Fatalf("transition to = %q, want %q", transition.to, index.TaskStateOpen)
 	}
 }
 func TestExecuteConflictResolutionStage_NoResolvedTasks(t *testing.T) {
@@ -553,13 +553,14 @@ func TestExecuteConflictResolutionStage_NoResolvedTasks(t *testing.T) {
 		Stderr: &strings.Builder{},
 	}
 
-	result, err := ExecuteConflictResolutionStage("/tmp", idx, cfg, caps, auditor, nil, opts)
+	inFlight := inflight.Set{}
+	result, err := ExecuteConflictResolutionStage("/tmp", idx, cfg, caps, inFlight, nil, auditor, nil, opts)
 	if err != nil {
 		t.Fatalf("ExecuteConflictResolutionStage failed: %v", err)
 	}
 
-	if result.TasksProcessed != 0 {
-		t.Errorf("expected 0 tasks processed, got %d", result.TasksProcessed)
+	if result.TasksDispatched != 0 {
+		t.Errorf("expected 0 tasks dispatched, got %d", result.TasksDispatched)
 	}
 	if result.TasksResolved != 0 {
 		t.Errorf("expected 0 tasks resolved, got %d", result.TasksResolved)
@@ -647,14 +648,15 @@ func TestExecuteConflictResolutionStage_WithConflictTasks(t *testing.T) {
 
 	// This will fail because we don't have actual worktrees set up,
 	// but we can verify the function processes the conflict tasks
-	result, err := ExecuteConflictResolutionStage(tempDir, idx, cfg, caps, auditor, nil, opts)
+	inFlight := inflight.Set{}
+	result, err := ExecuteConflictResolutionStage(tempDir, idx, cfg, caps, inFlight, nil, auditor, nil, opts)
 	if err != nil {
 		t.Fatalf("ExecuteConflictResolutionStage failed: %v", err)
 	}
 
-	// Should have processed 2 conflict tasks
-	if result.TasksProcessed != 2 {
-		t.Errorf("expected 2 tasks processed, got %d", result.TasksProcessed)
+	// Should have attempted to process 2 conflict tasks (blocked due to missing worktrees)
+	if result.TasksBlocked != 2 {
+		t.Errorf("expected 2 tasks blocked, got %d", result.TasksBlocked)
 	}
 
 	// Check that some output was written to stderr (warnings about worktree failures)
@@ -670,7 +672,7 @@ func TestUpdateTaskStateFromConflictResolution_Success(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "task-01",
-				State: index.TaskStateResolved,
+				State: index.TaskStateConflict,
 				Role:  "generalist",
 			},
 		},
@@ -678,10 +680,10 @@ func TestUpdateTaskStateFromConflictResolution_Success(t *testing.T) {
 
 	auditor := &mockTransitionAuditor{}
 
-	// Test successful resolution (resolved -> done)
+	// Test successful resolution (conflict -> resolved)
 	result := worker.IngestResult{
 		Success:  true,
-		NewState: index.TaskStateDone,
+		NewState: index.TaskStateResolved,
 	}
 
 	err := UpdateTaskStateFromConflictResolution(idx, "task-01", result, auditor)
@@ -690,8 +692,8 @@ func TestUpdateTaskStateFromConflictResolution_Success(t *testing.T) {
 	}
 
 	// Verify task state was updated
-	if idx.Tasks[0].State != index.TaskStateDone {
-		t.Errorf("expected task state %s, got %s", index.TaskStateDone, idx.Tasks[0].State)
+	if idx.Tasks[0].State != index.TaskStateResolved {
+		t.Errorf("expected task state %s, got %s", index.TaskStateResolved, idx.Tasks[0].State)
 	}
 
 	// Verify audit log was called
@@ -703,11 +705,11 @@ func TestUpdateTaskStateFromConflictResolution_Success(t *testing.T) {
 	if transition.taskID != "task-01" {
 		t.Errorf("expected task ID task-01, got %s", transition.taskID)
 	}
-	if transition.from != string(index.TaskStateResolved) {
-		t.Errorf("expected from state %s, got %s", index.TaskStateResolved, transition.from)
+	if transition.from != string(index.TaskStateConflict) {
+		t.Errorf("expected from state %s, got %s", index.TaskStateConflict, transition.from)
 	}
-	if transition.to != string(index.TaskStateDone) {
-		t.Errorf("expected to state %s, got %s", index.TaskStateDone, transition.to)
+	if transition.to != string(index.TaskStateResolved) {
+		t.Errorf("expected to state %s, got %s", index.TaskStateResolved, transition.to)
 	}
 }
 
@@ -717,7 +719,7 @@ func TestUpdateTaskStateFromConflictResolution_Failure(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "task-01",
-				State: index.TaskStateResolved,
+				State: index.TaskStateConflict,
 				Role:  "generalist",
 			},
 		},
@@ -725,7 +727,7 @@ func TestUpdateTaskStateFromConflictResolution_Failure(t *testing.T) {
 
 	auditor := &mockTransitionAuditor{}
 
-	// Test failed resolution (resolved -> conflict, not blocked)
+	// Test failed resolution (conflict -> blocked)
 	result := worker.IngestResult{
 		Success:     false,
 		NewState:    index.TaskStateConflict,
@@ -738,8 +740,8 @@ func TestUpdateTaskStateFromConflictResolution_Failure(t *testing.T) {
 	}
 
 	// Verify task state was updated
-	if idx.Tasks[0].State != index.TaskStateConflict {
-		t.Errorf("expected task state %s, got %s", index.TaskStateConflict, idx.Tasks[0].State)
+	if idx.Tasks[0].State != index.TaskStateBlocked {
+		t.Errorf("expected task state %s, got %s", index.TaskStateBlocked, idx.Tasks[0].State)
 	}
 
 	// Verify audit log was called
@@ -748,11 +750,11 @@ func TestUpdateTaskStateFromConflictResolution_Failure(t *testing.T) {
 	}
 
 	transition := auditor.transitions[0]
-	if transition.from != string(index.TaskStateResolved) {
-		t.Errorf("expected from state %s, got %s", index.TaskStateResolved, transition.from)
+	if transition.from != string(index.TaskStateConflict) {
+		t.Errorf("expected from state %s, got %s", index.TaskStateConflict, transition.from)
 	}
-	if transition.to != string(index.TaskStateConflict) {
-		t.Errorf("expected to state %s, got %s", index.TaskStateConflict, transition.to)
+	if transition.to != string(index.TaskStateBlocked) {
+		t.Errorf("expected to state %s, got %s", index.TaskStateBlocked, transition.to)
 	}
 }
 

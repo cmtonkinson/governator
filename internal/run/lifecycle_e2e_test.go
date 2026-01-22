@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,7 +16,9 @@ import (
 	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/index"
 	"github.com/cmtonkinson/governator/internal/plan"
+	"github.com/cmtonkinson/governator/internal/roles"
 	"github.com/cmtonkinson/governator/internal/testrepos"
+	"github.com/cmtonkinson/governator/internal/worktree"
 )
 
 const lifecyclePlannerOutput = `{
@@ -123,6 +126,31 @@ func TestLifecycleEndToEndHappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run.Run failed: %v, stdout=%q, stderr=%q", err, runStdout.String(), runStderr.String())
 	}
+
+	manager, err := worktree.NewManager(repoRoot)
+	if err != nil {
+		t.Fatalf("worktree manager: %v", err)
+	}
+	worktreePath, err := manager.WorktreePath("T-LIFE-001", 1)
+	if err != nil {
+		t.Fatalf("worktree path: %v", err)
+	}
+	waitForExitStatus(t, worktreePath, "T-LIFE-001", roles.StageTest)
+
+	runStdout.Reset()
+	runStderr.Reset()
+	result, err = Run(repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr})
+	if err != nil {
+		t.Fatalf("run.Run collect test failed: %v, stdout=%q, stderr=%q", err, runStdout.String(), runStderr.String())
+	}
+	waitForExitStatus(t, worktreePath, "T-LIFE-001", roles.StageReview)
+
+	runStdout.Reset()
+	runStderr.Reset()
+	result, err = Run(repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr})
+	if err != nil {
+		t.Fatalf("run.Run collect review failed: %v, stdout=%q, stderr=%q", err, runStdout.String(), runStderr.String())
+	}
 	if !strings.Contains(result.Message, "review task(s)") {
 		t.Fatalf("result message = %q, want review stage summary", result.Message)
 	}
@@ -189,6 +217,13 @@ func TestLifecycleEndToEndTimeoutResume(t *testing.T) {
 		t.Fatalf("first run (timeout) failed: %v", err)
 	}
 
+	time.Sleep(2 * time.Second)
+	timeoutStdout.Reset()
+	timeoutStderr.Reset()
+	if _, err := Run(repoRoot, Options{Stdout: &timeoutStdout, Stderr: &timeoutStderr}); err != nil {
+		t.Fatalf("second run (timeout collect) failed: %v", err)
+	}
+
 	timeoutIdx, err := index.Load(indexPath)
 	if err != nil {
 		t.Fatalf("load index after timeout: %v", err)
@@ -213,13 +248,41 @@ func TestLifecycleEndToEndTimeoutResume(t *testing.T) {
 		t.Fatalf("resume message = %q, want resume notice", resumeResult.Message)
 	}
 
+	manager, err := worktree.NewManager(repoRoot)
+	if err != nil {
+		t.Fatalf("worktree manager: %v", err)
+	}
+	worktreePath, err := manager.WorktreePath("T-LIFE-001", 1)
+	if err != nil {
+		t.Fatalf("worktree path: %v", err)
+	}
+	waitForExitStatus(t, worktreePath, "T-LIFE-001", roles.StageWork)
+	resumeStdout.Reset()
+	resumeStderr.Reset()
+	if _, err := Run(repoRoot, Options{Stdout: &resumeStdout, Stderr: &resumeStderr}); err != nil {
+		t.Fatalf("third run (collect work) failed: %v", err)
+	}
+
+	waitForExitStatus(t, worktreePath, "T-LIFE-001", roles.StageTest)
+	resumeStdout.Reset()
+	resumeStderr.Reset()
+	if _, err := Run(repoRoot, Options{Stdout: &resumeStdout, Stderr: &resumeStderr}); err != nil {
+		t.Fatalf("fourth run (collect test) failed: %v", err)
+	}
+	waitForExitStatus(t, worktreePath, "T-LIFE-001", roles.StageReview)
+	resumeStdout.Reset()
+	resumeStderr.Reset()
+	if _, err := Run(repoRoot, Options{Stdout: &resumeStdout, Stderr: &resumeStderr}); err != nil {
+		t.Fatalf("fifth run (collect review) failed: %v", err)
+	}
+
 	finalIdx, err := index.Load(indexPath)
 	if err != nil {
 		t.Fatalf("load final index: %v", err)
 	}
 	for _, task := range finalIdx.Tasks {
-		if task.State != index.TaskStateOpen {
-			t.Fatalf("task %q final state = %q, want %q", task.ID, task.State, index.TaskStateOpen)
+		if task.State != index.TaskStateDone {
+			t.Fatalf("task %q final state = %q, want %q (stdout=%q stderr=%q)", task.ID, task.State, index.TaskStateDone, resumeStdout.String(), resumeStderr.String())
 		}
 		if task.Attempts.Total != 2 {
 			t.Fatalf("task %q attempts = %d, want %d", task.ID, task.Attempts.Total, 2)
@@ -350,5 +413,27 @@ func TestLifecycleWorkerHelper(t *testing.T) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
+	if err := runLifecycleGitCommand(markerPath); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
 	os.Exit(0)
+}
+
+func runLifecycleGitCommand(path string) error {
+	if err := exec.Command("git", "add", path).Run(); err != nil {
+		return fmt.Errorf("git add failed: %w", err)
+	}
+	diffCmd := exec.Command("git", "diff", "--cached", "--quiet")
+	if err := diffCmd.Run(); err == nil {
+		return nil
+	} else if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+		if err := exec.Command("git", "commit", "-m", "Lifecycle work stage").Run(); err != nil {
+			return fmt.Errorf("git commit failed: %w", err)
+		}
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("git diff failed: %w", err)
+	}
+	return nil
 }

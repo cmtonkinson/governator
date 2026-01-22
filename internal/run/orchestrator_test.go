@@ -100,8 +100,8 @@ func TestRunHappyPathWithResume(t *testing.T) {
 	if task.Attempts.Total != 2 {
 		t.Fatalf("task attempts total = %d, want %d", task.Attempts.Total, 2)
 	}
-	if task.State != index.TaskStateOpen {
-		t.Fatalf("task state = %q, want %q", task.State, index.TaskStateOpen)
+	if task.State != index.TaskStateBlocked {
+		t.Fatalf("task state = %q, want %q", task.State, index.TaskStateBlocked)
 	}
 }
 
@@ -224,9 +224,9 @@ func TestRunNoResumeCandidates(t *testing.T) {
 		t.Fatalf("expected 0 blocked tasks, got %d", len(result.BlockedTasks))
 	}
 
-	// Check the result message - should indicate branch creation for open tasks
-	if !strings.Contains(result.Message, "created 1 branch(es) for open tasks") {
-		t.Fatalf("result message = %q, want to contain 'created 1 branch(es) for open tasks'", result.Message)
+	// Check the result message - should indicate work activity
+	if !strings.Contains(result.Message, "work task(s)") {
+		t.Fatalf("result message = %q, want to contain 'work task(s)'", result.Message)
 	}
 }
 

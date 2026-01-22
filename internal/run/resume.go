@@ -84,6 +84,7 @@ func ProcessResumeCandidates(candidates []ResumeCandidate, cfg config.Config) Re
 	for _, candidate := range candidates {
 		// Check if the task has exceeded retry limits
 		maxAttempts := getMaxAttempts(candidate.Task, cfg)
+		// TODO(cmtonkinson): Revisit retry semantics (total vs failed) once async dispatch metrics settle.
 		if candidate.Task.Attempts.Total >= maxAttempts {
 			result.Blocked = append(result.Blocked, candidate)
 		} else {
@@ -122,6 +123,7 @@ func pathExists(path string) (bool, error) {
 	}
 	return false, fmt.Errorf("stat path %s: %w", path, err)
 }
+
 // PrepareTaskForResume increments the attempt counter and transitions the task to open.
 func PrepareTaskForResume(idx *index.Index, taskID string, auditor index.TransitionAuditor) error {
 	if idx == nil {

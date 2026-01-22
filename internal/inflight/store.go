@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
+	"time"
 )
 
 const (
@@ -23,8 +25,19 @@ type Store struct {
 	path string
 }
 
-// Set tracks in-flight task IDs in memory.
-type Set map[string]struct{}
+// Entry captures per-task in-flight metadata.
+type Entry struct {
+	ID        string    `json:"id"`
+	StartedAt time.Time `json:"started_at,omitempty"`
+	Worktree  string    `json:"worktree_path,omitempty"`
+}
+
+// Set tracks in-flight task IDs in memory along with metadata.
+type Set map[string]Entry
+
+type snapshot struct {
+	Tasks []Entry `json:"tasks"`
+}
 
 // NewStore builds a Store rooted at the provided repository root.
 func NewStore(repoRoot string) (Store, error) {
@@ -51,6 +64,18 @@ func (store Store) Load() (Set, error) {
 		return Set{}, nil
 	}
 
+	var snap snapshot
+	if err := json.Unmarshal(data, &snap); err == nil {
+		set := make(Set, len(snap.Tasks))
+		for _, entry := range snap.Tasks {
+			if entry.ID == "" {
+				return nil, fmt.Errorf("decode in-flight data %s: empty task id", store.path)
+			}
+			set[entry.ID] = entry
+		}
+		return set, nil
+	}
+
 	var ids []string
 	if err := json.Unmarshal(data, &ids); err != nil {
 		return nil, fmt.Errorf("decode in-flight data %s: %w", store.path, err)
@@ -61,7 +86,7 @@ func (store Store) Load() (Set, error) {
 		if id == "" {
 			return nil, fmt.Errorf("decode in-flight data %s: empty task id", store.path)
 		}
-		set[id] = struct{}{}
+		set[id] = Entry{ID: id}
 	}
 	return set, nil
 }
@@ -81,7 +106,15 @@ func (store Store) Save(set Set) error {
 	}
 
 	ids := set.IDs()
-	encoded, err := json.MarshalIndent(ids, "", "  ")
+	tasks := make([]Entry, 0, len(ids))
+	for _, id := range ids {
+		entry := set[id]
+		if entry.ID == "" {
+			entry.ID = id
+		}
+		tasks = append(tasks, entry)
+	}
+	encoded, err := json.MarshalIndent(snapshot{Tasks: tasks}, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode in-flight data %s: %w", store.path, err)
 	}
@@ -137,6 +170,21 @@ func (set Set) Contains(id string) bool {
 	return ok
 }
 
+// StartedAt returns the recorded start time for a task when present.
+func (set Set) StartedAt(id string) (time.Time, bool) {
+	if set == nil {
+		return time.Time{}, false
+	}
+	entry, ok := set[id]
+	if !ok {
+		return time.Time{}, false
+	}
+	if entry.StartedAt.IsZero() {
+		return time.Time{}, false
+	}
+	return entry.StartedAt, true
+}
+
 // IDs returns the task IDs in sorted order.
 func (set Set) IDs() []string {
 	if len(set) == 0 {
@@ -158,7 +206,49 @@ func (set Set) Add(id string) error {
 	if set == nil {
 		return errors.New("in-flight set is required")
 	}
-	set[id] = struct{}{}
+	entry, ok := set[id]
+	if !ok {
+		entry = Entry{ID: id, StartedAt: time.Now().UTC()}
+		set[id] = entry
+		return nil
+	}
+	if entry.ID == "" {
+		entry.ID = id
+	}
+	if entry.StartedAt.IsZero() {
+		entry.StartedAt = time.Now().UTC()
+		set[id] = entry
+	}
+	return nil
+}
+
+// AddWithStart tracks a task ID with the provided start time.
+func (set Set) AddWithStart(id string, startedAt time.Time) error {
+	if id == "" {
+		return errors.New("task id is required")
+	}
+	if set == nil {
+		return errors.New("in-flight set is required")
+	}
+	if startedAt.IsZero() {
+		startedAt = time.Now().UTC()
+	}
+	set[id] = Entry{ID: id, StartedAt: startedAt}
+	return nil
+}
+
+// AddWithStartAndPath tracks a task ID with the provided start time and worktree path.
+func (set Set) AddWithStartAndPath(id string, startedAt time.Time, worktreePath string) error {
+	if id == "" {
+		return errors.New("task id is required")
+	}
+	if set == nil {
+		return errors.New("in-flight set is required")
+	}
+	if startedAt.IsZero() {
+		startedAt = time.Now().UTC()
+	}
+	set[id] = Entry{ID: id, StartedAt: startedAt, Worktree: strings.TrimSpace(worktreePath)}
 	return nil
 }
 
@@ -172,4 +262,19 @@ func (set Set) Remove(id string) error {
 	}
 	delete(set, id)
 	return nil
+}
+
+// WorktreePath returns the stored worktree path for a task when present.
+func (set Set) WorktreePath(id string) (string, bool) {
+	if set == nil {
+		return "", false
+	}
+	entry, ok := set[id]
+	if !ok {
+		return "", false
+	}
+	if strings.TrimSpace(entry.Worktree) == "" {
+		return "", false
+	}
+	return entry.Worktree, true
 }

@@ -52,6 +52,14 @@ type ExecResult struct {
 	Error      error
 }
 
+// workerLogFiles groups log paths and file handles for a worker execution.
+type workerLogFiles struct {
+	stdoutPath string
+	stderrPath string
+	stdoutFile *os.File
+	stderrFile *os.File
+}
+
 // ExecuteWorker runs a worker process with timeout and log capture.
 func ExecuteWorker(input ExecInput) (ExecResult, error) {
 	if len(input.Command) == 0 {
@@ -67,28 +75,12 @@ func ExecuteWorker(input ExecInput) (ExecResult, error) {
 		return ExecResult{}, errors.New("timeout seconds must be positive")
 	}
 
-	// Create logs directory
-	logsDir := filepath.Join(input.WorkDir, logsDirName)
-	if err := os.MkdirAll(logsDir, logDirMode); err != nil {
-		return ExecResult{}, fmt.Errorf("create logs directory %s: %w", logsDir, err)
-	}
-
-	// Create log files
-	timestamp := time.Now().Format("20060102-150405")
-	stdoutPath := filepath.Join(logsDir, fmt.Sprintf("%s-%s-stdout.log", input.TaskID, timestamp))
-	stderrPath := filepath.Join(logsDir, fmt.Sprintf("%s-%s-stderr.log", input.TaskID, timestamp))
-
-	stdoutFile, err := os.Create(stdoutPath)
+	logFiles, err := createWorkerLogFiles(input.WorkDir, input.TaskID)
 	if err != nil {
-		return ExecResult{}, fmt.Errorf("create stdout log %s: %w", stdoutPath, err)
+		return ExecResult{}, err
 	}
-	defer stdoutFile.Close()
-
-	stderrFile, err := os.Create(stderrPath)
-	if err != nil {
-		return ExecResult{}, fmt.Errorf("create stderr log %s: %w", stderrPath, err)
-	}
-	defer stderrFile.Close()
+	defer logFiles.stdoutFile.Close()
+	defer logFiles.stderrFile.Close()
 
 	// Set up command with timeout context
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(input.TimeoutSecs)*time.Second)
@@ -96,8 +88,8 @@ func ExecuteWorker(input ExecInput) (ExecResult, error) {
 
 	cmd := exec.CommandContext(ctx, input.Command[0], input.Command[1:]...)
 	cmd.Dir = input.WorkDir
-	cmd.Stdout = stdoutFile
-	cmd.Stderr = stderrFile
+	cmd.Stdout = logFiles.stdoutFile
+	cmd.Stderr = logFiles.stderrFile
 
 	// Set environment variables
 	if len(input.EnvVars) > 0 {
@@ -115,8 +107,8 @@ func ExecuteWorker(input ExecInput) (ExecResult, error) {
 
 	// Determine result
 	result := ExecResult{
-		StdoutPath: repoRelativePath(input.WorkDir, stdoutPath),
-		StderrPath: repoRelativePath(input.WorkDir, stderrPath),
+		StdoutPath: repoRelativePath(input.WorkDir, logFiles.stdoutPath),
+		StderrPath: repoRelativePath(input.WorkDir, logFiles.stderrPath),
 		Duration:   duration,
 	}
 
@@ -184,4 +176,34 @@ func emitWarning(warn func(string), message string) {
 		return
 	}
 	warn(message)
+}
+
+// createWorkerLogFiles creates stdout/stderr log files for worker execution.
+func createWorkerLogFiles(workDir string, taskID string) (workerLogFiles, error) {
+	logsDir := filepath.Join(workDir, logsDirName)
+	if err := os.MkdirAll(logsDir, logDirMode); err != nil {
+		return workerLogFiles{}, fmt.Errorf("create logs directory %s: %w", logsDir, err)
+	}
+
+	timestamp := time.Now().Format("20060102-150405")
+	stdoutPath := filepath.Join(logsDir, fmt.Sprintf("%s-%s-stdout.log", taskID, timestamp))
+	stderrPath := filepath.Join(logsDir, fmt.Sprintf("%s-%s-stderr.log", taskID, timestamp))
+
+	stdoutFile, err := os.Create(stdoutPath)
+	if err != nil {
+		return workerLogFiles{}, fmt.Errorf("create stdout log %s: %w", stdoutPath, err)
+	}
+
+	stderrFile, err := os.Create(stderrPath)
+	if err != nil {
+		stdoutFile.Close()
+		return workerLogFiles{}, fmt.Errorf("create stderr log %s: %w", stderrPath, err)
+	}
+
+	return workerLogFiles{
+		stdoutPath: stdoutPath,
+		stderrPath: stderrPath,
+		stdoutFile: stdoutFile,
+		stderrFile: stderrFile,
+	}, nil
 }

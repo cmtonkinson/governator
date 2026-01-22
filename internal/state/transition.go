@@ -36,6 +36,7 @@ var allowedTransitions = map[TaskState]map[TaskState]struct{}{
 	TaskStateTested: {
 		TaskStateDone:     {},
 		TaskStateConflict: {},
+		TaskStateOpen:     {},
 		TaskStateBlocked:  {},
 	},
 	TaskStateConflict: {

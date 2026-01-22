@@ -326,7 +326,7 @@ func TestExecuteMergeStage_Success(t *testing.T) {
 
 	// This will fail because we don't have actual worktrees set up,
 	// but we can verify the function processes the resolved tasks
-	result, err := ExecuteMergeStage("/tmp", idx, cfg, caps, auditor, nil, opts)
+	result, err := ExecuteMergeStage("/tmp", idx, cfg, caps, nil, auditor, nil, opts)
 	if err != nil {
 		t.Fatalf("ExecuteMergeStage failed: %v", err)
 	}

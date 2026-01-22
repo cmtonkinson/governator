@@ -126,6 +126,31 @@ func TestIncrementTaskAttempt(t *testing.T) {
 	}
 }
 
+// TestIncrementTaskFailedAttempt ensures the failed attempt counter increments.
+func TestIncrementTaskFailedAttempt(t *testing.T) {
+	idx := Index{
+		SchemaVersion: 1,
+		Tasks: []Task{
+			{
+				ID:    "task-1",
+				Path:  "_governator/tasks/task-1.md",
+				State: TaskStateOpen,
+				Role:  "builder",
+				Attempts: AttemptCounters{
+					Failed: 1,
+				},
+			},
+		},
+	}
+
+	if err := IncrementTaskFailedAttempt(&idx, "task-1"); err != nil {
+		t.Fatalf("increment failed attempt: %v", err)
+	}
+	if got := idx.Tasks[0].Attempts.Failed; got != 2 {
+		t.Fatalf("expected failed attempts 2, got %d", got)
+	}
+}
+
 // TestTransitionFromDoneToWorkedFails rejects invalid transitions.
 func TestTransitionFromDoneToWorkedFails(t *testing.T) {
 	idx := Index{

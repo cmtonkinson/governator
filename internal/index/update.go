@@ -79,6 +79,16 @@ func IncrementTaskAttempt(idx *Index, taskID string) error {
 	return nil
 }
 
+// IncrementTaskFailedAttempt increments the failed attempt counter for a task.
+func IncrementTaskFailedAttempt(idx *Index, taskID string) error {
+	task, err := findTaskByID(idx, taskID)
+	if err != nil {
+		return err
+	}
+	task.Attempts.Failed++
+	return nil
+}
+
 // transitionTaskState enforces lifecycle state transitions before updating a task.
 func transitionTaskState(idx *Index, taskID string, to TaskState) error {
 	return TransitionTaskStateWithAudit(idx, taskID, to, nil)

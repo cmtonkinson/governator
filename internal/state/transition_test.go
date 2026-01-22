@@ -18,6 +18,7 @@ func TestValidTransitionsAcceptsAllowedPairs(t *testing.T) {
 		{TaskStateWorked, TaskStateBlocked},
 		{TaskStateTested, TaskStateDone},
 		{TaskStateTested, TaskStateConflict},
+		{TaskStateTested, TaskStateOpen},
 		{TaskStateTested, TaskStateBlocked},
 		{TaskStateConflict, TaskStateResolved},
 		{TaskStateConflict, TaskStateBlocked},

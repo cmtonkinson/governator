@@ -16,6 +16,7 @@ import (
 	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/index"
 	"github.com/cmtonkinson/governator/internal/plan"
+	"github.com/cmtonkinson/governator/internal/roles"
 	"github.com/cmtonkinson/governator/internal/testrepos"
 	"github.com/cmtonkinson/governator/internal/worktree"
 )
@@ -124,6 +125,32 @@ func TestPipelineIntegrationHappyPath(t *testing.T) {
 		t.Fatalf("run.Run failed: %v, stdout=%q, stderr=%q", err, runStdout.String(), runStderr.String())
 	}
 
+	manager, err := worktree.NewManager(repoRoot)
+	if err != nil {
+		t.Fatalf("worktree manager: %v", err)
+	}
+	worktreePath, err := manager.WorktreePath("T-PIPE-001", 1)
+	if err != nil {
+		t.Fatalf("worktree path: %v", err)
+	}
+	waitForExitStatus(t, worktreePath, "T-PIPE-001", roles.StageTest)
+
+	runStdout.Reset()
+	runStderr.Reset()
+	result, err = Run(repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr})
+	if err != nil {
+		t.Fatalf("run.Run collect failed: %v, stdout=%q, stderr=%q", err, runStdout.String(), runStderr.String())
+	}
+
+	waitForExitStatus(t, worktreePath, "T-PIPE-001", roles.StageReview)
+
+	runStdout.Reset()
+	runStderr.Reset()
+	result, err = Run(repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr})
+	if err != nil {
+		t.Fatalf("run.Run collect review failed: %v, stdout=%q, stderr=%q", err, runStdout.String(), runStderr.String())
+	}
+
 	finalIdx, err := index.Load(indexPath)
 	if err != nil {
 		t.Fatalf("reload index: %v", err)
@@ -132,7 +159,7 @@ func TestPipelineIntegrationHappyPath(t *testing.T) {
 	if task.State != index.TaskStateDone {
 		t.Fatalf("task state = %q, want %q", task.State, index.TaskStateDone)
 	}
-	if !strings.Contains(result.Message, "processed 1 review task(s)") {
+	if !strings.Contains(result.Message, "review task(s)") {
 		t.Fatalf("expected review stage summary in result message, got %q", result.Message)
 	}
 }

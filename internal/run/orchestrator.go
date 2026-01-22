@@ -13,6 +13,7 @@ import (
 	"github.com/cmtonkinson/governator/internal/audit"
 	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/index"
+	"github.com/cmtonkinson/governator/internal/inflight"
 	"github.com/cmtonkinson/governator/internal/roles"
 	"github.com/cmtonkinson/governator/internal/scheduler"
 	"github.com/cmtonkinson/governator/internal/worker"
@@ -61,6 +62,19 @@ func Run(repoRoot string, opts Options) (Result, error) {
 	idx, err := index.Load(indexPath)
 	if err != nil {
 		return Result{}, fmt.Errorf("load task index: %w", err)
+	}
+
+	// Load in-flight task tracking
+	inFlightStore, err := inflight.NewStore(repoRoot)
+	if err != nil {
+		return Result{}, fmt.Errorf("create in-flight store: %w", err)
+	}
+	inFlight, err := inFlightStore.Load()
+	if err != nil {
+		return Result{}, fmt.Errorf("load in-flight tasks: %w", err)
+	}
+	if inFlight == nil {
+		inFlight = inflight.Set{}
 	}
 
 	// Check for planning drift
@@ -127,26 +141,34 @@ func Run(repoRoot string, opts Options) (Result, error) {
 		fmt.Fprintf(opts.Stdout, "Task %s blocked: exceeded retry limit (%d attempts)\n", candidate.Task.ID, maxAttempts)
 	}
 
+	// Execute work stage for open tasks
+	resumeWorktrees := resumeWorktreeMap(resumeResult.Resumed)
+	workResult, err := ExecuteWorkStage(repoRoot, &idx, cfg, caps, inFlight, resumeWorktrees, auditor, auditor, opts)
+	if err != nil {
+		return Result{}, fmt.Errorf("execute work stage: %w", err)
+	}
+	worktreeOverrides := mergeWorktreeOverrides(resumeWorktrees, workResult.WorktreePaths)
+
 	// Execute test stage for worked tasks
-	testResult, err := ExecuteTestStage(repoRoot, &idx, cfg, caps, auditor, auditor, opts)
+	testResult, err := ExecuteTestStage(repoRoot, &idx, cfg, caps, inFlight, worktreeOverrides, auditor, auditor, opts)
 	if err != nil {
 		return Result{}, fmt.Errorf("execute test stage: %w", err)
 	}
 
 	// Execute review stage for tested tasks
-	reviewResult, err := ExecuteReviewStage(repoRoot, &idx, cfg, caps, auditor, auditor, opts)
+	reviewResult, err := ExecuteReviewStage(repoRoot, &idx, cfg, caps, inFlight, worktreeOverrides, auditor, auditor, opts)
 	if err != nil {
 		return Result{}, fmt.Errorf("execute review stage: %w", err)
 	}
 
 	// Execute conflict resolution stage for conflict tasks
-	conflictResult, err := ExecuteConflictResolutionStage(repoRoot, &idx, cfg, caps, auditor, auditor, opts)
+	conflictResult, err := ExecuteConflictResolutionStage(repoRoot, &idx, cfg, caps, inFlight, worktreeOverrides, auditor, auditor, opts)
 	if err != nil {
 		return Result{}, fmt.Errorf("execute conflict resolution stage: %w", err)
 	}
 
 	// Execute merge stage for resolved tasks
-	mergeResult, err := ExecuteMergeStage(repoRoot, &idx, cfg, caps, auditor, auditor, opts)
+	mergeResult, err := ExecuteMergeStage(repoRoot, &idx, cfg, caps, worktreeOverrides, auditor, auditor, opts)
 	if err != nil {
 		return Result{}, fmt.Errorf("execute merge stage: %w", err)
 	}
@@ -158,9 +180,14 @@ func Run(repoRoot string, opts Options) (Result, error) {
 	}
 
 	// Save updated index
-	if len(resumedTasks) > 0 || len(blockedTasks) > 0 || testResult.TasksProcessed > 0 || reviewResult.TasksProcessed > 0 || conflictResult.TasksProcessed > 0 || mergeResult.TasksProcessed > 0 || branchResult.BranchesCreated > 0 {
+	if len(resumedTasks) > 0 || len(blockedTasks) > 0 || workResult.TasksWorked > 0 || workResult.TasksBlocked > 0 || testResult.TasksTested > 0 || testResult.TasksBlocked > 0 || reviewResult.TasksReviewed > 0 || reviewResult.TasksBlocked > 0 || conflictResult.TasksResolved > 0 || conflictResult.TasksBlocked > 0 || mergeResult.TasksProcessed > 0 || branchResult.BranchesCreated > 0 {
 		if err := index.Save(indexPath, idx); err != nil {
 			return Result{}, fmt.Errorf("save task index: %w", err)
+		}
+	}
+	if workResult.InFlightUpdated || testResult.InFlightUpdated || reviewResult.InFlightUpdated || conflictResult.InFlightUpdated {
+		if err := inFlightStore.Save(inFlight); err != nil {
+			return Result{}, fmt.Errorf("save in-flight tasks: %w", err)
 		}
 	}
 
@@ -175,23 +202,45 @@ func Run(repoRoot string, opts Options) (Result, error) {
 		}
 		message.WriteString(fmt.Sprintf("blocked %d task(s) due to retry limit", len(blockedTasks)))
 	}
-	if testResult.TasksProcessed > 0 {
+	if workResult.TasksDispatched > 0 || workResult.TasksWorked > 0 || workResult.TasksBlocked > 0 {
 		if message.Len() > 0 {
 			message.WriteString(", ")
 		}
-		message.WriteString(fmt.Sprintf("processed %d test task(s)", testResult.TasksProcessed))
+		if workResult.TasksDispatched > 0 {
+			message.WriteString(fmt.Sprintf("dispatched %d work task(s)", workResult.TasksDispatched))
+		} else {
+			message.WriteString(fmt.Sprintf("collected %d work task(s)", workResult.TasksWorked+workResult.TasksBlocked))
+		}
 	}
-	if reviewResult.TasksProcessed > 0 {
+	if testResult.TasksDispatched > 0 || testResult.TasksTested > 0 || testResult.TasksBlocked > 0 {
 		if message.Len() > 0 {
 			message.WriteString(", ")
 		}
-		message.WriteString(fmt.Sprintf("processed %d review task(s)", reviewResult.TasksProcessed))
+		if testResult.TasksDispatched > 0 {
+			message.WriteString(fmt.Sprintf("dispatched %d test task(s)", testResult.TasksDispatched))
+		} else {
+			message.WriteString(fmt.Sprintf("collected %d test task(s)", testResult.TasksTested+testResult.TasksBlocked))
+		}
 	}
-	if conflictResult.TasksProcessed > 0 {
+	if reviewResult.TasksDispatched > 0 || reviewResult.TasksReviewed > 0 || reviewResult.TasksBlocked > 0 {
 		if message.Len() > 0 {
 			message.WriteString(", ")
 		}
-		message.WriteString(fmt.Sprintf("processed %d conflict resolution task(s)", conflictResult.TasksProcessed))
+		if reviewResult.TasksDispatched > 0 {
+			message.WriteString(fmt.Sprintf("dispatched %d review task(s)", reviewResult.TasksDispatched))
+		} else {
+			message.WriteString(fmt.Sprintf("collected %d review task(s)", reviewResult.TasksReviewed+reviewResult.TasksBlocked))
+		}
+	}
+	if conflictResult.TasksDispatched > 0 || conflictResult.TasksResolved > 0 || conflictResult.TasksBlocked > 0 {
+		if message.Len() > 0 {
+			message.WriteString(", ")
+		}
+		if conflictResult.TasksDispatched > 0 {
+			message.WriteString(fmt.Sprintf("dispatched %d conflict resolution task(s)", conflictResult.TasksDispatched))
+		} else {
+			message.WriteString(fmt.Sprintf("collected %d conflict resolution task(s)", conflictResult.TasksResolved+conflictResult.TasksBlocked))
+		}
 	}
 	if mergeResult.TasksProcessed > 0 {
 		if message.Len() > 0 {
@@ -218,16 +267,434 @@ func Run(repoRoot string, opts Options) (Result, error) {
 
 // TestStageResult captures the outcome of test stage execution.
 type TestStageResult struct {
-	TasksProcessed int
-	TasksTested    int
-	TasksBlocked   int
+	TasksDispatched int
+	TasksTested     int
+	TasksBlocked    int
+	InFlightUpdated bool
+}
+
+// WorkStageResult captures the outcome of work stage execution.
+type WorkStageResult struct {
+	TasksDispatched int
+	TasksWorked     int
+	TasksBlocked    int
+	InFlightUpdated bool
+	WorktreePaths   map[string]string
+}
+
+// ExecuteWorkStage processes tasks in the open state through the work stage.
+func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps scheduler.RoleCaps, inFlight inflight.Set, resumeWorktrees map[string]string, transitionAuditor index.TransitionAuditor, workerAuditor *audit.Logger, opts Options) (WorkStageResult, error) {
+	result := WorkStageResult{
+		WorktreePaths: map[string]string{},
+	}
+	if inFlight == nil {
+		inFlight = inflight.Set{}
+	}
+	if resumeWorktrees == nil {
+		resumeWorktrees = map[string]string{}
+	}
+
+	manager, err := worktree.NewManager(repoRoot)
+	if err != nil {
+		return result, fmt.Errorf("create worktree manager: %w", err)
+	}
+
+	baseBranch := baseBranchName(cfg)
+
+	for _, task := range idx.Tasks {
+		if task.State != index.TaskStateOpen || !inFlight.Contains(task.ID) {
+			continue
+		}
+		worktreePath, ok := worktreePathForTask(inFlight, task.ID)
+		if !ok {
+			worktreePath, err = resolveWorktreePath(manager, task, resumeWorktrees)
+			if err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to get worktree path for task %s: %v\n", task.ID, err)
+				continue
+			}
+		}
+
+		exitStatus, finished, err := worker.ReadExitStatus(worktreePath, task.ID, roles.StageWork)
+		if err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to read exit status for task %s: %v\n", task.ID, err)
+			continue
+		}
+		if !finished {
+			if startedAt, ok := startedAtForTask(inFlight, task.ID); ok && timedOut(startedAt, cfg.Timeouts.WorkerSeconds) {
+				failedResult := worker.IngestResult{
+					Success:     false,
+					NewState:    index.TaskStateBlocked,
+					BlockReason: formatTimeoutReason(cfg.Timeouts.WorkerSeconds),
+					TimedOut:    true,
+				}
+				if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
+					fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
+				}
+				if updateErr := UpdateTaskStateFromWorkResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+					fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
+				} else {
+					result.TasksBlocked++
+					emitTaskTimeout(opts.Stdout, task.ID, string(task.Role), string(roles.StageWork), failedResult.BlockReason, cfg.Timeouts.WorkerSeconds)
+				}
+				if workerAuditor != nil {
+					if auditErr := workerAuditor.LogWorkerTimeout(task.ID, string(task.Role), cfg.Timeouts.WorkerSeconds, worktreePath); auditErr != nil {
+						fmt.Fprintf(opts.Stderr, "Warning: failed to log worker timeout for %s: %v\n", task.ID, auditErr)
+					}
+				}
+				if err := inFlight.Remove(task.ID); err == nil {
+					result.InFlightUpdated = true
+				}
+			}
+			continue
+		}
+
+		var ingestResult worker.IngestResult
+		if exitStatus.ExitCode != 0 {
+			ingestResult = worker.IngestResult{
+				Success:     false,
+				NewState:    index.TaskStateBlocked,
+				BlockReason: fmt.Sprintf("worker process exited with code %d", exitStatus.ExitCode),
+			}
+		} else {
+			completion, err := worker.CheckStageCompletion(worktreePath, roles.StageWork)
+			if err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to check work completion for task %s: %v\n", task.ID, err)
+				continue
+			}
+			ingestResult, err = worker.CompletionResultToIngest(task.ID, roles.StageWork, completion)
+			if err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to build work result for task %s: %v\n", task.ID, err)
+				continue
+			}
+		}
+
+		if err := UpdateTaskStateFromWorkResult(idx, task.ID, ingestResult, transitionAuditor); err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, err)
+			continue
+		}
+		if !ingestResult.Success {
+			if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
+			}
+		}
+
+		if ingestResult.Success {
+			result.TasksWorked++
+			result.WorktreePaths[task.ID] = worktreePath
+			emitTaskComplete(opts.Stdout, task.ID, string(task.Role), string(roles.StageWork))
+		} else if ingestResult.TimedOut {
+			result.TasksBlocked++
+			emitTaskTimeout(opts.Stdout, task.ID, string(task.Role), string(roles.StageWork), ingestResult.BlockReason, cfg.Timeouts.WorkerSeconds)
+		} else {
+			result.TasksBlocked++
+			emitTaskFailure(opts.Stdout, task.ID, string(task.Role), string(roles.StageWork), ingestResult.BlockReason)
+		}
+
+		if err := inFlight.Remove(task.ID); err == nil {
+			result.InFlightUpdated = true
+		}
+	}
+
+	adjustedCaps := adjustCapsForInFlight(caps, *idx, inFlight)
+	selectedTasks, err := selectTasksForStage(*idx, adjustedCaps, inFlight, index.TaskStateOpen)
+	if err != nil {
+		return result, fmt.Errorf("schedule work tasks: %w", err)
+	}
+
+	if len(selectedTasks) == 0 {
+		return result, nil
+	}
+
+	for _, task := range selectedTasks {
+		attempt, err := ensureWorkAttempt(idx, task.ID)
+		if err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to set attempt for task %s: %v\n", task.ID, err)
+			continue
+		}
+
+		worktreePath := ""
+		branchName := taskBranchName(task.ID)
+		if resumePath, ok := resumeWorktrees[task.ID]; ok && strings.TrimSpace(resumePath) != "" {
+			if err := validateWorktreePath(resumePath); err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to validate resume worktree for task %s: %v\n", task.ID, err)
+				failedResult := worker.IngestResult{
+					Success:     false,
+					NewState:    index.TaskStateBlocked,
+					BlockReason: fmt.Sprintf("resume worktree invalid: %v", err),
+				}
+				if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
+					fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
+				}
+				if updateErr := UpdateTaskStateFromWorkResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+					fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
+				} else {
+					result.TasksBlocked++
+					emitTaskFailure(opts.Stdout, task.ID, string(task.Role), string(roles.StageWork), failedResult.BlockReason)
+				}
+				continue
+			}
+			worktreePath = resumePath
+		} else {
+			spec := worktree.Spec{
+				TaskID:     task.ID,
+				Attempt:    attempt,
+				Branch:     branchName,
+				BaseBranch: baseBranch,
+			}
+			worktreeResult, err := manager.EnsureWorktree(spec)
+			if err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to ensure worktree for task %s: %v\n", task.ID, err)
+				failedResult := worker.IngestResult{
+					Success:     false,
+					NewState:    index.TaskStateBlocked,
+					BlockReason: fmt.Sprintf("worktree setup failed: %v", err),
+				}
+				if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
+					fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
+				}
+				if updateErr := UpdateTaskStateFromWorkResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+					fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
+				} else {
+					result.TasksBlocked++
+					emitTaskFailure(opts.Stdout, task.ID, string(task.Role), string(roles.StageWork), failedResult.BlockReason)
+				}
+				continue
+			}
+			worktreePath = worktreeResult.Path
+
+			if !worktreeResult.Reused && workerAuditor != nil {
+				if err := workerAuditor.LogWorktreeCreate(task.ID, string(task.Role), worktreeResult.RelativePath, branchName); err != nil {
+					fmt.Fprintf(opts.Stderr, "Warning: failed to log worktree create for task %s: %v\n", task.ID, err)
+				}
+			}
+		}
+
+		emitTaskStart(opts.Stdout, task.ID, string(task.Role), string(roles.StageWork))
+
+		stageInput := worker.StageInput{
+			RepoRoot:     repoRoot,
+			WorktreeRoot: worktreePath,
+			Task:         task,
+			Stage:        roles.StageWork,
+			Role:         task.Role,
+			Warn: func(msg string) {
+				fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
+			},
+		}
+		stageResult, err := worker.StageEnvAndPrompts(stageInput)
+		if err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to stage work environment for task %s: %v\n", task.ID, err)
+			failedResult := worker.IngestResult{
+				Success:     false,
+				NewState:    index.TaskStateBlocked,
+				BlockReason: fmt.Sprintf("work agent staging failed: %v", err),
+			}
+			if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
+			}
+			if updateErr := UpdateTaskStateFromWorkResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
+			} else {
+				result.TasksBlocked++
+				emitTaskFailure(opts.Stdout, task.ID, string(task.Role), string(roles.StageWork), failedResult.BlockReason)
+			}
+			continue
+		}
+
+		dispatchResult, err := worker.DispatchWorkerFromConfig(cfg, task, stageResult, worktreePath, roles.StageWork, func(msg string) {
+			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
+		})
+		if err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to dispatch work agent for task %s: %v\n", task.ID, err)
+			failedResult := worker.IngestResult{
+				Success:     false,
+				NewState:    index.TaskStateBlocked,
+				BlockReason: fmt.Sprintf("work agent dispatch failed: %v", err),
+			}
+			if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
+			}
+			if updateErr := UpdateTaskStateFromWorkResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
+			} else {
+				result.TasksBlocked++
+				emitTaskFailure(opts.Stdout, task.ID, string(task.Role), string(roles.StageWork), failedResult.BlockReason)
+			}
+			continue
+		}
+
+		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath); err == nil {
+			result.InFlightUpdated = true
+		}
+		result.TasksDispatched++
+		result.WorktreePaths[task.ID] = worktreePath
+	}
+
+	return result, nil
+}
+
+// ExecuteWorkAgent runs the work agent for a specific task.
+func ExecuteWorkAgent(repoRoot, worktreePath string, task index.Task, cfg config.Config, auditor *audit.Logger, opts Options) (worker.IngestResult, error) {
+	stageInput := worker.StageInput{
+		RepoRoot:     repoRoot,
+		WorktreeRoot: worktreePath,
+		Task:         task,
+		Stage:        roles.StageWork,
+		Role:         task.Role,
+		Warn: func(msg string) {
+			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
+		},
+	}
+
+	stageResult, err := worker.StageEnvAndPrompts(stageInput)
+	if err != nil {
+		return worker.IngestResult{}, fmt.Errorf("stage work environment: %w", err)
+	}
+
+	execResult, err := worker.ExecuteWorkerFromConfigWithAudit(cfg, task, stageResult, worktreePath, func(msg string) {
+		fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
+	}, auditor, worktreePath)
+	if err != nil {
+		return worker.IngestResult{}, fmt.Errorf("execute work worker: %w", err)
+	}
+
+	ingestInput := worker.IngestInput{
+		TaskID:       task.ID,
+		WorktreePath: worktreePath,
+		Stage:        roles.StageWork,
+		ExecResult:   execResult,
+		Warn: func(msg string) {
+			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
+		},
+	}
+
+	ingestResult, err := worker.IngestWorkerResult(ingestInput)
+	if err != nil {
+		return worker.IngestResult{}, fmt.Errorf("ingest work result: %w", err)
+	}
+
+	return ingestResult, nil
+}
+
+// UpdateTaskStateFromWorkResult updates the task index based on work execution results.
+func UpdateTaskStateFromWorkResult(idx *index.Index, taskID string, workResult worker.IngestResult, auditor index.TransitionAuditor) error {
+	target := index.TaskStateBlocked
+	if workResult.Success {
+		target = workResult.NewState
+	}
+	if err := applyTaskStateTransition(idx, taskID, target, auditor); err != nil {
+		return fmt.Errorf("task %q: %w", taskID, err)
+	}
+	return nil
 }
 
 // ExecuteTestStage processes tasks in the worked state through the test stage.
-func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps scheduler.RoleCaps, transitionAuditor index.TransitionAuditor, workerAuditor *audit.Logger, opts Options) (TestStageResult, error) {
+func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps scheduler.RoleCaps, inFlight inflight.Set, worktreeOverrides map[string]string, transitionAuditor index.TransitionAuditor, workerAuditor *audit.Logger, opts Options) (TestStageResult, error) {
 	result := TestStageResult{}
+	if inFlight == nil {
+		inFlight = inflight.Set{}
+	}
 
-	selectedTasks, err := selectTasksForStage(*idx, caps, index.TaskStateWorked)
+	manager, err := worktree.NewManager(repoRoot)
+	if err != nil {
+		return result, fmt.Errorf("create worktree manager: %w", err)
+	}
+
+	for _, task := range idx.Tasks {
+		if task.State != index.TaskStateWorked || !inFlight.Contains(task.ID) {
+			continue
+		}
+		worktreePath, ok := worktreePathForTask(inFlight, task.ID)
+		if !ok {
+			worktreePath, err = resolveWorktreePath(manager, task, worktreeOverrides)
+			if err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to get worktree path for task %s: %v\n", task.ID, err)
+				continue
+			}
+		}
+
+		exitStatus, finished, err := worker.ReadExitStatus(worktreePath, task.ID, roles.StageTest)
+		if err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to read exit status for task %s: %v\n", task.ID, err)
+			continue
+		}
+		if !finished {
+			if startedAt, ok := startedAtForTask(inFlight, task.ID); ok && timedOut(startedAt, cfg.Timeouts.WorkerSeconds) {
+				failedResult := worker.IngestResult{
+					Success:     false,
+					NewState:    index.TaskStateBlocked,
+					BlockReason: formatTimeoutReason(cfg.Timeouts.WorkerSeconds),
+					TimedOut:    true,
+				}
+				if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
+					fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
+				}
+				if updateErr := UpdateTaskStateFromTestResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+					fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
+				} else {
+					result.TasksBlocked++
+					emitTaskTimeout(opts.Stdout, task.ID, string(task.Role), string(roles.StageTest), failedResult.BlockReason, cfg.Timeouts.WorkerSeconds)
+				}
+				if workerAuditor != nil {
+					if auditErr := workerAuditor.LogWorkerTimeout(task.ID, string(task.Role), cfg.Timeouts.WorkerSeconds, worktreePath); auditErr != nil {
+						fmt.Fprintf(opts.Stderr, "Warning: failed to log worker timeout for %s: %v\n", task.ID, auditErr)
+					}
+				}
+				if err := inFlight.Remove(task.ID); err == nil {
+					result.InFlightUpdated = true
+				}
+			}
+			continue
+		}
+
+		var ingestResult worker.IngestResult
+		if exitStatus.ExitCode != 0 {
+			ingestResult = worker.IngestResult{
+				Success:     false,
+				NewState:    index.TaskStateBlocked,
+				BlockReason: fmt.Sprintf("worker process exited with code %d", exitStatus.ExitCode),
+			}
+		} else {
+			completion, err := worker.CheckStageCompletion(worktreePath, roles.StageTest)
+			if err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to check test completion for task %s: %v\n", task.ID, err)
+				continue
+			}
+			ingestResult, err = worker.CompletionResultToIngest(task.ID, roles.StageTest, completion)
+			if err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to build test result for task %s: %v\n", task.ID, err)
+				continue
+			}
+		}
+
+		if err := UpdateTaskStateFromTestResult(idx, task.ID, ingestResult, transitionAuditor); err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, err)
+			continue
+		}
+		if !ingestResult.Success {
+			if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
+			}
+		}
+
+		if ingestResult.Success {
+			result.TasksTested++
+			emitTaskComplete(opts.Stdout, task.ID, string(task.Role), string(roles.StageTest))
+		} else if ingestResult.TimedOut {
+			result.TasksBlocked++
+			emitTaskTimeout(opts.Stdout, task.ID, string(task.Role), string(roles.StageTest), ingestResult.BlockReason, cfg.Timeouts.WorkerSeconds)
+		} else {
+			result.TasksBlocked++
+			emitTaskFailure(opts.Stdout, task.ID, string(task.Role), string(roles.StageTest), ingestResult.BlockReason)
+		}
+
+		if err := inFlight.Remove(task.ID); err == nil {
+			result.InFlightUpdated = true
+		}
+	}
+
+	adjustedCaps := adjustCapsForInFlight(caps, *idx, inFlight)
+	selectedTasks, err := selectTasksForStage(*idx, adjustedCaps, inFlight, index.TaskStateWorked)
 	if err != nil {
 		return result, fmt.Errorf("schedule test tasks: %w", err)
 	}
@@ -236,34 +703,39 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 		return result, nil
 	}
 
-	// Set up worktree manager
-	manager, err := worktree.NewManager(repoRoot)
-	if err != nil {
-		return result, fmt.Errorf("create worktree manager: %w", err)
-	}
-
-	// Process each worked task through test stage
 	for _, task := range selectedTasks {
-		result.TasksProcessed++
-
-		// Get the worktree path for the task
-		worktreePath, err := manager.WorktreePath(task.ID, task.Attempts.Total)
-		if err != nil {
-			fmt.Fprintf(opts.Stderr, "Warning: failed to get worktree path for task %s: %v\n", task.ID, err)
-			continue
+		worktreePath, ok := worktreePathForTask(inFlight, task.ID)
+		if !ok {
+			worktreePath, err = resolveWorktreePath(manager, task, worktreeOverrides)
+			if err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to get worktree path for task %s: %v\n", task.ID, err)
+				continue
+			}
 		}
 
 		emitTaskStart(opts.Stdout, task.ID, string(task.Role), string(roles.StageTest))
 
-		// Execute test agent for the task
-		testResult, err := ExecuteTestAgent(repoRoot, worktreePath, task, cfg, workerAuditor, opts)
+		stageInput := worker.StageInput{
+			RepoRoot:     repoRoot,
+			WorktreeRoot: worktreePath,
+			Task:         task,
+			Stage:        roles.StageTest,
+			Role:         task.Role,
+			Warn: func(msg string) {
+				fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
+			},
+		}
+
+		stageResult, err := worker.StageEnvAndPrompts(stageInput)
 		if err != nil {
-			fmt.Fprintf(opts.Stderr, "Warning: failed to execute test agent for task %s: %v\n", task.ID, err)
-			// Create a failed test result to update task state
+			fmt.Fprintf(opts.Stderr, "Warning: failed to stage test environment for task %s: %v\n", task.ID, err)
 			failedResult := worker.IngestResult{
 				Success:     false,
 				NewState:    index.TaskStateBlocked,
-				BlockReason: fmt.Sprintf("test agent execution failed: %v", err),
+				BlockReason: fmt.Sprintf("test agent staging failed: %v", err),
+			}
+			if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
 			}
 			if updateErr := UpdateTaskStateFromTestResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
@@ -274,23 +746,32 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 			continue
 		}
 
-		// Update task state based on test result
-		if err := UpdateTaskStateFromTestResult(idx, task.ID, testResult, transitionAuditor); err != nil {
-			fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, err)
+		dispatchResult, err := worker.DispatchWorkerFromConfig(cfg, task, stageResult, worktreePath, roles.StageTest, func(msg string) {
+			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
+		})
+		if err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to dispatch test agent for task %s: %v\n", task.ID, err)
+			failedResult := worker.IngestResult{
+				Success:     false,
+				NewState:    index.TaskStateBlocked,
+				BlockReason: fmt.Sprintf("test agent dispatch failed: %v", err),
+			}
+			if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
+			}
+			if updateErr := UpdateTaskStateFromTestResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
+			} else {
+				result.TasksBlocked++
+				emitTaskFailure(opts.Stdout, task.ID, string(task.Role), string(roles.StageTest), failedResult.BlockReason)
+			}
 			continue
 		}
 
-		if testResult.Success {
-			result.TasksTested++
-			emitTaskComplete(opts.Stdout, task.ID, string(task.Role), string(roles.StageTest))
-		} else {
-			result.TasksBlocked++
-			if testResult.TimedOut {
-				emitTaskTimeout(opts.Stdout, task.ID, string(task.Role), string(roles.StageTest), testResult.BlockReason, cfg.Timeouts.WorkerSeconds)
-			} else {
-				emitTaskFailure(opts.Stdout, task.ID, string(task.Role), string(roles.StageTest), testResult.BlockReason)
-			}
+		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath); err == nil {
+			result.InFlightUpdated = true
 		}
+		result.TasksDispatched++
 	}
 
 	return result, nil
@@ -356,73 +837,92 @@ func UpdateTaskStateFromTestResult(idx *index.Index, taskID string, testResult w
 
 // ReviewStageResult captures the outcome of review stage execution.
 type ReviewStageResult struct {
-	TasksProcessed int
-	TasksReviewed  int
-	TasksBlocked   int
+	TasksDispatched int
+	TasksReviewed   int
+	TasksBlocked    int
+	InFlightUpdated bool
 }
 
 // ExecuteReviewStage processes tasks in the tested state through the review stage.
-func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, caps scheduler.RoleCaps, transitionAuditor index.TransitionAuditor, workerAuditor *audit.Logger, opts Options) (ReviewStageResult, error) {
+func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, caps scheduler.RoleCaps, inFlight inflight.Set, worktreeOverrides map[string]string, transitionAuditor index.TransitionAuditor, workerAuditor *audit.Logger, opts Options) (ReviewStageResult, error) {
 	result := ReviewStageResult{}
-
-	selectedTasks, err := selectTasksForStage(*idx, caps, index.TaskStateTested)
-	if err != nil {
-		return result, fmt.Errorf("schedule review tasks: %w", err)
+	if inFlight == nil {
+		inFlight = inflight.Set{}
 	}
 
-	if len(selectedTasks) == 0 {
-		return result, nil
-	}
-
-	// Set up worktree manager
 	manager, err := worktree.NewManager(repoRoot)
 	if err != nil {
 		return result, fmt.Errorf("create worktree manager: %w", err)
 	}
 
-	// Process each tested task through review stage
-	for _, task := range selectedTasks {
-		result.TasksProcessed++
+	for _, task := range idx.Tasks {
+		if task.State != index.TaskStateTested || !inFlight.Contains(task.ID) {
+			continue
+		}
+		worktreePath, ok := worktreePathForTask(inFlight, task.ID)
+		if !ok {
+			worktreePath, err = resolveWorktreePath(manager, task, worktreeOverrides)
+			if err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to get worktree path for task %s: %v\n", task.ID, err)
+				continue
+			}
+		}
 
-		// Get the worktree path for the task
-		worktreePath, err := manager.WorktreePath(task.ID, task.Attempts.Total)
+		exitStatus, finished, err := worker.ReadExitStatus(worktreePath, task.ID, roles.StageReview)
 		if err != nil {
-			fmt.Fprintf(opts.Stderr, "Warning: failed to get worktree path for task %s: %v\n", task.ID, err)
+			fmt.Fprintf(opts.Stderr, "Warning: failed to read exit status for task %s: %v\n", task.ID, err)
+			continue
+		}
+		if !finished {
+			if startedAt, ok := startedAtForTask(inFlight, task.ID); ok && timedOut(startedAt, cfg.Timeouts.WorkerSeconds) {
+				failedResult := worker.IngestResult{
+					Success:     false,
+					NewState:    index.TaskStateOpen,
+					BlockReason: formatTimeoutReason(cfg.Timeouts.WorkerSeconds),
+					TimedOut:    true,
+				}
+				if err := UpdateTaskStateFromReviewResult(idx, task.ID, failedResult, transitionAuditor); err != nil {
+					fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, err)
+				} else {
+					result.TasksBlocked++
+					emitTaskTimeout(opts.Stdout, task.ID, string(task.Role), string(roles.StageReview), failedResult.BlockReason, cfg.Timeouts.WorkerSeconds)
+				}
+				if workerAuditor != nil {
+					if auditErr := workerAuditor.LogWorkerTimeout(task.ID, string(task.Role), cfg.Timeouts.WorkerSeconds, worktreePath); auditErr != nil {
+						fmt.Fprintf(opts.Stderr, "Warning: failed to log worker timeout for %s: %v\n", task.ID, auditErr)
+					}
+				}
+				if err := inFlight.Remove(task.ID); err == nil {
+					result.InFlightUpdated = true
+				}
+			}
 			continue
 		}
 
-		emitTaskStart(opts.Stdout, task.ID, string(task.Role), string(roles.StageReview))
-
-		// Execute review agent for the task
-		reviewResult, err := ExecuteReviewAgent(repoRoot, worktreePath, task, cfg, workerAuditor, opts)
-		if err != nil {
-			fmt.Fprintf(opts.Stderr, "Warning: failed to execute review agent for task %s: %v\n", task.ID, err)
-			// Create a failed review result to update task state
-			failedResult := worker.IngestResult{
+		var reviewResult worker.IngestResult
+		if exitStatus.ExitCode != 0 {
+			reviewResult = worker.IngestResult{
 				Success:     false,
-				NewState:    index.TaskStateBlocked,
-				BlockReason: fmt.Sprintf("review agent execution failed: %v", err),
+				NewState:    index.TaskStateOpen,
+				BlockReason: fmt.Sprintf("worker process exited with code %d", exitStatus.ExitCode),
 			}
-			if updateErr := UpdateTaskStateFromReviewResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
-				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
-			} else {
-				result.TasksBlocked++
-				emitTaskFailure(opts.Stdout, task.ID, string(task.Role), string(roles.StageReview), failedResult.BlockReason)
+		} else {
+			completion, err := worker.CheckStageCompletion(worktreePath, roles.StageReview)
+			if err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to check review completion for task %s: %v\n", task.ID, err)
+				continue
 			}
-			continue
-		}
-
-		// Update task state based on review result
-		if err := UpdateTaskStateFromReviewResult(idx, task.ID, reviewResult, transitionAuditor); err != nil {
-			fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, err)
-			continue
+			reviewResult, err = worker.CompletionResultToIngest(task.ID, roles.StageReview, completion)
+			if err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to build review result for task %s: %v\n", task.ID, err)
+				continue
+			}
 		}
 
 		if reviewResult.Success {
 			result.TasksReviewed++
 			emitTaskComplete(opts.Stdout, task.ID, string(task.Role), string(roles.StageReview))
 
-			// Execute merge flow after review success
 			emitTaskStart(opts.Stdout, task.ID, string(task.Role), mergeStageName)
 			mergeInput := MergeFlowInput{
 				RepoRoot:     repoRoot,
@@ -435,46 +935,122 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 			mergeResult, err := ExecuteReviewMergeFlow(mergeInput)
 			if err != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to execute merge flow for task %s: %v\n", task.ID, err)
-				// Create a failed merge result to update task state
+				// TODO(cmtonkinson): Consider routing non-conflict merge failures to conflict instead of blocked.
 				failedResult := worker.IngestResult{
 					Success:     false,
 					NewState:    index.TaskStateBlocked,
 					BlockReason: fmt.Sprintf("merge flow failed: %v", err),
 				}
-				if updateErr := UpdateTaskStateFromReviewResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+				if updateErr := applyTaskStateTransition(idx, task.ID, index.TaskStateBlocked, transitionAuditor); updateErr != nil {
 					fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
-					continue
+				} else {
+					result.TasksBlocked++
+					emitTaskFailure(opts.Stdout, task.ID, string(task.Role), mergeStageName, failedResult.BlockReason)
 				}
-				result.TasksBlocked++
-				emitTaskFailure(opts.Stdout, task.ID, string(task.Role), mergeStageName, failedResult.BlockReason)
+				if err := inFlight.Remove(task.ID); err == nil {
+					result.InFlightUpdated = true
+				}
 				continue
 			}
 
-			// Update task state based on merge result
-			finalResult := worker.IngestResult{
-				Success:     mergeResult.Success,
-				NewState:    mergeResult.NewState,
-				BlockReason: mergeResult.ConflictError,
-			}
-
-			if updateErr := UpdateTaskStateFromReviewResult(idx, task.ID, finalResult, transitionAuditor); updateErr != nil {
-				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
-				continue
+			if err := applyTaskStateTransition(idx, task.ID, mergeResult.NewState, transitionAuditor); err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, err)
 			}
 
 			if mergeResult.Success {
 				emitTaskComplete(opts.Stdout, task.ID, string(task.Role), mergeStageName)
 			} else {
+				result.TasksBlocked++
 				emitTaskFailure(opts.Stdout, task.ID, string(task.Role), mergeStageName, mergeResult.ConflictError)
 			}
 		} else {
-			result.TasksBlocked++
-			if reviewResult.TimedOut {
-				emitTaskTimeout(opts.Stdout, task.ID, string(task.Role), string(roles.StageReview), reviewResult.BlockReason, cfg.Timeouts.WorkerSeconds)
+			if err := UpdateTaskStateFromReviewResult(idx, task.ID, reviewResult, transitionAuditor); err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, err)
 			} else {
-				emitTaskFailure(opts.Stdout, task.ID, string(task.Role), string(roles.StageReview), reviewResult.BlockReason)
+				result.TasksBlocked++
+				if reviewResult.TimedOut {
+					emitTaskTimeout(opts.Stdout, task.ID, string(task.Role), string(roles.StageReview), reviewResult.BlockReason, cfg.Timeouts.WorkerSeconds)
+				} else {
+					emitTaskFailure(opts.Stdout, task.ID, string(task.Role), string(roles.StageReview), reviewResult.BlockReason)
+				}
 			}
 		}
+
+		if err := inFlight.Remove(task.ID); err == nil {
+			result.InFlightUpdated = true
+		}
+	}
+
+	adjustedCaps := adjustCapsForInFlight(caps, *idx, inFlight)
+	selectedTasks, err := selectTasksForStage(*idx, adjustedCaps, inFlight, index.TaskStateTested)
+	if err != nil {
+		return result, fmt.Errorf("schedule review tasks: %w", err)
+	}
+
+	if len(selectedTasks) == 0 {
+		return result, nil
+	}
+
+	for _, task := range selectedTasks {
+		worktreePath, err := resolveWorktreePath(manager, task, worktreeOverrides)
+		if err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to get worktree path for task %s: %v\n", task.ID, err)
+			continue
+		}
+
+		emitTaskStart(opts.Stdout, task.ID, string(task.Role), string(roles.StageReview))
+
+		stageInput := worker.StageInput{
+			RepoRoot:     repoRoot,
+			WorktreeRoot: worktreePath,
+			Task:         task,
+			Stage:        roles.StageReview,
+			Role:         task.Role,
+			Warn: func(msg string) {
+				fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
+			},
+		}
+
+		stageResult, err := worker.StageEnvAndPrompts(stageInput)
+		if err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to stage review environment for task %s: %v\n", task.ID, err)
+			failedResult := worker.IngestResult{
+				Success:     false,
+				NewState:    index.TaskStateOpen,
+				BlockReason: fmt.Sprintf("review agent staging failed: %v", err),
+			}
+			if updateErr := UpdateTaskStateFromReviewResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
+			} else {
+				result.TasksBlocked++
+				emitTaskFailure(opts.Stdout, task.ID, string(task.Role), string(roles.StageReview), failedResult.BlockReason)
+			}
+			continue
+		}
+
+		dispatchResult, err := worker.DispatchWorkerFromConfig(cfg, task, stageResult, worktreePath, roles.StageReview, func(msg string) {
+			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
+		})
+		if err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to dispatch review agent for task %s: %v\n", task.ID, err)
+			failedResult := worker.IngestResult{
+				Success:     false,
+				NewState:    index.TaskStateOpen,
+				BlockReason: fmt.Sprintf("review agent dispatch failed: %v", err),
+			}
+			if updateErr := UpdateTaskStateFromReviewResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
+			} else {
+				result.TasksBlocked++
+				emitTaskFailure(opts.Stdout, task.ID, string(task.Role), string(roles.StageReview), failedResult.BlockReason)
+			}
+			continue
+		}
+
+		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath); err == nil {
+			result.InFlightUpdated = true
+		}
+		result.TasksDispatched++
 	}
 
 	return result, nil
@@ -528,7 +1104,7 @@ func ExecuteReviewAgent(repoRoot, worktreePath string, task index.Task, cfg conf
 
 // UpdateTaskStateFromReviewResult updates the task index based on review execution results.
 func UpdateTaskStateFromReviewResult(idx *index.Index, taskID string, reviewResult worker.IngestResult, auditor index.TransitionAuditor) error {
-	target := index.TaskStateBlocked
+	target := index.TaskStateOpen
 	if reviewResult.Success {
 		target = reviewResult.NewState
 	}
@@ -540,16 +1116,116 @@ func UpdateTaskStateFromReviewResult(idx *index.Index, taskID string, reviewResu
 
 // ConflictResolutionStageResult captures the outcome of conflict resolution stage execution.
 type ConflictResolutionStageResult struct {
-	TasksProcessed int
-	TasksResolved  int
-	TasksBlocked   int
+	TasksDispatched int
+	TasksResolved   int
+	TasksBlocked    int
+	InFlightUpdated bool
 }
 
 // ExecuteConflictResolutionStage processes tasks in the conflict state by dispatching conflict resolution agents.
-func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg config.Config, caps scheduler.RoleCaps, transitionAuditor index.TransitionAuditor, workerAuditor *audit.Logger, opts Options) (ConflictResolutionStageResult, error) {
+func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg config.Config, caps scheduler.RoleCaps, inFlight inflight.Set, worktreeOverrides map[string]string, transitionAuditor index.TransitionAuditor, workerAuditor *audit.Logger, opts Options) (ConflictResolutionStageResult, error) {
 	result := ConflictResolutionStageResult{}
+	if inFlight == nil {
+		inFlight = inflight.Set{}
+	}
 
-	selectedTasks, err := selectTasksForStage(*idx, caps, index.TaskStateConflict)
+	manager, err := worktree.NewManager(repoRoot)
+	if err != nil {
+		return result, fmt.Errorf("create worktree manager: %w", err)
+	}
+
+	for _, task := range idx.Tasks {
+		if task.State != index.TaskStateConflict || !inFlight.Contains(task.ID) {
+			continue
+		}
+		worktreePath, err := resolveWorktreePath(manager, task, worktreeOverrides)
+		if err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to get worktree path for task %s: %v\n", task.ID, err)
+			continue
+		}
+
+		exitStatus, finished, err := worker.ReadExitStatus(worktreePath, task.ID, roles.StageResolve)
+		if err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to read exit status for task %s: %v\n", task.ID, err)
+			continue
+		}
+		if !finished {
+			if startedAt, ok := startedAtForTask(inFlight, task.ID); ok && timedOut(startedAt, cfg.Timeouts.WorkerSeconds) {
+				failedResult := worker.IngestResult{
+					Success:     false,
+					NewState:    index.TaskStateBlocked,
+					BlockReason: formatTimeoutReason(cfg.Timeouts.WorkerSeconds),
+					TimedOut:    true,
+				}
+				if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
+					fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
+				}
+				if updateErr := UpdateTaskStateFromConflictResolution(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+					fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
+				} else {
+					result.TasksBlocked++
+					emitTaskTimeout(opts.Stdout, task.ID, string(task.Role), string(roles.StageResolve), failedResult.BlockReason, cfg.Timeouts.WorkerSeconds)
+				}
+				if workerAuditor != nil {
+					if auditErr := workerAuditor.LogWorkerTimeout(task.ID, string(task.Role), cfg.Timeouts.WorkerSeconds, worktreePath); auditErr != nil {
+						fmt.Fprintf(opts.Stderr, "Warning: failed to log worker timeout for %s: %v\n", task.ID, auditErr)
+					}
+				}
+				if err := inFlight.Remove(task.ID); err == nil {
+					result.InFlightUpdated = true
+				}
+			}
+			continue
+		}
+
+		var ingestResult worker.IngestResult
+		if exitStatus.ExitCode != 0 {
+			ingestResult = worker.IngestResult{
+				Success:     false,
+				NewState:    index.TaskStateBlocked,
+				BlockReason: fmt.Sprintf("worker process exited with code %d", exitStatus.ExitCode),
+			}
+		} else {
+			completion, err := worker.CheckStageCompletion(worktreePath, roles.StageResolve)
+			if err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to check resolve completion for task %s: %v\n", task.ID, err)
+				continue
+			}
+			ingestResult, err = worker.CompletionResultToIngest(task.ID, roles.StageResolve, completion)
+			if err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to build resolve result for task %s: %v\n", task.ID, err)
+				continue
+			}
+		}
+
+		if err := UpdateTaskStateFromConflictResolution(idx, task.ID, ingestResult, transitionAuditor); err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, err)
+			continue
+		}
+		if !ingestResult.Success {
+			if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
+			}
+		}
+
+		if ingestResult.Success {
+			result.TasksResolved++
+			emitTaskComplete(opts.Stdout, task.ID, string(task.Role), string(roles.StageResolve))
+		} else if ingestResult.TimedOut {
+			result.TasksBlocked++
+			emitTaskTimeout(opts.Stdout, task.ID, string(task.Role), string(roles.StageResolve), ingestResult.BlockReason, cfg.Timeouts.WorkerSeconds)
+		} else {
+			result.TasksBlocked++
+			emitTaskFailure(opts.Stdout, task.ID, string(task.Role), string(roles.StageResolve), ingestResult.BlockReason)
+		}
+
+		if err := inFlight.Remove(task.ID); err == nil {
+			result.InFlightUpdated = true
+		}
+	}
+
+	adjustedCaps := adjustCapsForInFlight(caps, *idx, inFlight)
+	selectedTasks, err := selectTasksForStage(*idx, adjustedCaps, inFlight, index.TaskStateConflict)
 	if err != nil {
 		return result, fmt.Errorf("schedule conflict resolution tasks: %w", err)
 	}
@@ -558,32 +1234,23 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 		return result, nil
 	}
 
-	// Set up worktree manager
-	manager, err := worktree.NewManager(repoRoot)
-	if err != nil {
-		return result, fmt.Errorf("create worktree manager: %w", err)
-	}
-
-	// Process each conflict task through conflict resolution
 	for _, task := range selectedTasks {
-		result.TasksProcessed++
-
-		// Get the worktree path for the task
-		worktreePath, err := manager.WorktreePath(task.ID, task.Attempts.Total)
+		worktreePath, err := resolveWorktreePath(manager, task, worktreeOverrides)
 		if err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to get worktree path for task %s: %v\n", task.ID, err)
 			continue
 		}
 
-		// Execute conflict resolution agent for the task
-		resolutionResult, roleResult, err := ExecuteConflictResolutionAgent(repoRoot, worktreePath, task, cfg, *idx, workerAuditor, opts)
+		roleResult, err := SelectRoleForConflictResolution(repoRoot, task, cfg, *idx, workerAuditor, opts)
 		if err != nil {
-			fmt.Fprintf(opts.Stderr, "Warning: failed to execute conflict resolution agent for task %s: %v\n", task.ID, err)
-			// Create a failed resolution result to update task state
+			fmt.Fprintf(opts.Stderr, "Warning: failed to select conflict resolution role for task %s: %v\n", task.ID, err)
 			failedResult := worker.IngestResult{
 				Success:     false,
 				NewState:    index.TaskStateBlocked,
-				BlockReason: fmt.Sprintf("conflict resolution agent execution failed: %v", err),
+				BlockReason: fmt.Sprintf("conflict resolution role selection failed: %v", err),
+			}
+			if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
 			}
 			if updateErr := UpdateTaskStateFromConflictResolution(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
@@ -594,24 +1261,65 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 			continue
 		}
 
-		// Update task state based on resolution result
-		if err := UpdateTaskStateFromConflictResolution(idx, task.ID, resolutionResult, transitionAuditor); err != nil {
-			fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, err)
+		roleForLogs := resolveRoleForLogs(roleResult.Role, task.Role)
+		emitTaskStart(opts.Stdout, task.ID, roleForLogs, string(roles.StageResolve))
+
+		stageInput := worker.StageInput{
+			RepoRoot:     repoRoot,
+			WorktreeRoot: worktreePath,
+			Task:         task,
+			Stage:        roles.StageResolve,
+			Role:         roleResult.Role,
+			Warn: func(msg string) {
+				fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
+			},
+		}
+		stageResult, err := worker.StageEnvAndPrompts(stageInput)
+		if err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to stage resolve environment for task %s: %v\n", task.ID, err)
+			failedResult := worker.IngestResult{
+				Success:     false,
+				NewState:    index.TaskStateBlocked,
+				BlockReason: fmt.Sprintf("conflict resolution staging failed: %v", err),
+			}
+			if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
+			}
+			if updateErr := UpdateTaskStateFromConflictResolution(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
+			} else {
+				result.TasksBlocked++
+				emitTaskFailure(opts.Stdout, task.ID, roleForLogs, string(roles.StageResolve), failedResult.BlockReason)
+			}
 			continue
 		}
 
-		roleForLogs := resolveRoleForLogs(roleResult.Role, task.Role)
-		if resolutionResult.Success {
-			result.TasksResolved++
-			emitTaskComplete(opts.Stdout, task.ID, roleForLogs, string(roles.StageResolve))
-		} else {
-			result.TasksBlocked++
-			if resolutionResult.TimedOut {
-				emitTaskTimeout(opts.Stdout, task.ID, roleForLogs, string(roles.StageResolve), resolutionResult.BlockReason, cfg.Timeouts.WorkerSeconds)
-			} else {
-				emitTaskFailure(opts.Stdout, task.ID, roleForLogs, string(roles.StageResolve), resolutionResult.BlockReason)
+		dispatchResult, err := worker.DispatchWorkerFromConfig(cfg, task, stageResult, worktreePath, roles.StageResolve, func(msg string) {
+			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
+		})
+		if err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to dispatch conflict resolution agent for task %s: %v\n", task.ID, err)
+			failedResult := worker.IngestResult{
+				Success:     false,
+				NewState:    index.TaskStateBlocked,
+				BlockReason: fmt.Sprintf("conflict resolution dispatch failed: %v", err),
 			}
+			if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
+			}
+			if updateErr := UpdateTaskStateFromConflictResolution(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
+			} else {
+				result.TasksBlocked++
+				emitTaskFailure(opts.Stdout, task.ID, roleForLogs, string(roles.StageResolve), failedResult.BlockReason)
+			}
+			continue
 		}
+
+		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath); err == nil {
+			result.InFlightUpdated = true
+		}
+		result.TasksDispatched++
 	}
 
 	return result, nil
@@ -674,7 +1382,7 @@ func ExecuteConflictResolutionAgent(repoRoot, worktreePath string, task index.Ta
 
 // UpdateTaskStateFromConflictResolution updates the task index based on conflict resolution results.
 func UpdateTaskStateFromConflictResolution(idx *index.Index, taskID string, resolutionResult worker.IngestResult, auditor index.TransitionAuditor) error {
-	target := index.TaskStateConflict
+	target := index.TaskStateBlocked
 	if resolutionResult.Success {
 		target = resolutionResult.NewState
 	}
@@ -792,6 +1500,106 @@ func buildRoleInFlightCounts(idx index.Index) map[index.Role]int {
 	return counts
 }
 
+// resumeWorktreeMap builds a lookup of task id to preserved worktree paths.
+func resumeWorktreeMap(candidates []ResumeCandidate) map[string]string {
+	if len(candidates) == 0 {
+		return map[string]string{}
+	}
+	paths := make(map[string]string, len(candidates))
+	for _, candidate := range candidates {
+		if strings.TrimSpace(candidate.Task.ID) == "" || strings.TrimSpace(candidate.WorktreePath) == "" {
+			continue
+		}
+		paths[candidate.Task.ID] = candidate.WorktreePath
+	}
+	return paths
+}
+
+// mergeWorktreeOverrides combines multiple worktree override maps.
+func mergeWorktreeOverrides(primary map[string]string, secondary map[string]string) map[string]string {
+	merged := map[string]string{}
+	for key, value := range primary {
+		if strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" {
+			continue
+		}
+		merged[key] = value
+	}
+	for key, value := range secondary {
+		if strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" {
+			continue
+		}
+		merged[key] = value
+	}
+	return merged
+}
+
+// ensureWorkAttempt increments attempts for a task starting work and returns the current attempt.
+func ensureWorkAttempt(idx *index.Index, taskID string) (int, error) {
+	if idx == nil {
+		return 0, fmt.Errorf("index is nil")
+	}
+	task, err := findIndexTask(idx, taskID)
+	if err != nil {
+		return 0, err
+	}
+	if task.Attempts.Total <= 0 {
+		if err := index.IncrementTaskAttempt(idx, taskID); err != nil {
+			return 0, err
+		}
+	}
+	task, err = findIndexTask(idx, taskID)
+	if err != nil {
+		return 0, err
+	}
+	return task.Attempts.Total, nil
+}
+
+// resolveWorktreePath returns the worktree path for the task, honoring overrides.
+func resolveWorktreePath(manager worktree.Manager, task index.Task, overrides map[string]string) (string, error) {
+	if overrides != nil {
+		if path, ok := overrides[task.ID]; ok && strings.TrimSpace(path) != "" {
+			return path, nil
+		}
+	}
+	candidate, err := manager.WorktreePath(task.ID, task.Attempts.Total)
+	if err != nil {
+		return "", err
+	}
+	if exists, err := pathExists(candidate); err == nil && exists {
+		return candidate, nil
+	}
+	if task.Attempts.Total > 1 {
+		fallback, err := manager.WorktreePath(task.ID, 1)
+		if err != nil {
+			return "", err
+		}
+		if exists, err := pathExists(fallback); err == nil && exists {
+			return fallback, nil
+		}
+	}
+	return candidate, nil
+}
+
+// validateWorktreePath ensures the worktree path exists and is a directory.
+func validateWorktreePath(path string) error {
+	if strings.TrimSpace(path) == "" {
+		return fmt.Errorf("worktree path is required")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("stat worktree path %s: %w", path, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("worktree path %s is not a directory", path)
+	}
+	return nil
+}
+
+// taskBranchName returns the deterministic branch name for the task.
+func taskBranchName(taskID string) string {
+	return fmt.Sprintf("task-%s", taskID)
+}
+
 func isRoleInFlight(state index.TaskState) bool {
 	switch state {
 	case index.TaskStateWorked, index.TaskStateTested, index.TaskStateConflict, index.TaskStateResolved:
@@ -809,10 +1617,10 @@ type MergeStageResult struct {
 }
 
 // ExecuteMergeStage processes tasks in the resolved state through the merge flow.
-func ExecuteMergeStage(repoRoot string, idx *index.Index, cfg config.Config, caps scheduler.RoleCaps, transitionAuditor index.TransitionAuditor, workerAuditor *audit.Logger, opts Options) (MergeStageResult, error) {
+func ExecuteMergeStage(repoRoot string, idx *index.Index, cfg config.Config, caps scheduler.RoleCaps, worktreeOverrides map[string]string, transitionAuditor index.TransitionAuditor, workerAuditor *audit.Logger, opts Options) (MergeStageResult, error) {
 	result := MergeStageResult{}
 
-	selectedTasks, err := selectTasksForStage(*idx, caps, index.TaskStateResolved)
+	selectedTasks, err := selectTasksForStage(*idx, caps, nil, index.TaskStateResolved)
 	if err != nil {
 		return result, fmt.Errorf("schedule merge tasks: %w", err)
 	}
@@ -832,7 +1640,7 @@ func ExecuteMergeStage(repoRoot string, idx *index.Index, cfg config.Config, cap
 		result.TasksProcessed++
 
 		// Get the worktree path for the task
-		worktreePath, err := manager.WorktreePath(task.ID, task.Attempts.Total)
+		worktreePath, err := resolveWorktreePath(manager, task, worktreeOverrides)
 		if err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to get worktree path for task %s: %v\n", task.ID, err)
 			continue
@@ -890,11 +1698,11 @@ func ExecuteMergeStage(repoRoot string, idx *index.Index, cfg config.Config, cap
 	return result, nil
 }
 
-func selectTasksForStage(idx index.Index, caps scheduler.RoleCaps, states ...index.TaskState) ([]index.Task, error) {
+func selectTasksForStage(idx index.Index, caps scheduler.RoleCaps, inFlight inflight.Set, states ...index.TaskState) ([]index.Task, error) {
 	if len(states) == 0 {
 		return nil, nil
 	}
-	ordered, err := scheduler.OrderedEligibleTasks(idx, nil)
+	ordered, err := scheduler.OrderedEligibleTasks(idx, inFlightMap(inFlight))
 	if err != nil {
 		return nil, err
 	}

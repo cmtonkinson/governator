@@ -16,7 +16,7 @@ Governator experience to the deterministic, file-backed v2 pipeline.
   tasks=<n>` when finished. Planning drift is detected via digest checks and
   surfaces a `planning=drift` message that points operators back to
   `governator plan`.
-- The run command orchestrates tasks through the test → review →
+- The run command orchestrates tasks through the work → test → review →
   conflict-resolution → merge pathway, respects dependencies/concurrency caps,
   and logs every lifecycle transition as `task=<id> role=<role> stage=<stage>
   status=<event>` for easy parsing.

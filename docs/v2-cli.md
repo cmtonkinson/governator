@@ -98,7 +98,7 @@ files and restrict writes to `_governator/` so execution is auditable.
    - Detects resume candidates for tasks that were previously worked or tested,
      prepares their worktrees, increments attempt counters, and logs
      `Resuming task ...`.
-   - Orchestrates each stage in order: test → review → conflict resolution →
+   - Orchestrates each stage in order: work → test → review → conflict resolution →
      merge.
    - Ensures all open tasks have an accompanying branch via
      `EnsureBranchesForOpenTasks`.
