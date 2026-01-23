@@ -180,6 +180,20 @@ func (registry Registry) PromptFiles(role index.Role) []string {
 	return prompts
 }
 
+// CustomGlobalPromptPath returns the global prompt path when configured.
+func (registry Registry) CustomGlobalPromptPath() (string, bool) {
+	if registry.customGlobal == "" {
+		return "", false
+	}
+	return registry.customGlobal, true
+}
+
+// CustomRolePromptPath returns the custom prompt path for a role when available.
+func (registry Registry) CustomRolePromptPath(role index.Role) (string, bool) {
+	path, ok := registry.customRoles[role]
+	return path, ok
+}
+
 // repoRelativePath returns a repository-relative path using forward slashes.
 func repoRelativePath(root string, path string) string {
 	rel, err := filepath.Rel(root, path)

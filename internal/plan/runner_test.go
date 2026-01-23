@@ -7,121 +7,65 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
-
-	"github.com/cmtonkinson/governator/internal/planner"
 )
 
-const plannerOutputFixture = `{
-  "schema_version": 1,
-  "kind": "planner_output",
-  "architecture_baseline": {
-    "schema_version": 1,
-    "kind": "architecture_baseline",
-    "mode": "synthesis",
-    "summary": "Single CLI binary with a minimal planning pipeline.",
-    "sources": [
-      "_governator/architecture/context.md",
-      "GOVERNATOR.md"
-    ]
-  },
-  "roadmap": {
-    "schema_version": 1,
-    "kind": "roadmap_decomposition",
-    "depth_policy": "epic->task",
-    "width_policy": "1-3 days",
-    "items": [
-      {
-        "id": "epic-01",
-        "title": "Planner contract and parsing",
-        "type": "epic",
-        "order": 10
-      }
-    ]
-  },
-  "tasks": {
-    "schema_version": 1,
-    "kind": "task_generation",
-    "tasks": [
-      {
-        "id": "task-11",
-        "title": "Implement planner output parser",
-        "summary": "Parse planner JSON output into internal task models.",
-        "role": "engineer",
-        "dependencies": [],
-        "order": 20,
-        "overlap": [
-          "planner",
-          "index"
-        ],
-        "acceptance_criteria": [
-          "Parser handles all planner output fields."
-        ],
-        "tests": [
-          "Unit tests cover valid and invalid output."
-        ]
-      }
-    ]
-  }
-}`
-
-// TestRunHappyPath verifies plan executes bootstrap, planner, and emission.
-func TestRunHappyPath(t *testing.T) {
+// TestRunWritesAgentPrompts ensures plan writes prompt files for each agent.
+func TestRunWritesAgentPrompts(t *testing.T) {
 	repoRoot := t.TempDir()
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("GO_WANT_PLANNER_HELPER", "1")
 
 	if err := writeGovernatorDoc(repoRoot); err != nil {
 		t.Fatalf("write governator: %v", err)
 	}
+	if err := writePlanPrereqs(repoRoot, "high"); err != nil {
+		t.Fatalf("prepare plan prerequisites: %v", err)
+	}
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	options := Options{
-		RepoState:      planner.RepoState{IsGreenfield: false},
-		PlannerCommand: helperPlannerCommand(),
-		Stdout:         &stdout,
-		Stderr:         &stderr,
-	}
-
-	result, err := Run(repoRoot, options)
+	result, err := Run(repoRoot, Options{Stdout: &stdout, Stderr: &stderr, ReasoningEffort: "high"})
 	if err != nil {
 		t.Fatalf("run plan: %v", err)
 	}
+
 	if !result.BootstrapRan {
-		t.Fatal("expected bootstrap to run")
+		t.Fatalf("expected bootstrap to run")
 	}
-	if result.TaskCount != 1 {
-		t.Fatalf("expected 1 task, got %d", result.TaskCount)
+	if result.PromptDir != "_governator/_local_state/plan" {
+		t.Fatalf("unexpected prompt dir %q", result.PromptDir)
+	}
+	if len(result.Prompts) != len(agentSpecs) {
+		t.Fatalf("expected %d prompts, got %d", len(agentSpecs), len(result.Prompts))
 	}
 	if !strings.Contains(stdout.String(), "bootstrap ok") {
 		t.Fatalf("expected bootstrap ok output, got %q", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "plan ok tasks=1") {
-		t.Fatalf("expected plan summary output, got %q", stdout.String())
+	if !strings.Contains(stdout.String(), "plan ok prompts=") {
+		t.Fatalf("expected plan summary, got %q", stdout.String())
 	}
 
-	assertFileExists(t, filepath.Join(repoRoot, "_governator", "task-index.json"))
-	assertFileExists(t, filepath.Join(repoRoot, "_governator", "plan", "architecture-baseline.json"))
-	assertFileExists(t, filepath.Join(repoRoot, "_governator", "plan", "roadmap.json"))
-	assertFileExists(t, filepath.Join(repoRoot, "_governator", "plan", "tasks.json"))
-	assertFileExists(t, filepath.Join(repoRoot, "_governator", "tasks", "task-11-implement-planner-output-parser.md"))
-	assertFileExists(t, filepath.Join(repoRoot, filepath.FromSlash(result.PromptPath)))
+	for _, prompt := range result.Prompts {
+		path := filepath.Join(repoRoot, prompt.Path)
+		assertFileExists(t, path)
+		if prompt.Agent == "Architecture Baseline" {
+			assertFileContains(t, path, "Emit the Power Six architecture artifacts")
+		}
+		if prompt.Agent == "Gap Analysis" {
+			assertFileContains(t, path, "gap analysis agent")
+		}
+		assertFileContains(t, path, "## Worker contract")
+	}
 }
 
 // TestRunMissingGovernator ensures plan fails when GOVERNATOR.md is absent.
 func TestRunMissingGovernator(t *testing.T) {
 	repoRoot := t.TempDir()
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("GO_WANT_PLANNER_HELPER", "1")
 
-	options := Options{
-		RepoState:      planner.RepoState{IsGreenfield: false},
-		PlannerCommand: helperPlannerCommand(),
-	}
-
-	_, err := Run(repoRoot, options)
+	_, err := Run(repoRoot, Options{})
 	if err == nil {
 		t.Fatal("expected error for missing GOVERNATOR.md")
 	}
@@ -130,11 +74,10 @@ func TestRunMissingGovernator(t *testing.T) {
 	}
 }
 
-// TestRunBootstrapFailure ensures bootstrap errors are surfaced clearly.
+// TestRunBootstrapFailure ensures bootstrap errors surface when docs dir is unwritable.
 func TestRunBootstrapFailure(t *testing.T) {
 	repoRoot := t.TempDir()
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("GO_WANT_PLANNER_HELPER", "1")
 
 	if err := writeGovernatorDoc(repoRoot); err != nil {
 		t.Fatalf("write governator: %v", err)
@@ -147,12 +90,7 @@ func TestRunBootstrapFailure(t *testing.T) {
 		t.Fatalf("chmod docs: %v", err)
 	}
 
-	options := Options{
-		RepoState:      planner.RepoState{IsGreenfield: false},
-		PlannerCommand: helperPlannerCommand(),
-	}
-
-	_, err := Run(repoRoot, options)
+	_, err := Run(repoRoot, Options{})
 	if err == nil {
 		t.Fatal("expected bootstrap failure")
 	}
@@ -161,78 +99,92 @@ func TestRunBootstrapFailure(t *testing.T) {
 	}
 }
 
-// TestPlannerHelperProcess emits planner output for plan command tests.
-func TestPlannerHelperProcess(t *testing.T) {
-	if os.Getenv("GO_WANT_PLANNER_HELPER") != "1" {
-		return
-	}
-	promptPath, err := helperPromptPath()
+func assertFileContains(t *testing.T, path string, substring string) {
+	t.Helper()
+	data, err := os.ReadFile(path)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(2)
+		t.Fatalf("read %s: %v", path, err)
 	}
-	prompt, err := os.ReadFile(promptPath)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(2)
+	if !strings.Contains(string(data), substring) {
+		t.Fatalf("%s: missing %q", path, substring)
 	}
-	if err := validatePromptOrder(string(prompt)); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(2)
-	}
-	fmt.Fprintln(os.Stdout, plannerOutputFixture)
-	os.Exit(0)
-}
-
-// helperPromptPath extracts the prompt path from helper args.
-func helperPromptPath() (string, error) {
-	for i, arg := range os.Args {
-		if arg == "--" && i+1 < len(os.Args) {
-			return os.Args[i+1], nil
-		}
-	}
-	return "", errors.New("missing prompt path")
-}
-
-// helperPlannerCommand builds the helper planner command invocation.
-func helperPlannerCommand() []string {
-	return []string{os.Args[0], "-test.run=TestPlannerHelperProcess", "--", "{task_path}"}
-}
-
-// validatePromptOrder ensures planning sub-jobs are ordered serially.
-func validatePromptOrder(prompt string) error {
-	sequence := []string{
-		"## Planning sub-job: architecture-baseline",
-		"## Planning sub-job: gap-analysis",
-		"## Planning sub-job: roadmap",
-		"## Planning sub-job: tasks",
-		"Input JSON:",
-	}
-	last := -1
-	for _, token := range sequence {
-		next := strings.Index(prompt, token)
-		if next == -1 {
-			return fmt.Errorf("missing prompt section %q", token)
-		}
-		if next <= last {
-			return fmt.Errorf("prompt section %q out of order", token)
-		}
-		last = next
-	}
-	return nil
 }
 
 // writeGovernatorDoc creates a minimal GOVERNATOR.md file.
 func writeGovernatorDoc(repoRoot string) error {
 	path := filepath.Join(repoRoot, "GOVERNATOR.md")
-	content := "# Governator\n\nConstraints: none.\n"
+	content := "# Governator\n\nConstraints: alignment required.\n"
 	return os.WriteFile(path, []byte(content), 0o644)
 }
 
-// assertFileExists fails the test when the file is missing.
 func assertFileExists(t *testing.T, path string) {
 	t.Helper()
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("expected file %s: %v", path, err)
 	}
+}
+
+func writePlanPrereqs(repoRoot, reasoningEffort string) error {
+	if err := writeWorkerContract(repoRoot); err != nil {
+		return err
+	}
+	if err := writeReasoningEffort(repoRoot, reasoningEffort); err != nil {
+		return err
+	}
+	for _, role := range uniqueAgentRoles() {
+		if err := writeRolePrompt(repoRoot, role); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func writeWorkerContract(repoRoot string) error {
+	dir := filepath.Join(repoRoot, "_governator")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	path := filepath.Join(dir, "worker-contract.md")
+	content := "# Worker Contract\n\nPlease obey the worker contract rules.\n"
+	return os.WriteFile(path, []byte(content), 0o644)
+}
+
+func writeReasoningEffort(repoRoot, effort string) error {
+	if effort == "" {
+		return errors.New("reasoning effort is required")
+	}
+	dir := filepath.Join(repoRoot, "_governator", "reasoning")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	path := filepath.Join(dir, effort+".md")
+	content := fmt.Sprintf("# Reasoning effort\nGuidance for %s reasoning.\n", effort)
+	return os.WriteFile(path, []byte(content), 0o644)
+}
+
+func writeRolePrompt(repoRoot, role string) error {
+	dir := filepath.Join(repoRoot, "_governator", "roles")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	path := filepath.Join(dir, role+".md")
+	content := fmt.Sprintf("# Role: %s\nRole prompt content for %s.\n", role, role)
+	return os.WriteFile(path, []byte(content), 0o644)
+}
+
+func uniqueAgentRoles() []string {
+	set := map[string]struct{}{}
+	for _, spec := range agentSpecs {
+		role := string(spec.Role)
+		if role == "" {
+			continue
+		}
+		set[role] = struct{}{}
+	}
+	roles := make([]string, 0, len(set))
+	for role := range set {
+		roles = append(roles, role)
+	}
+	sort.Strings(roles)
+	return roles
 }

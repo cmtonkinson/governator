@@ -13,10 +13,10 @@ import (
 
 const (
 	governatorFileName = "GOVERNATOR.md"
-	planningDirName    = "_governator/plan"
+	docsDirName        = "_governator/docs"
 )
 
-// Compute builds digests for GOVERNATOR.md and planning artifacts under _governator/plan.
+// Compute builds digests for GOVERNATOR.md and planning artifacts under _governator/docs.
 func Compute(repoRoot string) (index.Digests, error) {
 	if repoRoot == "" {
 		return index.Digests{}, fmt.Errorf("repo root is required")
@@ -28,7 +28,7 @@ func Compute(repoRoot string) (index.Digests, error) {
 		return index.Digests{}, err
 	}
 
-	planningDocs, err := planningDocDigests(repoRoot)
+	planningDocs, err := docsDigests(repoRoot)
 	if err != nil {
 		return index.Digests{}, err
 	}
@@ -52,12 +52,12 @@ func digestFile(path string) (string, error) {
 	return fmt.Sprintf("sha256:%x", sum), nil
 }
 
-// planningDocDigests collects digests for all regular files under _governator/plan.
-func planningDocDigests(repoRoot string) (map[string]string, error) {
-	planRoot := filepath.Join(repoRoot, planningDirName)
+// docsDigests collects digests for all regular files under _governator/docs.
+func docsDigests(repoRoot string) (map[string]string, error) {
+	docsRoot := filepath.Join(repoRoot, docsDirName)
 	entries := map[string]string{}
 
-	err := filepath.WalkDir(planRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+	err := filepath.WalkDir(docsRoot, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -83,7 +83,7 @@ func planningDocDigests(repoRoot string) (map[string]string, error) {
 		if os.IsNotExist(err) {
 			return entries, nil
 		}
-		return nil, fmt.Errorf("walk planning docs %s: %w", planRoot, err)
+		return nil, fmt.Errorf("walk planning docs %s: %w", docsRoot, err)
 	}
 
 	return entries, nil

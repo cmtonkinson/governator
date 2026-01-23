@@ -12,15 +12,15 @@ import (
 
 func TestComputeDigests(t *testing.T) {
 	root := t.TempDir()
-	planDir := filepath.Join(root, "_governator", "plan")
-	if err := os.MkdirAll(planDir, 0o755); err != nil {
+	docsDir := filepath.Join(root, "_governator", "docs")
+	if err := os.MkdirAll(docsDir, 0o755); err != nil {
 		t.Fatalf("mkdir plan dir: %v", err)
 	}
 	governatorContent := "governator\n"
 	if err := os.WriteFile(filepath.Join(root, "GOVERNATOR.md"), []byte(governatorContent), 0o644); err != nil {
 		t.Fatalf("write GOV: %v", err)
 	}
-	planPath := filepath.Join(planDir, "roadmap.md")
+	planPath := filepath.Join(docsDir, "roadmap.md")
 	planContent := "plan\n"
 	if err := os.WriteFile(planPath, []byte(planContent), 0o644); err != nil {
 		t.Fatalf("write plan: %v", err)
@@ -34,7 +34,7 @@ func TestComputeDigests(t *testing.T) {
 	if got.GovernatorMD != "sha256:328961dd5885fa93c7c1f184d3489723f202e870088c9ae747f1454dc406176a" {
 		t.Fatalf("unexpected governator digest: %s", got.GovernatorMD)
 	}
-	relativePlan := filepath.ToSlash(filepath.Join("_governator", "plan", "roadmap.md"))
+	relativePlan := filepath.ToSlash(filepath.Join("_governator", "docs", "roadmap.md"))
 	if got.PlanningDocs[relativePlan] != digestForString(planContent) {
 		t.Fatalf("unexpected plan digest: %s", got.PlanningDocs[relativePlan])
 	}
@@ -91,14 +91,14 @@ func TestDetectDriftGoverningDocChange(t *testing.T) {
 }
 
 func writeRepoFixture(root string) error {
-	planDir := filepath.Join(root, "_governator", "plan")
-	if err := os.MkdirAll(planDir, 0o755); err != nil {
-		return fmt.Errorf("mkdir plan dir: %w", err)
+	docsDir := filepath.Join(root, "_governator", "docs")
+	if err := os.MkdirAll(docsDir, 0o755); err != nil {
+		return fmt.Errorf("mkdir docs dir: %w", err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "GOVERNATOR.md"), []byte("governator\n"), 0o644); err != nil {
 		return fmt.Errorf("write GOV: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(planDir, "roadmap.md"), []byte("plan\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(docsDir, "roadmap.md"), []byte("plan\n"), 0o644); err != nil {
 		return fmt.Errorf("write plan: %w", err)
 	}
 	return nil

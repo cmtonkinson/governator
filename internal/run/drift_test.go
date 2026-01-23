@@ -65,14 +65,14 @@ func TestCheckPlanningDriftDetectsChange(t *testing.T) {
 
 // writeRepoFixture creates minimal planning artifacts for drift checks.
 func writeRepoFixture(root string) error {
-	planDir := filepath.Join(root, "_governator", "plan")
-	if err := os.MkdirAll(planDir, 0o755); err != nil {
+	docsDir := filepath.Join(root, "_governator", "docs")
+	if err := os.MkdirAll(docsDir, 0o755); err != nil {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(root, "GOVERNATOR.md"), []byte("governator\n"), 0o644); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(planDir, "roadmap.md"), []byte("plan\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(docsDir, "roadmap.md"), []byte("plan\n"), 0o644); err != nil {
 		return err
 	}
 	return nil

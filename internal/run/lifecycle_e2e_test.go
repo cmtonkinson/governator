@@ -15,70 +15,14 @@ import (
 
 	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/index"
-	"github.com/cmtonkinson/governator/internal/plan"
 	"github.com/cmtonkinson/governator/internal/roles"
 	"github.com/cmtonkinson/governator/internal/testrepos"
 	"github.com/cmtonkinson/governator/internal/worktree"
 )
 
-const lifecyclePlannerOutput = `{
-  "schema_version": 1,
-  "kind": "planner_output",
-  "architecture_baseline": {
-    "schema_version": 1,
-    "kind": "architecture_baseline",
-    "mode": "synthesis",
-    "summary": "Lifecycle integration plan",
-    "sources": [
-      "GOVERNATOR.md"
-    ]
-  },
-  "roadmap": {
-    "schema_version": 1,
-    "kind": "roadmap_decomposition",
-    "depth_policy": "epic->task",
-    "width_policy": "1 day",
-    "items": [
-      {
-        "id": "epic-002",
-        "title": "Lifecycle coverage",
-        "type": "epic",
-        "order": 20
-      }
-    ]
-  },
-  "tasks": {
-    "schema_version": 1,
-    "kind": "task_generation",
-    "tasks": [
-      {
-        "id": "T-LIFE-001",
-        "title": "Lifecycle task",
-        "summary": "Walk the sequence from worked through reviewed to done.",
-        "role": "worker",
-        "dependencies": [],
-        "order": 10,
-        "overlap": [],
-        "acceptance_criteria": [
-          "Lifecycle states progress in order",
-          "Single worker role handles implementation"
-        ],
-        "tests": [
-          "Lifecycle integration scenario"
-        ]
-      }
-    ]
-  }
-}`
-
 const lifecycleTaskCount = 1
 
 func TestLifecycleEndToEndHappyPath(t *testing.T) {
-	if os.Getenv("GO_LIFECYCLE_PLANNER_HELPER") == "1" || os.Getenv("GO_LIFECYCLE_WORKER_HELPER") == "1" {
-		return
-	}
-
-	t.Setenv("GO_LIFECYCLE_PLANNER_HELPER", "1")
 	t.Setenv("GO_LIFECYCLE_WORKER_HELPER", "1")
 	t.Setenv("GO_LIFECYCLE_WORKER_MODE", "success")
 
@@ -86,22 +30,11 @@ func TestLifecycleEndToEndHappyPath(t *testing.T) {
 	repo := setupLifecycleRepo(t, workerCommand, 2)
 	repoRoot := repo.Root
 
-	plannerCommand := []string{os.Args[0], "-test.run=TestLifecyclePlannerHelper", "--", "{task_path}"}
-	var planStdout bytes.Buffer
-	var planStderr bytes.Buffer
-	planResult, err := plan.Run(repoRoot, plan.Options{
-		PlannerCommand: plannerCommand,
-		Stdout:         &planStdout,
-		Stderr:         &planStderr,
-	})
-	if err != nil {
-		t.Fatalf("plan.Run failed: %v, stdout=%q, stderr=%q", err, planStdout.String(), planStderr.String())
-	}
-	if planResult.TaskCount != lifecycleTaskCount {
-		t.Fatalf("plan returned %d tasks, want %d", planResult.TaskCount, lifecycleTaskCount)
-	}
+	taskPath := writeTestTaskFile(t, repoRoot, "T-LIFE-001", "Lifecycle integration task", "worker")
+	task := newTestTask("T-LIFE-001", "Lifecycle integration task", "worker", taskPath, 10)
+	writeTestTaskIndex(t, repoRoot, []index.Task{task})
 
-	repo.RunGit(t, "add", "_governator/task-index.json", "_governator/plan", "_governator/tasks")
+	repo.RunGit(t, "add", "_governator/task-index.json", filepath.Join("_governator", "tasks"))
 	repo.RunGit(t, "commit", "-m", "Add lifecycle plan outputs")
 
 	indexPath := filepath.Join(repoRoot, "_governator", "task-index.json")
@@ -175,11 +108,6 @@ func TestLifecycleEndToEndHappyPath(t *testing.T) {
 }
 
 func TestLifecycleEndToEndTimeoutResume(t *testing.T) {
-	if os.Getenv("GO_LIFECYCLE_PLANNER_HELPER") == "1" || os.Getenv("GO_LIFECYCLE_WORKER_HELPER") == "1" {
-		return
-	}
-
-	t.Setenv("GO_LIFECYCLE_PLANNER_HELPER", "1")
 	t.Setenv("GO_LIFECYCLE_WORKER_HELPER", "1")
 	t.Setenv("GO_LIFECYCLE_WORKER_MODE", "timeout")
 
@@ -187,12 +115,11 @@ func TestLifecycleEndToEndTimeoutResume(t *testing.T) {
 	repo := setupLifecycleRepo(t, workerCommand, 1)
 	repoRoot := repo.Root
 
-	plannerCommand := []string{os.Args[0], "-test.run=TestLifecyclePlannerHelper", "--", "{task_path}"}
-	if _, err := plan.Run(repoRoot, plan.Options{PlannerCommand: plannerCommand}); err != nil {
-		t.Fatalf("plan.Run failed: %v", err)
-	}
+	taskPath := writeTestTaskFile(t, repoRoot, "T-LIFE-001", "Lifecycle integration task", "worker")
+	task := newTestTask("T-LIFE-001", "Lifecycle integration task", "worker", taskPath, 10)
+	writeTestTaskIndex(t, repoRoot, []index.Task{task})
 
-	repo.RunGit(t, "add", "_governator/task-index.json", "_governator/plan", "_governator/tasks")
+	repo.RunGit(t, "add", "_governator/task-index.json", filepath.Join("_governator", "tasks"))
 	repo.RunGit(t, "commit", "-m", "Add lifecycle plan outputs")
 
 	indexPath := filepath.Join(repoRoot, "_governator", "task-index.json")
@@ -373,19 +300,6 @@ func lifecycleMarkerForStage(stage string) string {
 	default:
 		return ""
 	}
-}
-
-func TestLifecyclePlannerHelper(t *testing.T) {
-	if os.Getenv("GO_LIFECYCLE_PLANNER_HELPER") != "1" {
-		return
-	}
-	t.Helper()
-	if _, err := os.Stat(os.Args[len(os.Args)-1]); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(2)
-	}
-	fmt.Fprintln(os.Stdout, lifecyclePlannerOutput)
-	os.Exit(0)
 }
 
 func TestLifecycleWorkerHelper(t *testing.T) {

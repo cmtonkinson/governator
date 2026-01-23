@@ -28,7 +28,6 @@ var v2DirectoryStructure = []string{
 	repoLegacyConfigDir,
 	"_governator/docs",
 	"_governator/docs/adr",
-	"_governator/plan",
 	"_governator/roles",
 	"_governator/custom-prompts",
 	"_governator/prompts",

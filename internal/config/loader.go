@@ -172,6 +172,10 @@ func decodeConfig(raw map[string]any) Config {
 	branches := toConfigMap(raw["branches"])
 	cfg.Branches.Base = parseString(branches["base"])
 
+	reasoningEffort := toConfigMap(raw["reasoning_effort"])
+	cfg.ReasoningEffort.Default = parseString(reasoningEffort["default"])
+	cfg.ReasoningEffort.Roles = parseStringMap(reasoningEffort["roles"])
+
 	return cfg
 }
 
@@ -302,4 +306,19 @@ func parseString(value any) string {
 		return ""
 	}
 	return strings.TrimSpace(typed)
+}
+
+// parseStringMap reads a map of trimmed strings.
+func parseStringMap(value any) map[string]string {
+	raw, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+	result := make(map[string]string, len(raw))
+	for key, item := range raw {
+		if str, ok := item.(string); ok {
+			result[key] = strings.TrimSpace(str)
+		}
+	}
+	return result
 }

@@ -58,6 +58,10 @@ func Defaults() Config {
 		Branches: BranchConfig{
 			Base: defaultBranchBase,
 		},
+		ReasoningEffort: ReasoningEffortConfig{
+			Default: DefaultReasoningEffort,
+			Roles:   map[string]string{},
+		},
 	}
 }
 
@@ -118,6 +122,12 @@ func ApplyDefaults(cfg Config, warn func(string)) Config {
 		"branches.base",
 		warn,
 	)
+	if cfg.ReasoningEffort.Roles == nil {
+		cfg.ReasoningEffort.Roles = map[string]string{}
+	}
+	if strings.TrimSpace(cfg.ReasoningEffort.Default) == "" {
+		cfg.ReasoningEffort.Default = defaults.ReasoningEffort.Default
+	}
 	if cfg.Workers.Commands.Roles == nil {
 		cfg.Workers.Commands.Roles = map[string][]string{}
 	}

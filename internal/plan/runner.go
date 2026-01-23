@@ -2,73 +2,57 @@
 package plan
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"io"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
-
 	"github.com/cmtonkinson/governator/internal/bootstrap"
 	"github.com/cmtonkinson/governator/internal/config"
-	"github.com/cmtonkinson/governator/internal/planner"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
 )
 
 const (
 	localStateDirName   = "_governator/_local_state"
-	plannerStateDirName = "planner"
-	plannerPromptName   = "plan-request.md"
-	localStateDirMode   = 0o755
-	plannerPromptMode   = 0o644
+	plannerStateDirName = "plan"
+	plannerStateMode    = 0o755
 )
 
 // Options configures the plan command behavior.
 type Options struct {
-	RepoState       planner.RepoState
-	ConfigOverrides map[string]any
-	PlannerCommand  []string
-	MaxAttempts     *int
 	Stdout          io.Writer
 	Stderr          io.Writer
 	Warn            func(string)
+	ConfigOverrides map[string]any
+	ReasoningEffort string
 }
 
 // Result captures the plan command outputs.
 type Result struct {
 	BootstrapRan    bool
 	BootstrapResult bootstrap.Result
-	PlanResult      planner.PlanResult
-	TaskCount       int
-	PromptPath      string
+	PromptDir       string
+	Prompts         []PromptInfo
 }
 
-// Run executes the planning pipeline, emitting tasks and a task index.
+// PromptInfo describes a serialized agent prompt file emitted during planning.
+type PromptInfo struct {
+	Agent string
+	Path  string
+}
+
+// Run executes the planning preparation, ensuring the repo is bootstrapped and
+// laying out the prompts that each agent should consume.
 func Run(repoRoot string, options Options) (Result, error) {
 	if strings.TrimSpace(repoRoot) == "" {
-		return Result{}, errors.New("repo root is required")
+		return Result{}, fmt.Errorf("repo root is required")
 	}
+
 	stdout := resolveWriter(options.Stdout)
 	stderr := resolveWriter(options.Stderr)
 	warn := options.Warn
 	if warn == nil {
-		warn = func(message string) {
-			if message == "" {
-				return
-			}
-			fmt.Fprintf(stderr, "warning: %s\n", message)
-		}
-	}
-
-	cfg, err := config.Load(repoRoot, options.ConfigOverrides, warn)
-	if err != nil {
-		return Result{}, err
-	}
-
-	maxAttempts, err := resolveMaxAttempts(cfg, options.MaxAttempts)
-	if err != nil {
-		return Result{}, err
+		warn = resolveWarn(stderr)
 	}
 
 	ranBootstrap, bootstrapResult, err := ensureBootstrap(repoRoot)
@@ -79,45 +63,23 @@ func Run(repoRoot string, options Options) (Result, error) {
 		fmt.Fprintln(stdout, "bootstrap ok")
 	}
 
-	prompt, err := planner.AssemblePrompt(repoRoot, cfg, options.RepoState, warn)
+	cfg, err := config.Load(repoRoot, options.ConfigOverrides, warn)
+	if err != nil {
+		return Result{}, err
+	}
+	reasoningEffort := resolveReasoningEffort(options.ReasoningEffort)
+	prompts, promptDir, err := prepareAgentPrompts(repoRoot, warn, cfg, reasoningEffort)
 	if err != nil {
 		return Result{}, err
 	}
 
-	promptPath, err := writePrompt(repoRoot, prompt)
-	if err != nil {
-		return Result{}, err
-	}
-
-	command, err := resolvePlannerCommand(cfg, options.PlannerCommand)
-	if err != nil {
-		return Result{}, err
-	}
-
-	output, err := runPlannerCommand(command, promptPath, repoRoot)
-	if err != nil {
-		return Result{}, err
-	}
-
-	parsed, err := planner.ParsePlannerOutput(output)
-	if err != nil {
-		return Result{}, err
-	}
-
-	planResult, err := planner.EmitPlan(repoRoot, parsed, planner.PlanOptions{MaxAttempts: maxAttempts})
-	if err != nil {
-		return Result{}, err
-	}
-
-	taskCount := len(parsed.Tasks.Tasks)
-	fmt.Fprintf(stdout, "plan ok tasks=%d\n", taskCount)
+	fmt.Fprintf(stdout, "plan ok prompts=%d\n", len(prompts))
 
 	return Result{
 		BootstrapRan:    ranBootstrap,
 		BootstrapResult: bootstrapResult,
-		PlanResult:      planResult,
-		TaskCount:       taskCount,
-		PromptPath:      repoRelativePath(repoRoot, promptPath),
+		PromptDir:       repoRelativePath(repoRoot, promptDir),
+		Prompts:         prompts,
 	}, nil
 }
 
@@ -157,126 +119,14 @@ func requiredBootstrapMissing(repoRoot string) (bool, error) {
 	return false, nil
 }
 
-// resolvePlannerCommand selects the planner command template.
-func resolvePlannerCommand(cfg config.Config, override []string) ([]string, error) {
-	if len(override) > 0 {
-		if !containsTaskPathToken(override) {
-			return nil, errors.New("planner command missing {task_path} token")
+// resolveWarn returns a warning sink that writes to stderr.
+func resolveWarn(stderr io.Writer) func(string) {
+	return func(message string) {
+		if message == "" {
+			return
 		}
-		return cloneStrings(override), nil
+		fmt.Fprintf(stderr, "warning: %s\n", message)
 	}
-	if roleCommand, ok := cfg.Workers.Commands.Roles["planner"]; ok && len(roleCommand) > 0 {
-		return cloneStrings(roleCommand), nil
-	}
-	if len(cfg.Workers.Commands.Default) == 0 {
-		return nil, errors.New("planner command is required")
-	}
-	if !containsTaskPathToken(cfg.Workers.Commands.Default) {
-		return nil, errors.New("default worker command missing {task_path} token")
-	}
-	return cloneStrings(cfg.Workers.Commands.Default), nil
-}
-
-// runPlannerCommand executes the planner command with the prompt path.
-func runPlannerCommand(command []string, promptPath string, repoRoot string) ([]byte, error) {
-	if len(command) == 0 {
-		return nil, errors.New("planner command is required")
-	}
-	if strings.TrimSpace(promptPath) == "" {
-		return nil, errors.New("prompt path is required")
-	}
-
-	resolved, err := applyTaskPath(command, promptPath)
-	if err != nil {
-		return nil, err
-	}
-
-	cmd := exec.Command(resolved[0], resolved[1:]...)
-	cmd.Dir = repoRoot
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		message := strings.TrimSpace(stderr.String())
-		if message != "" {
-			return nil, fmt.Errorf("planner command failed: %w: %s", err, message)
-		}
-		return nil, fmt.Errorf("planner command failed: %w", err)
-	}
-
-	output := bytes.TrimSpace(stdout.Bytes())
-	if len(output) == 0 {
-		return nil, errors.New("planner command returned empty output")
-	}
-	return output, nil
-}
-
-// writePrompt writes the planner prompt to the local state directory.
-func writePrompt(repoRoot string, prompt string) (string, error) {
-	content := strings.TrimSpace(prompt)
-	if content == "" {
-		return "", errors.New("planner prompt is required")
-	}
-	dir := filepath.Join(repoRoot, localStateDirName, plannerStateDirName)
-	if err := os.MkdirAll(dir, localStateDirMode); err != nil {
-		return "", fmt.Errorf("create planner state dir %s: %w", dir, err)
-	}
-	path := filepath.Join(dir, plannerPromptName)
-	data := append([]byte(content), '\n')
-	if err := os.WriteFile(path, data, plannerPromptMode); err != nil {
-		return "", fmt.Errorf("write planner prompt %s: %w", path, err)
-	}
-	return path, nil
-}
-
-// resolveMaxAttempts picks the max attempts setting.
-func resolveMaxAttempts(cfg config.Config, override *int) (int, error) {
-	if override == nil {
-		return cfg.Retries.MaxAttempts, nil
-	}
-	if *override < 0 {
-		return 0, errors.New("max attempts must be zero or positive")
-	}
-	return *override, nil
-}
-
-// applyTaskPath replaces the task path token with the prompt path.
-func applyTaskPath(command []string, taskPath string) ([]string, error) {
-	updated := make([]string, len(command))
-	replaced := 0
-	for i, token := range command {
-		if strings.Contains(token, "{task_path}") {
-			replaced++
-		}
-		updated[i] = strings.ReplaceAll(token, "{task_path}", taskPath)
-	}
-	if replaced == 0 {
-		return nil, errors.New("planner command missing {task_path} token")
-	}
-	return updated, nil
-}
-
-// containsTaskPathToken reports whether the template includes {task_path}.
-func containsTaskPathToken(command []string) bool {
-	for _, token := range command {
-		if strings.Contains(token, "{task_path}") {
-			return true
-		}
-	}
-	return false
-}
-
-// cloneStrings copies a string slice to avoid shared references.
-func cloneStrings(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	clone := make([]string, len(values))
-	copy(clone, values)
-	return clone
 }
 
 // resolveWriter returns io.Discard when the writer is nil.
@@ -294,4 +144,8 @@ func repoRelativePath(root string, path string) string {
 		return filepath.ToSlash(path)
 	}
 	return filepath.ToSlash(rel)
+}
+
+func resolveReasoningEffort(level string) string {
+	return strings.TrimSpace(level)
 }

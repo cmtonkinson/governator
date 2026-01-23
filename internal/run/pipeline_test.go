@@ -15,90 +15,28 @@ import (
 
 	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/index"
-	"github.com/cmtonkinson/governator/internal/plan"
 	"github.com/cmtonkinson/governator/internal/roles"
 	"github.com/cmtonkinson/governator/internal/testrepos"
 	"github.com/cmtonkinson/governator/internal/worktree"
 )
 
-const pipelinePlannerOutput = `{
-  "schema_version": 1,
-  "kind": "planner_output",
-  "architecture_baseline": {
-    "schema_version": 1,
-    "kind": "architecture_baseline",
-    "mode": "synthesis",
-    "summary": "Pipeline integration plan",
-    "sources": [
-      "GOVERNATOR.md"
-    ]
-  },
-  "roadmap": {
-    "schema_version": 1,
-    "kind": "roadmap_decomposition",
-    "depth_policy": "epic->task",
-    "width_policy": "1-2 days",
-    "items": [
-      {
-        "id": "epic-001",
-        "title": "Pipeline integration epic",
-        "type": "epic",
-        "order": 10
-      }
-    ]
-  },
-  "tasks": {
-    "schema_version": 1,
-    "kind": "task_generation",
-    "tasks": [
-      {
-        "id": "T-PIPE-001",
-        "title": "Pipeline integration task",
-        "summary": "Verify the bootstrap, planning, and run stages work end-to-end.",
-        "role": "worker",
-        "dependencies": [],
-        "order": 10,
-        "overlap": [],
-        "acceptance_criteria": [
-          "Pipeline commands execute without errors"
-        ],
-        "tests": [
-          "Integration pipeline test"
-        ]
-      }
-    ]
-  }
-}`
-
 // TestPipelineIntegrationHappyPath covers a full bootstrap, plan, and run execution.
 func TestPipelineIntegrationHappyPath(t *testing.T) {
-	if os.Getenv("GO_PIPELINE_PLANNER_HELPER") == "1" || os.Getenv("GO_PIPELINE_WORKER_HELPER") == "1" {
+	if os.Getenv("GO_PIPELINE_WORKER_HELPER") == "1" {
 		return
 	}
 
-	t.Setenv("GO_PIPELINE_PLANNER_HELPER", "1")
 	t.Setenv("GO_PIPELINE_WORKER_HELPER", "1")
 
 	workerCommand := []string{os.Args[0], "-test.run=TestPipelineWorkerHelper", "--", "{task_path}"}
 	repo := setupPipelineRepo(t, workerCommand)
 	repoRoot := repo.Root
 
-	plannerCommand := []string{os.Args[0], "-test.run=TestPipelinePlannerHelper", "--", "{task_path}"}
-	var planStdout bytes.Buffer
-	var planStderr bytes.Buffer
-	planResult, err := plan.Run(repoRoot, plan.Options{
-		PlannerCommand: plannerCommand,
-		Stdout:         &planStdout,
-		Stderr:         &planStderr,
-	})
-	if err != nil {
-		t.Fatalf("plan.Run failed: %v, stdout=%q, stderr=%q", err, planStdout.String(), planStderr.String())
-	}
-	if planResult.TaskCount != 1 {
-		t.Fatalf("plan returned %d tasks, want 1", planResult.TaskCount)
-	}
+	taskPath := writeTestTaskFile(t, repoRoot, "T-PIPE-001", "Pipeline integration task", "worker")
+	task := newTestTask("T-PIPE-001", "Pipeline integration task", "worker", taskPath, 10)
+	writeTestTaskIndex(t, repoRoot, []index.Task{task})
 
-	repo.RunGit(t, "add", "_governator/task-index.json", "_governator/plan", "_governator/tasks")
+	repo.RunGit(t, "add", "_governator/task-index.json", filepath.Join("_governator", "tasks"))
 	repo.RunGit(t, "commit", "-m", "Add plan outputs")
 
 	indexPath := filepath.Join(repoRoot, "_governator", "task-index.json")
@@ -155,7 +93,7 @@ func TestPipelineIntegrationHappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload index: %v", err)
 	}
-	task := finalIdx.Tasks[0]
+	task = finalIdx.Tasks[0]
 	if task.State != index.TaskStateDone {
 		t.Fatalf("task state = %q, want %q", task.State, index.TaskStateDone)
 	}
@@ -166,33 +104,28 @@ func TestPipelineIntegrationHappyPath(t *testing.T) {
 
 // TestPipelineIntegrationDrift ensures run halts when planning artifacts drift.
 func TestPipelineIntegrationDrift(t *testing.T) {
-	if os.Getenv("GO_PIPELINE_PLANNER_HELPER") == "1" || os.Getenv("GO_PIPELINE_WORKER_HELPER") == "1" {
+	if os.Getenv("GO_PIPELINE_WORKER_HELPER") == "1" {
 		return
 	}
 
-	t.Setenv("GO_PIPELINE_PLANNER_HELPER", "1")
 	t.Setenv("GO_PIPELINE_WORKER_HELPER", "1")
 
 	workerCommand := []string{os.Args[0], "-test.run=TestPipelineWorkerHelper", "--", "{task_path}"}
 	repo := setupPipelineRepo(t, workerCommand)
 	repoRoot := repo.Root
 
-	plannerCommand := []string{os.Args[0], "-test.run=TestPipelinePlannerHelper", "--", "{task_path}"}
-	if _, err := plan.Run(repoRoot, plan.Options{PlannerCommand: plannerCommand}); err != nil {
-		t.Fatalf("plan.Run failed: %v", err)
-	}
+	taskPath := writeTestTaskFile(t, repoRoot, "T-PIPE-001", "Pipeline integration task", "worker")
+	task := newTestTask("T-PIPE-001", "Pipeline integration task", "worker", taskPath, 10)
+	writeTestTaskIndex(t, repoRoot, []index.Task{task})
 
-	roadmapPath := filepath.Join(repoRoot, "_governator", "plan", "roadmap.json")
-	data, err := os.ReadFile(roadmapPath)
-	if err != nil {
-		t.Fatalf("read roadmap: %v", err)
-	}
-	if err := os.WriteFile(roadmapPath, append(data, ' '), 0o644); err != nil {
-		t.Fatalf("corrupt roadmap: %v", err)
+	governatorPath := filepath.Join(repoRoot, "GOVERNATOR.md")
+	if err := os.WriteFile(governatorPath, []byte("# Pipeline fixture\n\nDrift\n"), 0o644); err != nil {
+		t.Fatalf("update %s: %v", governatorPath, err)
 	}
 
 	var runStdout bytes.Buffer
 	var runStderr bytes.Buffer
+	var err error
 	_, err = Run(repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr})
 	if err == nil {
 		t.Fatal("expected planning drift error")
@@ -210,19 +143,6 @@ func TestPipelineIntegrationDrift(t *testing.T) {
 }
 
 // TestPipelinePlannerHelper emits planner JSON for integration tests.
-func TestPipelinePlannerHelper(t *testing.T) {
-	if os.Getenv("GO_PIPELINE_PLANNER_HELPER") != "1" {
-		return
-	}
-	t.Helper()
-	if _, err := os.Stat(os.Args[len(os.Args)-1]); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(2)
-	}
-	fmt.Fprintln(os.Stdout, pipelinePlannerOutput)
-	os.Exit(0)
-}
-
 // TestPipelineWorkerHelper stages marker files for each worker stage.
 func TestPipelineWorkerHelper(t *testing.T) {
 	if os.Getenv("GO_PIPELINE_WORKER_HELPER") != "1" {

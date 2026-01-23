@@ -236,12 +236,12 @@ func TestRunPlanningDriftMessage(t *testing.T) {
 
 	repoRoot := setupTestRepoWithConfig(t)
 
-	planDir := filepath.Join(repoRoot, "_governator", "plan")
-	if err := os.MkdirAll(planDir, 0o755); err != nil {
-		t.Fatalf("create plan dir: %v", err)
+	docDir := filepath.Join(repoRoot, "_governator", "docs")
+	if err := os.MkdirAll(docDir, 0o755); err != nil {
+		t.Fatalf("create docs dir: %v", err)
 	}
 
-	planFile := filepath.Join(planDir, "roadmap.md")
+	planFile := filepath.Join(docDir, "roadmap.md")
 	if err := os.WriteFile(planFile, []byte("initial plan"), 0o644); err != nil {
 		t.Fatalf("write plan file: %v", err)
 	}
