@@ -143,7 +143,7 @@ build_binary() {
   (
     cd "$REPO_ROOT"
     env GOOS="$target_os" GOARCH=amd64 CGO_ENABLED=0 \
-      go build -trimpath -ldflags "$ldflags" -o "$out_path" ./cmd/governator
+      go build -trimpath -ldflags "$ldflags" -o "$out_path" ./ 
   )
 }
 
