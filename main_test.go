@@ -147,18 +147,19 @@ func TestInitCommand(t *testing.T) {
 
 	// Check that directories were created
 	expectedDirs := []string{
-		"_governator/_durable_state",
-		"_governator/_durable_state/config",
-		"_governator/_durable_state/migrations",
-		"_governator/config",
-		"_governator/docs",
+		"_governator/_durable-state",
+		"_governator/_durable-state/migrations",
+		"_governator/architecture",
+		"_governator/adr",
 		"_governator/plan",
-		"_governator/docs/adr",
+		"_governator/task",
 		"_governator/roles",
 		"_governator/custom-prompts",
 		"_governator/prompts",
-		"_governator/_local_state",
-		"_governator/_local_state/logs",
+		"_governator/templates",
+		"_governator/reasoning",
+		"_governator/_local-state",
+		"_governator/_local-state/logs",
 	}
 
 	for _, dir := range expectedDirs {
@@ -168,9 +169,19 @@ func TestInitCommand(t *testing.T) {
 	}
 
 	// Check that config file was created
-	configPath := filepath.Join("_governator", "_durable_state", "config", "config.json")
+	configPath := filepath.Join("_governator", "_durable-state", "config.json")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Error("Expected config.json was not created")
+	}
+
+	gitignorePath := filepath.Join("_governator", ".gitignore")
+	if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
+		t.Error("Expected _governator/.gitignore was not created")
+	}
+
+	customPromptPath := filepath.Join("_governator", "custom-prompts", "_global.md")
+	if _, err := os.Stat(customPromptPath); os.IsNotExist(err) {
+		t.Error("Expected custom prompt _global.md was not created")
 	}
 }
 

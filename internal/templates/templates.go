@@ -81,3 +81,8 @@ func sanitizeName(name string) (string, error) {
 	}
 	return cleaned, nil
 }
+
+// LocalFilename returns the flattened file name used under _governator/templates.
+func LocalFilename(name string) string {
+	return strings.ReplaceAll(name, "/", "-")
+}

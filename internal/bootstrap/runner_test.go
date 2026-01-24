@@ -98,7 +98,7 @@ func TestRunUsesLocalTemplateOverride(t *testing.T) {
 	root := t.TempDir()
 
 	override := "override template"
-	overridePath := filepath.Join(root, templatesDirName, "bootstrap", "asr.md")
+	overridePath := filepath.Join(root, templatesDirName, templates.LocalFilename("bootstrap/asr.md"))
 	writeFile(t, overridePath, override)
 
 	if _, err := Run(root, Options{}); err != nil {

@@ -13,7 +13,7 @@ import (
 
 const (
 	// localStateDirName is the relative path for transient governator state.
-	localStateDirName = "_governator/_local_state"
+	localStateDirName = "_governator/_local-state"
 	// worktreesDirName is the directory name that holds task worktrees.
 	worktreesDirName = "worktrees"
 	// worktreesDirMode defines permissions for the worktrees directory.

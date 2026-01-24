@@ -21,7 +21,7 @@ func TestWorktreePathDeterministic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WorktreePath attempt 1 error: %v", err)
 	}
-	wantFirst := filepath.Join(repoRoot, "_governator", "_local_state", "worktrees", "T-014")
+	wantFirst := filepath.Join(repoRoot, "_governator", "_local-state", "worktrees", "T-014")
 	if first != wantFirst {
 		t.Fatalf("WorktreePath attempt 1 = %q, want %q", first, wantFirst)
 	}
@@ -30,7 +30,7 @@ func TestWorktreePathDeterministic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WorktreePath attempt 2 error: %v", err)
 	}
-	wantSecond := filepath.Join(repoRoot, "_governator", "_local_state", "worktrees", "T-014-attempt-2")
+	wantSecond := filepath.Join(repoRoot, "_governator", "_local-state", "worktrees", "T-014-attempt-2")
 	if second != wantSecond {
 		t.Fatalf("WorktreePath attempt 2 = %q, want %q", second, wantSecond)
 	}
@@ -66,8 +66,8 @@ func TestEnsureWorktreeCreatesWorktree(t *testing.T) {
 	if current != branch {
 		t.Fatalf("worktree branch = %q, want %q", current, branch)
 	}
-	if result.RelativePath != "_governator/_local_state/worktrees/T-001" {
-		t.Fatalf("relative path = %q, want %q", result.RelativePath, "_governator/_local_state/worktrees/T-001")
+	if result.RelativePath != "_governator/_local-state/worktrees/T-001" {
+		t.Fatalf("relative path = %q, want %q", result.RelativePath, "_governator/_local-state/worktrees/T-001")
 	}
 }
 

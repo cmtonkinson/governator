@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	guardLocalStateDirName = "_governator/_local_state"
+	guardLocalStateDirName = "_governator/_local-state"
 	guardFileName          = "run.guard"
 	guardFileMode          = 0o644
 	guardDirMode           = 0o755

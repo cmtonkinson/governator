@@ -17,7 +17,7 @@ import (
 
 const (
 	// logsDirName is the relative path for worker execution logs.
-	logsDirName = "_governator/_local_state/logs"
+	logsDirName = "_governator/_local-state/logs"
 	// logFileMode is the file mode for log files.
 	logFileMode = 0o644
 	// logDirMode is the directory mode for log directories.

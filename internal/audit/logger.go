@@ -15,7 +15,7 @@ import (
 
 const (
 	// localStateDirName is the relative path for transient governator state.
-	localStateDirName = "_governator/_local_state"
+	localStateDirName = "_governator/_local-state"
 	// auditLogFileName is the filename used for audit logging.
 	auditLogFileName = "audit.log"
 	// auditLogFileMode defines the permissions for the audit log file.

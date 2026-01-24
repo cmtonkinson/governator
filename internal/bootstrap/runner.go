@@ -112,9 +112,18 @@ func loadTemplate(repoRoot string, name string) ([]byte, error) {
 		return nil, errors.New("template name is required")
 	}
 
-	localPath := filepath.Join(repoRoot, templatesDirName, filepath.FromSlash(name))
-	info, err := os.Stat(localPath)
-	if err == nil {
+	localPaths := []string{
+		filepath.Join(repoRoot, templatesDirName, templates.LocalFilename(name)),
+		filepath.Join(repoRoot, templatesDirName, filepath.FromSlash(name)),
+	}
+	for _, localPath := range localPaths {
+		info, err := os.Stat(localPath)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return nil, fmt.Errorf("stat local template %s: %w", localPath, err)
+		}
 		if info.IsDir() {
 			return nil, fmt.Errorf("template path is a directory: %s", localPath)
 		}
@@ -123,9 +132,6 @@ func loadTemplate(repoRoot string, name string) ([]byte, error) {
 			return nil, fmt.Errorf("read local template %s: %w", localPath, readErr)
 		}
 		return data, nil
-	}
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("stat local template %s: %w", localPath, err)
 	}
 
 	return templates.Read(name)

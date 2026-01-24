@@ -17,7 +17,7 @@ The new intent is to run four independent agents (baseline, gap, roadmap, taskin
 ## Decision
 
 - Remove the JSON planner contract entirely and stop emitting `_governator/plan/*.json` and the supporting schema validation/plan parsing logic for the arch/gap/roadmap/task agents. The planner now expects the agents to write Markdown artifacts and the CLI no longer tries to parse them.
-- Ensure the planning artifacts exist, digests for `_governator/docs/` are computed, and four Markdown prompts (`architecture-baseline.md`, `gap-analysis.md`, `roadmap.md`, `task-planning.md`) live under `_governator/_local_state/plan/`. Each prompt combines curated templates with `GOVERNATOR.md`, the current docs, and any existing `_governator/tasks` backlog so that the scheduled agents operate deterministically.
+- Ensure the planning artifacts exist, digests for `_governator/docs/` are computed, and four Markdown prompts (`architecture-baseline.md`, `gap-analysis.md`, `roadmap.md`, `task-planning.md`) live under `_governator/_local-state/plan/`. Each prompt combines curated templates with `GOVERNATOR.md`, the current docs, and any existing `_governator/tasks` backlog so that the scheduled agents operate deterministically.
 - Treat the plan phase as a manual sequence: each agent consumes the prompts referenced above, runs serially, and emits Markdown outputs (the Power Six baseline docs, a gap report, milestones/epics, and Markdown task files). Downstream automation or agents consume these artifacts directly instead of relying on parser-generated structs.
 
 ## Consequences

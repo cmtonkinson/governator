@@ -15,7 +15,7 @@ import (
 const (
 	userConfigDirName       = ".config"
 	userConfigFileName      = "config.json"
-	repoConfigDirName       = "_governator/_durable_state/config"
+	repoConfigDirName       = "_governator/_durable-state"
 	repoLegacyConfigDirName = "_governator/config"
 )
 

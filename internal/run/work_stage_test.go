@@ -113,7 +113,7 @@ func TestWorkStageWorkerHelper(t *testing.T) {
 	}
 	t.Helper()
 
-	markerPath := filepath.Join("_governator", "_local_state", "worked.md")
+	markerPath := filepath.Join("_governator", "_local-state", "worked.md")
 	if err := os.MkdirAll(filepath.Dir(markerPath), 0o755); err != nil {
 		t.Fatalf("create marker dir: %v", err)
 	}

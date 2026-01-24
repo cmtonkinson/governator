@@ -22,7 +22,7 @@ func TestIngestWorkerResultSuccess(t *testing.T) {
 	createCommit(t, workDir, "test commit")
 
 	// Create stage marker file
-	markerPath := filepath.Join(workDir, "_governator", "_local_state", "worked.md")
+	markerPath := filepath.Join(workDir, "_governator", "_local-state", "worked.md")
 	writeFile(t, markerPath, "Task completed successfully")
 
 	input := IngestInput{
@@ -66,7 +66,7 @@ func TestIngestWorkerResultMissingCommit(t *testing.T) {
 	setupGitRepo(t, workDir)
 
 	// Create stage marker file
-	markerPath := filepath.Join(workDir, "_governator", "_local_state", "worked.md")
+	markerPath := filepath.Join(workDir, "_governator", "_local-state", "worked.md")
 	writeFile(t, markerPath, "Task completed successfully")
 
 	var warnings []string
@@ -327,7 +327,7 @@ func TestIngestWorkerResultAllStages(t *testing.T) {
 			createCommit(t, workDir, "test commit")
 
 			// Create stage marker file
-			markerPath := filepath.Join(workDir, "_governator", "_local_state", s.markerFile)
+			markerPath := filepath.Join(workDir, "_governator", "_local-state", s.markerFile)
 			writeFile(t, markerPath, "Stage completed successfully")
 
 			input := IngestInput{

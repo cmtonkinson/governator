@@ -31,7 +31,7 @@ func TestLoggerWritesEntries(t *testing.T) {
 		return fixedTime
 	}
 
-	if err := logger.LogWorktreeCreate("T-014", "worker", "_governator/_local_state/worktrees/T-014", "gov/T-014"); err != nil {
+	if err := logger.LogWorktreeCreate("T-014", "worker", "_governator/_local-state/worktrees/T-014", "gov/T-014"); err != nil {
 		t.Fatalf("log worktree create: %v", err)
 	}
 	if err := logger.LogTaskTransition("T-014", "worker", "open", "worked"); err != nil {
@@ -50,7 +50,7 @@ func TestLoggerWritesEntries(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("expected 2 audit log lines, got %d", len(lines))
 	}
-	expectedFirst := "ts=2025-01-14T19:02:11Z task_id=T-014 role=worker event=worktree.create path=_governator/_local_state/worktrees/T-014 branch=gov/T-014"
+	expectedFirst := "ts=2025-01-14T19:02:11Z task_id=T-014 role=worker event=worktree.create path=_governator/_local-state/worktrees/T-014 branch=gov/T-014"
 	if lines[0] != expectedFirst {
 		t.Fatalf("expected first audit line %q, got %q", expectedFirst, lines[0])
 	}
@@ -135,7 +135,7 @@ func TestLogWorkerTimeout(t *testing.T) {
 		return fixedTime
 	}
 
-	if err := logger.LogWorkerTimeout("T-042", "worker", 300, "_governator/_local_state/worktrees/T-042"); err != nil {
+	if err := logger.LogWorkerTimeout("T-042", "worker", 300, "_governator/_local-state/worktrees/T-042"); err != nil {
 		t.Fatalf("log worker timeout: %v", err)
 	}
 
@@ -151,7 +151,7 @@ func TestLogWorkerTimeout(t *testing.T) {
 	if len(lines) != 1 {
 		t.Fatalf("expected 1 audit log line, got %d", len(lines))
 	}
-	expected := "ts=2025-01-14T20:15:30Z task_id=T-042 role=worker event=worker.timeout timeout_seconds=300 worktree_path=_governator/_local_state/worktrees/T-042"
+	expected := "ts=2025-01-14T20:15:30Z task_id=T-042 role=worker event=worker.timeout timeout_seconds=300 worktree_path=_governator/_local-state/worktrees/T-042"
 	if lines[0] != expected {
 		t.Fatalf("expected audit line %q, got %q", expected, lines[0])
 	}

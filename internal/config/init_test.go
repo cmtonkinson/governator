@@ -21,7 +21,7 @@ func TestInitRepoConfig(t *testing.T) {
 		}
 
 		// Verify config directory exists
-		configDir := filepath.Join(tempDir, repoConfigDir)
+		configDir := filepath.Join(tempDir, repoDurableStateDir)
 		if _, err := os.Stat(configDir); os.IsNotExist(err) {
 			t.Errorf("Config directory %s was not created", configDir)
 		}
@@ -58,7 +58,7 @@ func TestInitRepoConfig(t *testing.T) {
 		tempDir := t.TempDir()
 
 		// Create config directory and file with custom content
-		configDir := filepath.Join(tempDir, repoConfigDir)
+		configDir := filepath.Join(tempDir, repoDurableStateDir)
 		if err := os.MkdirAll(configDir, 0755); err != nil {
 			t.Fatalf("Failed to create config dir: %v", err)
 		}
@@ -107,14 +107,19 @@ func TestInitRepoConfig(t *testing.T) {
 		}
 
 		// Verify nested directory structure
-		configDir := filepath.Join(tempDir, "_governator")
-		if _, err := os.Stat(configDir); os.IsNotExist(err) {
+		governatorDir := filepath.Join(tempDir, "_governator")
+		if _, err := os.Stat(governatorDir); os.IsNotExist(err) {
 			t.Errorf("_governator directory was not created")
 		}
 
-		configSubDir := filepath.Join(tempDir, "_governator", "config")
-		if _, err := os.Stat(configSubDir); os.IsNotExist(err) {
-			t.Errorf("_governator/config directory was not created")
+		durableStateDir := filepath.Join(tempDir, repoDurableStateDir)
+		if _, err := os.Stat(durableStateDir); os.IsNotExist(err) {
+			t.Errorf("durable state directory %s was not created", repoDurableStateDir)
+		}
+
+		legacyConfigDir := filepath.Join(tempDir, "_governator", "config")
+		if _, err := os.Stat(legacyConfigDir); err == nil {
+			t.Errorf("legacy config dir %s should not be created", legacyConfigDir)
 		}
 	})
 }
@@ -152,22 +157,16 @@ func TestInitFullLayout(t *testing.T) {
 		}
 
 		// Verify config file was created
-		configPath := filepath.Join(tempDir, repoConfigDir, repoConfigFileName)
+		configPath := filepath.Join(tempDir, repoDurableStateDir, repoConfigFileName)
 		if _, err := os.Stat(configPath); os.IsNotExist(err) {
 			t.Errorf("Config file was not created")
 		}
 
 		// Verify .keep files were created
-		keepFiles := []string{
-			"_governator/docs/adr/.keep",
-			"_governator/_local_state/logs/.keep",
-			"_governator/_durable_state/migrations/.keep",
-		}
-
-		for _, keepFile := range keepFiles {
-			keepPath := filepath.Join(tempDir, keepFile)
+		for _, dir := range v2DirectoryStructure {
+			keepPath := filepath.Join(tempDir, dir, ".keep")
 			if _, err := os.Stat(keepPath); os.IsNotExist(err) {
-				t.Errorf(".keep file %s was not created", keepFile)
+				t.Errorf(".keep file for %s was not created", dir)
 			}
 		}
 	})
@@ -180,7 +179,7 @@ func TestInitFullLayout(t *testing.T) {
 		}
 
 		for _, name := range templates.Required() {
-			templatePath := filepath.Join(tempDir, templatesDirName, filepath.FromSlash(name))
+			templatePath := filepath.Join(tempDir, templatesDirName, templates.LocalFilename(name))
 			if _, err := os.Stat(templatePath); os.IsNotExist(err) {
 				t.Errorf("template %s was not copied", name)
 			}
@@ -216,7 +215,7 @@ func TestInitFullLayout(t *testing.T) {
 		tempDir := t.TempDir()
 
 		// Create some existing files
-		configDir := filepath.Join(tempDir, repoConfigDir)
+		configDir := filepath.Join(tempDir, repoDurableStateDir)
 		if err := os.MkdirAll(configDir, 0755); err != nil {
 			t.Fatalf("Failed to create config dir: %v", err)
 		}
@@ -227,7 +226,7 @@ func TestInitFullLayout(t *testing.T) {
 			t.Fatalf("Failed to write custom config: %v", err)
 		}
 
-		keepPath := filepath.Join(tempDir, "_governator", "docs", "adr", ".keep")
+		keepPath := filepath.Join(tempDir, "_governator", "architecture", ".keep")
 		if err := os.MkdirAll(filepath.Dir(keepPath), 0755); err != nil {
 			t.Fatalf("Failed to create adr dir: %v", err)
 		}

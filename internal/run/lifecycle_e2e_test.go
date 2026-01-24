@@ -239,7 +239,7 @@ func setupLifecycleRepo(t *testing.T, workerCommand []string, timeoutSeconds int
 	writeLifecycleConfig(t, repo.Root, workerCommand, timeoutSeconds)
 
 	repo.RunGit(t, "add", "GOVERNATOR.md")
-	repo.RunGit(t, "add", filepath.Join("_governator", "config", "config.json"))
+	repo.RunGit(t, "add", filepath.Join("_governator", "_durable-state", "config.json"))
 	repo.RunGit(t, "add", filepath.Join("_governator", "roles", "worker.md"))
 	repo.RunGit(t, "add", filepath.Join("_governator", "roles", "tester.md"))
 	repo.RunGit(t, "add", filepath.Join("_governator", "roles", "reviewer.md"))
@@ -288,7 +288,7 @@ func writeLifecycleConfig(t *testing.T, repoRoot string, workerCommand []string,
 	if err != nil {
 		t.Fatalf("marshal config: %v", err)
 	}
-	configPath := filepath.Join(repoRoot, "_governator", "config", "config.json")
+	configPath := filepath.Join(repoRoot, "_governator", "_durable-state", "config.json")
 	if err := os.WriteFile(configPath, append(data, '\n'), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -296,7 +296,7 @@ func writeLifecycleConfig(t *testing.T, repoRoot string, workerCommand []string,
 
 func assertAuditContains(t *testing.T, repoRoot, substring string) {
 	t.Helper()
-	auditPath := filepath.Join(repoRoot, "_governator", "_local_state", "audit.log")
+	auditPath := filepath.Join(repoRoot, "_governator", "_local-state", "audit.log")
 	data, err := os.ReadFile(auditPath)
 	if err != nil {
 		t.Fatalf("read audit log: %v", err)
@@ -337,7 +337,7 @@ func TestLifecycleWorkerHelper(t *testing.T) {
 		fmt.Fprintf(os.Stderr, "unsupported stage %q\n", stage)
 		os.Exit(2)
 	}
-	markerPath := filepath.Join("_governator", "_local_state", marker)
+	markerPath := filepath.Join("_governator", "_local-state", marker)
 	if err := os.MkdirAll(filepath.Dir(markerPath), 0o755); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)

@@ -92,11 +92,11 @@ func TestExecuteWorkerHappyPath(t *testing.T) {
 	}
 
 	// Check log file paths are repo-relative
-	if !strings.HasPrefix(result.StdoutPath, "_governator/_local_state/logs/") {
-		t.Fatalf("stdout path = %q, want _governator/_local_state/logs/ prefix", result.StdoutPath)
+	if !strings.HasPrefix(result.StdoutPath, "_governator/_local-state/logs/") {
+		t.Fatalf("stdout path = %q, want _governator/_local-state/logs/ prefix", result.StdoutPath)
 	}
-	if !strings.HasPrefix(result.StderrPath, "_governator/_local_state/logs/") {
-		t.Fatalf("stderr path = %q, want _governator/_local_state/logs/ prefix", result.StderrPath)
+	if !strings.HasPrefix(result.StderrPath, "_governator/_local-state/logs/") {
+		t.Fatalf("stderr path = %q, want _governator/_local-state/logs/ prefix", result.StderrPath)
 	}
 }
 
@@ -178,7 +178,7 @@ func TestExecuteWorkerTimeoutWithAuditLogging(t *testing.T) {
 		Warn:         warn,
 		AuditLogger:  mockAuditLogger,
 		Role:         "worker",
-		WorktreePath: "_governator/_local_state/worktrees/T-003",
+		WorktreePath: "_governator/_local-state/worktrees/T-003",
 	}
 
 	result, err := ExecuteWorker(input)
@@ -203,8 +203,8 @@ func TestExecuteWorkerTimeoutWithAuditLogging(t *testing.T) {
 	if call.timeoutSecs != 1 {
 		t.Fatalf("audit call timeout seconds = %d, want %d", call.timeoutSecs, 1)
 	}
-	if call.worktreePath != "_governator/_local_state/worktrees/T-003" {
-		t.Fatalf("audit call worktree path = %q, want %q", call.worktreePath, "_governator/_local_state/worktrees/T-003")
+	if call.worktreePath != "_governator/_local-state/worktrees/T-003" {
+		t.Fatalf("audit call worktree path = %q, want %q", call.worktreePath, "_governator/_local-state/worktrees/T-003")
 	}
 }
 
@@ -226,7 +226,7 @@ func TestExecuteWorkerTimeoutWithoutAuditLogger(t *testing.T) {
 		Warn:         warn,
 		AuditLogger:  nil, // No audit logger
 		Role:         "worker",
-		WorktreePath: "_governator/_local_state/worktrees/T-004",
+		WorktreePath: "_governator/_local-state/worktrees/T-004",
 	}
 
 	result, err := ExecuteWorker(input)
@@ -307,7 +307,7 @@ func TestExecuteWorkerNonTimeoutFailureNoTimeoutMessage(t *testing.T) {
 		Warn:         warn,
 		AuditLogger:  mockAuditLogger,
 		Role:         "worker",
-		WorktreePath: "_governator/_local_state/worktrees/T-006",
+		WorktreePath: "_governator/_local-state/worktrees/T-006",
 	}
 
 	result, err := ExecuteWorker(input)

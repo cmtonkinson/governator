@@ -15,7 +15,7 @@ import (
 
 const (
 	// localStateDirName is the relative path for transient governator state.
-	localStateDirName = "_governator/_local_state"
+	localStateDirName = "_governator/_local-state"
 	// workerStateDirName holds worker staging artifacts inside local state.
 	workerStateDirName = "worker"
 	workerContractPath = "_governator/worker-contract.md"

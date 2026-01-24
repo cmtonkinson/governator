@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	roleAssignmentStateDir   = "_governator/_local_state/role-assignment"
+	roleAssignmentStateDir   = "_governator/_local-state/role-assignment"
 	roleAssignmentPromptMode = 0o644
 )
 

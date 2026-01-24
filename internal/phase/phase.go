@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	durableStateDir = "_governator/_durable_state"
+	durableStateDir = "_governator/_durable-state"
 	phaseStateFile  = "phase-state.json"
 )
 

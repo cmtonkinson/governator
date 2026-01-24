@@ -290,7 +290,7 @@ func ensureCleanWorktree(worktreePath string) error {
 			continue
 		}
 		path := strings.TrimSpace(line[3:])
-		if strings.HasPrefix(path, "_governator/_local_state") {
+		if strings.HasPrefix(path, "_governator/_local-state") {
 			continue
 		}
 		return fmt.Errorf("worktree %s has uncommitted changes: %s", worktreePath, line)
@@ -310,7 +310,7 @@ func createMergeWorktree(repoRoot string, mainBranch string, taskID string) (str
 		return "", nil, fmt.Errorf("task id is required")
 	}
 
-	mergeDir := filepath.Join(repoRoot, "_governator", "_local_state", "merge-worktrees")
+	mergeDir := filepath.Join(repoRoot, "_governator", "_local-state", "merge-worktrees")
 	if err := os.MkdirAll(mergeDir, 0o755); err != nil {
 		return "", nil, fmt.Errorf("create merge worktree dir %s: %w", mergeDir, err)
 	}

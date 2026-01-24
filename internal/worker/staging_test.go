@@ -66,7 +66,7 @@ func TestStageEnvAndPromptsHappyPath(t *testing.T) {
 		t.Fatalf("read prompt file: %v", err)
 	}
 	prompt := string(promptBytes)
-	if !strings.Contains(prompt, "_governator/_local_state/worked.md") {
+	if !strings.Contains(prompt, "_governator/_local-state/worked.md") {
 		t.Fatalf("prompt missing worked marker requirement: %q", prompt)
 	}
 	first := strings.Index(prompt, wantList[0])

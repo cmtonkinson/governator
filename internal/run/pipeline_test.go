@@ -157,7 +157,7 @@ func TestPipelineWorkerHelper(t *testing.T) {
 		fmt.Fprintf(os.Stderr, "unsupported stage %q\n", stage)
 		os.Exit(2)
 	}
-	markerPath := filepath.Join("_governator", "_local_state", marker)
+	markerPath := filepath.Join("_governator", "_local-state", marker)
 	if err := os.MkdirAll(filepath.Dir(markerPath), 0o755); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
@@ -220,7 +220,7 @@ func writePipelineConfig(t *testing.T, repoRoot string, workerCommand []string) 
 	t.Helper()
 	cfg := config.Defaults()
 	cfg.Workers.Commands.Default = append([]string(nil), workerCommand...)
-	cfgPath := filepath.Join(repoRoot, "_governator", "config", "config.json")
+	cfgPath := filepath.Join(repoRoot, "_governator", "_durable-state", "config.json")
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		t.Fatalf("marshal config: %v", err)
@@ -286,14 +286,14 @@ func markerFileForStage(stage string) string {
 
 func commitWorktreeChange(t *testing.T, worktreePath, taskID string) error {
 	t.Helper()
-	markerPath := filepath.Join(worktreePath, "_governator", "_local_state", "worked.md")
+	markerPath := filepath.Join(worktreePath, "_governator", "_local-state", "worked.md")
 	if err := os.MkdirAll(filepath.Dir(markerPath), 0o755); err != nil {
 		return fmt.Errorf("mkdir marker dir: %w", err)
 	}
 	if err := os.WriteFile(markerPath, []byte("workstage marker\n"), 0o644); err != nil {
 		return fmt.Errorf("write worked marker: %w", err)
 	}
-	if _, err := execGitCommand(worktreePath, "add", "_governator/_local_state/worked.md"); err != nil {
+	if _, err := execGitCommand(worktreePath, "add", "_governator/_local-state/worked.md"); err != nil {
 		return err
 	}
 	if _, err := execGitCommand(worktreePath, "commit", "-m", fmt.Sprintf("Work for %s", taskID)); err != nil {

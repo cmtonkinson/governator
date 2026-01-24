@@ -14,7 +14,7 @@ import (
 
 const (
 	// localStateDirName is the relative path for transient governator state.
-	localStateDirName = "_governator/_local_state"
+	localStateDirName = "_governator/_local-state"
 	// runLockFileName is the filename used for run locking.
 	runLockFileName = "run.lock"
 	// runLockFileMode defines the permissions for the lock file.

@@ -13,29 +13,28 @@ import (
 )
 
 const (
-	repoDurableStateDir = "_governator/_durable_state"
-	repoConfigDir       = repoDurableStateDir + "/config"
-	repoLegacyConfigDir = "_governator/config"
+	repoDurableStateDir = "_governator/_durable-state"
 	repoConfigFileName  = "config.json"
 	templatesDirName    = "_governator/templates"
 )
 
-// v2DirectoryStructure defines the complete directory layout for Governator v2
+// v2DirectoryStructure defines the complete directory layout for Governator v2.
+// Each entry is created by gov init and should include a .keep file so Git persists the tree.
 var v2DirectoryStructure = []string{
+	"_governator",
 	repoDurableStateDir,
-	repoConfigDir,
-	repoDurableStateDir + "/migrations",
-	repoLegacyConfigDir,
-	"_governator/docs",
+	filepath.Join(repoDurableStateDir, "migrations"),
+	"_governator/architecture",
+	"_governator/adr",
 	"_governator/plan",
-	"_governator/docs/adr",
+	"_governator/task",
 	"_governator/roles",
 	"_governator/custom-prompts",
 	"_governator/prompts",
+	"_governator/templates",
 	"_governator/reasoning",
-	"_governator/_local_state",
-	"_governator/_local_state/logs",
-	templatesDirName,
+	filepath.Join("_governator", "_local-state"),
+	filepath.Join("_governator", "_local-state", "logs"),
 }
 
 // InitOptions configures init-time behaviors such as verbose logging.
@@ -62,12 +61,7 @@ func InitRepoConfig(repoRoot string, opts InitOptions) error {
 		return fmt.Errorf("repo root cannot be empty")
 	}
 
-	legacyDir := filepath.Join(repoRoot, repoLegacyConfigDir)
-	if err := ensureDir(legacyDir, opts); err != nil {
-		return fmt.Errorf("create legacy config dir %s: %w", legacyDir, err)
-	}
-
-	configDir := filepath.Join(repoRoot, repoConfigDir)
+	configDir := filepath.Join(repoRoot, repoDurableStateDir)
 	configPath := filepath.Join(configDir, repoConfigFileName)
 
 	// Create config directory if it doesn't exist
@@ -111,27 +105,16 @@ func InitFullLayout(repoRoot string, opts InitOptions) error {
 		if err := ensureDir(dirPath, opts); err != nil {
 			return fmt.Errorf("create directory %s: %w", dirPath, err)
 		}
+		keepPath := filepath.Join(dirPath, ".keep")
+		if err := ensureKeepFile(keepPath, opts); err != nil {
+			return fmt.Errorf("create .keep file %s: %w", keepPath, err)
+		}
 	}
 
 	// Initialize config file
 	if err := InitRepoConfig(repoRoot, opts); err != nil {
 		return fmt.Errorf("initialize config: %w", err)
 	}
-
-	// Create .keep files for empty directories that need to exist
-	keepDirs := []string{
-		"_governator/docs/adr",
-		"_governator/_local_state/logs",
-		repoDurableStateDir + "/migrations",
-	}
-
-	for _, dir := range keepDirs {
-		keepPath := filepath.Join(repoRoot, dir, ".keep")
-		if err := ensureKeepFile(keepPath, opts); err != nil {
-			return fmt.Errorf("create .keep file %s: %w", keepPath, err)
-		}
-	}
-
 	if err := ensureTemplates(repoRoot, opts); err != nil {
 		return fmt.Errorf("create templates: %w", err)
 	}
@@ -150,6 +133,14 @@ func InitFullLayout(repoRoot string, opts InitOptions) error {
 
 	if err := ensureReasoningPrompts(repoRoot, opts); err != nil {
 		return fmt.Errorf("create reasoning prompts: %w", err)
+	}
+
+	if err := ensureCustomPrompts(repoRoot, opts); err != nil {
+		return fmt.Errorf("create custom prompts: %w", err)
+	}
+
+	if err := ensureGitignore(repoRoot, opts); err != nil {
+		return fmt.Errorf("create gitignore: %w", err)
 	}
 
 	return nil
@@ -209,6 +200,44 @@ func ensureWorkerContract(repoRoot string, opts InitOptions) error {
 		return fmt.Errorf("write worker contract %s: %w", path, err)
 	}
 	opts.logf("created worker contract %s", repoRelativePath(repoRoot, path))
+	return nil
+}
+
+func ensureCustomPrompts(repoRoot string, opts InitOptions) error {
+	promptsDir := filepath.Join(repoRoot, "_governator", "custom-prompts")
+	if err := ensureDir(promptsDir, opts); err != nil {
+		return fmt.Errorf("create custom prompts directory %s: %w", promptsDir, err)
+	}
+	path := filepath.Join(promptsDir, "_global.md")
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("stat custom prompt %s: %w", path, err)
+	}
+	content := "# Global Custom Prompts\n\nUse this file to inject shared prompt fragments for reasoning or agent contracts.\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("write custom prompt %s: %w", path, err)
+	}
+	opts.logf("created custom prompt %s", repoRelativePath(repoRoot, path))
+	return nil
+}
+
+func ensureGitignore(repoRoot string, opts InitOptions) error {
+	gitignoreDir := filepath.Join(repoRoot, "_governator")
+	if err := ensureDir(gitignoreDir, opts); err != nil {
+		return fmt.Errorf("create governator dir %s: %w", gitignoreDir, err)
+	}
+	path := filepath.Join(gitignoreDir, ".gitignore")
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("stat gitignore %s: %w", path, err)
+	}
+	content := "_local-state/*\n!_local-state/.keep\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("write gitignore %s: %w", path, err)
+	}
+	opts.logf("created file %s", repoRelativePath(repoRoot, path))
 	return nil
 }
 
@@ -277,7 +306,7 @@ func ensureTemplates(repoRoot string, opts InitOptions) error {
 	}
 
 	for _, name := range templates.Required() {
-		localPath := filepath.Join(templatesDir, filepath.FromSlash(name))
+		localPath := filepath.Join(templatesDir, templates.LocalFilename(name))
 		exists, err := pathExists(localPath)
 		if err != nil {
 			return fmt.Errorf("check template %s: %w", name, err)
@@ -285,12 +314,6 @@ func ensureTemplates(repoRoot string, opts InitOptions) error {
 		if exists {
 			continue
 		}
-
-		dir := filepath.Dir(localPath)
-		if err := ensureDir(dir, opts); err != nil {
-			return fmt.Errorf("create template directory %s: %w", dir, err)
-		}
-
 		data, err := templates.Read(name)
 		if err != nil {
 			return fmt.Errorf("read embedded template %s: %w", name, err)
