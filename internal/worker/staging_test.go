@@ -2,6 +2,7 @@
 package worker
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -81,6 +82,54 @@ func TestStageEnvAndPromptsHappyPath(t *testing.T) {
 	}
 	if _, err := os.Stat(result.EnvPath); err != nil {
 		t.Fatalf("env file missing: %v", err)
+	}
+}
+
+// TestStageEnvAndPromptsUsesRepoRoot ensures templates are loaded from the repository root even when
+// the worktree lacks the required directories.
+func TestStageEnvAndPromptsUsesRepoRoot(t *testing.T) {
+	t.Parallel()
+	repoRoot := t.TempDir()
+	writeFile(t, filepath.Join(repoRoot, "_governator", "roles", "worker.md"), "role prompt")
+	writeFile(t, filepath.Join(repoRoot, "_governator", "worker-contract.md"), "worker contract")
+	writeFile(t, filepath.Join(repoRoot, "_governator", "reasoning", "low.md"), "reasoning prompt")
+	writeFile(t, filepath.Join(repoRoot, "_governator", "custom-prompts", "_global.md"), "global prompt")
+	writeFile(t, filepath.Join(repoRoot, "_governator", "tasks", "T-005.md"), "task content")
+
+	worktreeRoot := filepath.Join(repoRoot, "worktree")
+	if err := os.MkdirAll(worktreeRoot, 0o755); err != nil {
+		t.Fatalf("mkdir worktree: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(worktreeRoot, "_governator", "roles")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected no roles directory in worktree before staging")
+	}
+
+	task := index.Task{
+		ID:   "T-005",
+		Path: "_governator/tasks/T-005.md",
+		Role: "worker",
+	}
+	result, err := StageEnvAndPrompts(StageInput{
+		RepoRoot:        repoRoot,
+		WorktreeRoot:    worktreeRoot,
+		Task:            task,
+		Stage:           roles.StageWork,
+		ReasoningEffort: "low",
+		WorkerStateDir:  workerStateDirPath(worktreeRoot),
+	})
+	if err != nil {
+		t.Fatalf("stage env and prompts: %v", err)
+	}
+	promptBytes, err := os.ReadFile(result.PromptPath)
+	if err != nil {
+		t.Fatalf("read prompt file: %v", err)
+	}
+	prompt := string(promptBytes)
+	if !strings.Contains(prompt, "role prompt") {
+		t.Fatalf("prompt missing role content: %q", prompt)
+	}
+	if !strings.Contains(prompt, "global prompt") {
+		t.Fatalf("prompt missing global content: %q", prompt)
 	}
 }
 

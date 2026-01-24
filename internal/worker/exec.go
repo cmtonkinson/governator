@@ -16,8 +16,6 @@ import (
 )
 
 const (
-	// logsDirName is the relative path for worker execution logs.
-	logsDirName = "_governator/_local-state/logs"
 	// logFileMode is the file mode for log files.
 	logFileMode = 0o644
 	// logDirMode is the directory mode for log directories.
@@ -31,15 +29,16 @@ type AuditLogger interface {
 
 // ExecInput defines the inputs required for worker process execution.
 type ExecInput struct {
-	Command      []string
-	WorkDir      string
-	TaskID       string
-	TimeoutSecs  int
-	EnvVars      map[string]string
-	Warn         func(string)
-	AuditLogger  AuditLogger
-	Role         string
-	WorktreePath string
+	Command        []string
+	WorkDir        string
+	TaskID         string
+	TimeoutSecs    int
+	EnvVars        map[string]string
+	Warn           func(string)
+	AuditLogger    AuditLogger
+	Role           string
+	WorktreePath   string
+	WorkerStateDir string
 }
 
 // ExecResult captures the worker process execution results.
@@ -54,6 +53,8 @@ type ExecResult struct {
 
 // workerLogFiles groups log paths and file handles for a worker execution.
 type workerLogFiles struct {
+	dir        string
+	timestamp  string
 	stdoutPath string
 	stderrPath string
 	stdoutFile *os.File
@@ -74,8 +75,11 @@ func ExecuteWorker(input ExecInput) (ExecResult, error) {
 	if input.TimeoutSecs <= 0 {
 		return ExecResult{}, errors.New("timeout seconds must be positive")
 	}
+	if strings.TrimSpace(input.WorkerStateDir) == "" {
+		return ExecResult{}, errors.New("worker state dir is required")
+	}
 
-	logFiles, err := createWorkerLogFiles(input.WorkDir, input.TaskID)
+	logFiles, err := createWorkerLogFiles(input.WorkDir, input.WorkerStateDir, input.TaskID)
 	if err != nil {
 		return ExecResult{}, err
 	}
@@ -102,7 +106,16 @@ func ExecuteWorker(input ExecInput) (ExecResult, error) {
 
 	// Execute the command
 	start := time.Now()
-	err = cmd.Run()
+	if err = cmd.Start(); err != nil {
+		return ExecResult{}, fmt.Errorf("start worker process: %w", err)
+	}
+	pid := cmd.Process.Pid
+	if err := logFiles.renameWithPID(pid); err != nil {
+		return ExecResult{}, fmt.Errorf("rename log files: %w", err)
+	}
+	if err = cmd.Wait(); err != nil {
+		// keep err for downstream handling
+	}
 	duration := time.Since(start)
 
 	// Determine result
@@ -156,15 +169,16 @@ func ExecuteWorkerFromConfigWithAudit(cfg config.Config, task index.Task, stageR
 	}
 
 	input := ExecInput{
-		Command:      command,
-		WorkDir:      workDir,
-		TaskID:       task.ID,
-		TimeoutSecs:  cfg.Timeouts.WorkerSeconds,
-		EnvVars:      stageResult.Env,
-		Warn:         warn,
-		AuditLogger:  auditLogger,
-		Role:         string(task.Role),
-		WorktreePath: worktreePath,
+		Command:        command,
+		WorkDir:        workDir,
+		TaskID:         task.ID,
+		TimeoutSecs:    cfg.Timeouts.WorkerSeconds,
+		EnvVars:        stageResult.Env,
+		Warn:           warn,
+		AuditLogger:    auditLogger,
+		Role:           string(task.Role),
+		WorktreePath:   worktreePath,
+		WorkerStateDir: stageResult.WorkerStateDir,
 	}
 
 	return ExecuteWorker(input)
@@ -179,15 +193,17 @@ func emitWarning(warn func(string), message string) {
 }
 
 // createWorkerLogFiles creates stdout/stderr log files for worker execution.
-func createWorkerLogFiles(workDir string, taskID string) (workerLogFiles, error) {
-	logsDir := filepath.Join(workDir, logsDirName)
-	if err := os.MkdirAll(logsDir, logDirMode); err != nil {
-		return workerLogFiles{}, fmt.Errorf("create logs directory %s: %w", logsDir, err)
+func createWorkerLogFiles(workDir string, workerStateDir string, taskID string) (workerLogFiles, error) {
+	if strings.TrimSpace(workerStateDir) == "" {
+		return workerLogFiles{}, errors.New("worker state dir is required")
+	}
+	if err := os.MkdirAll(workerStateDir, logDirMode); err != nil {
+		return workerLogFiles{}, fmt.Errorf("create worker state dir %s: %w", workerStateDir, err)
 	}
 
 	timestamp := time.Now().Format("20060102-150405")
-	stdoutPath := filepath.Join(logsDir, fmt.Sprintf("%s-%s-stdout.log", taskID, timestamp))
-	stderrPath := filepath.Join(logsDir, fmt.Sprintf("%s-%s-stderr.log", taskID, timestamp))
+	stdoutPath := filepath.Join(workerStateDir, fmt.Sprintf("%s-stdout.log", timestamp))
+	stderrPath := filepath.Join(workerStateDir, fmt.Sprintf("%s-stderr.log", timestamp))
 
 	stdoutFile, err := os.Create(stdoutPath)
 	if err != nil {
@@ -201,9 +217,29 @@ func createWorkerLogFiles(workDir string, taskID string) (workerLogFiles, error)
 	}
 
 	return workerLogFiles{
+		dir:        workerStateDir,
+		timestamp:  timestamp,
 		stdoutPath: stdoutPath,
 		stderrPath: stderrPath,
 		stdoutFile: stdoutFile,
 		stderrFile: stderrFile,
 	}, nil
+}
+
+func (logs *workerLogFiles) renameWithPID(pid int) error {
+	if pid <= 0 {
+		return errors.New("pid is required")
+	}
+	stdoutNew := filepath.Join(logs.dir, fmt.Sprintf("%s-%d-stdout.log", logs.timestamp, pid))
+	stderrNew := filepath.Join(logs.dir, fmt.Sprintf("%s-%d-stderr.log", logs.timestamp, pid))
+	if err := os.Rename(logs.stdoutPath, stdoutNew); err != nil {
+		return fmt.Errorf("rename stdout log %s -> %s: %w", logs.stdoutPath, stdoutNew, err)
+	}
+	if err := os.Rename(logs.stderrPath, stderrNew); err != nil {
+		_ = os.Rename(stdoutNew, logs.stdoutPath)
+		return fmt.Errorf("rename stderr log %s -> %s: %w", logs.stderrPath, stderrNew, err)
+	}
+	logs.stdoutPath = stdoutNew
+	logs.stderrPath = stderrNew
+	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -35,7 +36,7 @@ func waitForExitStatus(t *testing.T, worktreePath string, taskID string, stage r
 
 func findExitStatusPath(worktreePath, taskID string, stage roles.Stage) (string, error) {
 	localState := filepath.Join(worktreePath, "_governator", "_local-state")
-	fileName := fmt.Sprintf("exit-%s-%s.json", stage, taskID)
+	const fileName = "exit.json"
 	entries, err := os.ReadDir(localState)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -45,6 +46,9 @@ func findExitStatusPath(worktreePath, taskID string, stage roles.Stage) (string,
 	}
 	for _, entry := range entries {
 		if !entry.IsDir() {
+			continue
+		}
+		if !strings.Contains(entry.Name(), string(stage)) {
 			continue
 		}
 		target := filepath.Join(localState, entry.Name(), fileName)

@@ -73,17 +73,21 @@ func StageEnvAndPrompts(input StageInput) (StageResult, error) {
 		return StageResult{}, errors.New("role is required")
 	}
 
+	absRepoRoot, err := filepath.Abs(repoRoot)
+	if err != nil {
+		return StageResult{}, fmt.Errorf("resolve repo root %s: %w", repoRoot, err)
+	}
 	absWorktree, err := filepath.Abs(worktreeRoot)
 	if err != nil {
 		return StageResult{}, fmt.Errorf("resolve worktree root %s: %w", worktreeRoot, err)
 	}
 
-	registry, err := roles.LoadRegistry(absWorktree, input.Warn)
+	registry, err := roles.LoadRegistry(absRepoRoot, input.Warn)
 	if err != nil {
 		return StageResult{}, fmt.Errorf("load role registry: %w", err)
 	}
 	reasoningLevel := strings.TrimSpace(input.ReasoningEffort)
-	promptFiles, err := orderedPromptFiles(absWorktree, registry, role, reasoningLevel, taskPath)
+	promptFiles, err := orderedPromptFiles(absRepoRoot, registry, role, reasoningLevel, taskPath)
 	if err != nil {
 		return StageResult{}, err
 	}
@@ -106,7 +110,7 @@ func StageEnvAndPrompts(input StageInput) (StageResult, error) {
 	}
 
 	promptPath := filepath.Join(stageDir, promptFileName(input.Stage))
-	if err := writePromptFile(promptPath, promptFiles, absWorktree); err != nil {
+	if err := writePromptFile(promptPath, promptFiles, absRepoRoot); err != nil {
 		return StageResult{}, err
 	}
 
@@ -134,7 +138,7 @@ func StageEnvAndPrompts(input StageInput) (StageResult, error) {
 //  4. _governator/custom-prompts/_global.md (optional)
 //  5. _governator/custom-prompts/<role>.md (optional)
 //  6. <task path>
-func orderedPromptFiles(worktreeRoot string, registry roles.Registry, role index.Role, reasoningLevel string, taskPath string) ([]string, error) {
+func orderedPromptFiles(repoRoot string, registry roles.Registry, role index.Role, reasoningLevel string, taskPath string) ([]string, error) {
 	rolePrompt, ok := registry.RolePromptPath(role)
 	if !ok {
 		return nil, fmt.Errorf("missing role prompt for %q", role)
@@ -154,7 +158,7 @@ func orderedPromptFiles(worktreeRoot string, registry roles.Registry, role index
 	taskPath = filepath.ToSlash(taskPath)
 	promptFiles = append(promptFiles, taskPath)
 	for _, prompt := range promptFiles {
-		abs := filepath.Join(worktreeRoot, filepath.FromSlash(prompt))
+		abs := filepath.Join(repoRoot, filepath.FromSlash(prompt))
 		if err := ensurePromptFile(abs); err != nil {
 			return nil, err
 		}
@@ -181,19 +185,22 @@ func ensurePromptFile(path string) error {
 	return nil
 }
 
-// promptListFileName returns the stage-scoped prompt list file name.
+// promptListFileName returns the prompt list file name for a stage.
 func promptListFileName(stage roles.Stage) string {
-	return fmt.Sprintf("prompt-files-%s.txt", stage)
+	_ = stage
+	return "prompt-files.txt"
 }
 
-// promptFileName returns the stage-scoped prompt file name.
+// promptFileName returns the prompt file name for a stage.
 func promptFileName(stage roles.Stage) string {
-	return fmt.Sprintf("prompt-%s.md", stage)
+	_ = stage
+	return "prompt.md"
 }
 
-// envFileName returns the stage-scoped env file name.
+// envFileName returns the env file name for a stage.
 func envFileName(stage roles.Stage) string {
-	return fmt.Sprintf("env-%s", stage)
+	_ = stage
+	return "env"
 }
 
 // markerFileName maps a stage to its required marker filename.
@@ -225,11 +232,11 @@ func writePromptList(path string, prompts []string) error {
 }
 
 // writePromptFile writes the worker prompt by concatenating every prompt file’s contents.
-func writePromptFile(path string, prompts []string, worktreeRoot string) error {
+func writePromptFile(path string, prompts []string, repoRoot string) error {
 	if len(prompts) == 0 {
 		return errors.New("prompt files are required")
 	}
-	content, err := buildPromptContent(worktreeRoot, prompts)
+	content, err := buildPromptContent(repoRoot, prompts)
 	if err != nil {
 		return err
 	}
@@ -240,13 +247,13 @@ func writePromptFile(path string, prompts []string, worktreeRoot string) error {
 }
 
 // buildPromptContent concatenates the contents of the provided prompt files.
-func buildPromptContent(worktreeRoot string, prompts []string) (string, error) {
+func buildPromptContent(repoRoot string, prompts []string) (string, error) {
 	builder := &strings.Builder{}
 	for i, prompt := range prompts {
 		if i > 0 {
 			builder.WriteString("\n\n")
 		}
-		path := filepath.Join(worktreeRoot, filepath.FromSlash(prompt))
+		path := filepath.Join(repoRoot, filepath.FromSlash(prompt))
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return "", fmt.Errorf("read prompt %s: %w", prompt, err)

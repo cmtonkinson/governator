@@ -4,6 +4,7 @@ package worker
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -39,6 +40,7 @@ func (m *mockAuditLogger) LogWorkerTimeout(taskID string, role string, timeoutSe
 func TestExecuteWorkerHappyPath(t *testing.T) {
 	t.Parallel()
 	workDir := t.TempDir()
+	workerStateDir := workerStateDirPath(workDir)
 
 	input := ExecInput{
 		Command:     []string{"echo", "hello world"},
@@ -48,6 +50,7 @@ func TestExecuteWorkerHappyPath(t *testing.T) {
 		EnvVars: map[string]string{
 			"TEST_VAR": "test_value",
 		},
+		WorkerStateDir: workerStateDir,
 	}
 
 	result, err := ExecuteWorker(input)
@@ -91,12 +94,13 @@ func TestExecuteWorkerHappyPath(t *testing.T) {
 		t.Fatalf("stdout log missing expected content: %s", string(stdoutContent))
 	}
 
-	// Check log file paths are repo-relative
-	if !strings.HasPrefix(result.StdoutPath, "_governator/_local-state/logs/") {
-		t.Fatalf("stdout path = %q, want _governator/_local-state/logs/ prefix", result.StdoutPath)
+	// Check log file paths are repo-relative and live in the worker state dir
+	expectedPrefix := filepath.ToSlash(filepath.Join("_governator", "_local-state", "worker-test")) + "/"
+	if !strings.HasPrefix(result.StdoutPath, expectedPrefix) {
+		t.Fatalf("stdout path = %q, want prefix %q", result.StdoutPath, expectedPrefix)
 	}
-	if !strings.HasPrefix(result.StderrPath, "_governator/_local-state/logs/") {
-		t.Fatalf("stderr path = %q, want _governator/_local-state/logs/ prefix", result.StderrPath)
+	if !strings.HasPrefix(result.StderrPath, expectedPrefix) {
+		t.Fatalf("stderr path = %q, want prefix %q", result.StderrPath, expectedPrefix)
 	}
 }
 
@@ -104,6 +108,7 @@ func TestExecuteWorkerHappyPath(t *testing.T) {
 func TestExecuteWorkerTimeout(t *testing.T) {
 	t.Parallel()
 	workDir := t.TempDir()
+	workerStateDir := workerStateDirPath(workDir)
 
 	var warnings []string
 	warn := func(msg string) {
@@ -111,11 +116,12 @@ func TestExecuteWorkerTimeout(t *testing.T) {
 	}
 
 	input := ExecInput{
-		Command:     []string{"sleep", "10"}, // Sleep longer than timeout
-		WorkDir:     workDir,
-		TaskID:      "T-002",
-		TimeoutSecs: 1, // Short timeout
-		Warn:        warn,
+		Command:        []string{"sleep", "10"}, // Sleep longer than timeout
+		WorkDir:        workDir,
+		TaskID:         "T-002",
+		TimeoutSecs:    1, // Short timeout
+		Warn:           warn,
+		WorkerStateDir: workerStateDir,
 	}
 
 	result, err := ExecuteWorker(input)
@@ -160,6 +166,7 @@ func TestExecuteWorkerTimeout(t *testing.T) {
 func TestExecuteWorkerTimeoutWithAuditLogging(t *testing.T) {
 	t.Parallel()
 	workDir := t.TempDir()
+	workerStateDir := workerStateDirPath(workDir)
 
 	// Mock audit logger
 	var auditCalls []auditCall
@@ -171,14 +178,15 @@ func TestExecuteWorkerTimeoutWithAuditLogging(t *testing.T) {
 	}
 
 	input := ExecInput{
-		Command:      []string{"sleep", "10"}, // Sleep longer than timeout
-		WorkDir:      workDir,
-		TaskID:       "T-003",
-		TimeoutSecs:  1, // Short timeout
-		Warn:         warn,
-		AuditLogger:  mockAuditLogger,
-		Role:         "worker",
-		WorktreePath: "_governator/_local-state/task-T-003",
+		Command:        []string{"sleep", "10"}, // Sleep longer than timeout
+		WorkDir:        workDir,
+		TaskID:         "T-003",
+		TimeoutSecs:    1, // Short timeout
+		Warn:           warn,
+		AuditLogger:    mockAuditLogger,
+		Role:           "worker",
+		WorktreePath:   "_governator/_local-state/task-T-003",
+		WorkerStateDir: workerStateDir,
 	}
 
 	result, err := ExecuteWorker(input)
@@ -212,6 +220,7 @@ func TestExecuteWorkerTimeoutWithAuditLogging(t *testing.T) {
 func TestExecuteWorkerTimeoutWithoutAuditLogger(t *testing.T) {
 	t.Parallel()
 	workDir := t.TempDir()
+	workerStateDir := workerStateDirPath(workDir)
 
 	var warnings []string
 	warn := func(msg string) {
@@ -219,14 +228,15 @@ func TestExecuteWorkerTimeoutWithoutAuditLogger(t *testing.T) {
 	}
 
 	input := ExecInput{
-		Command:      []string{"sleep", "10"}, // Sleep longer than timeout
-		WorkDir:      workDir,
-		TaskID:       "T-004",
-		TimeoutSecs:  1, // Short timeout
-		Warn:         warn,
-		AuditLogger:  nil, // No audit logger
-		Role:         "worker",
-		WorktreePath: "_governator/_local-state/task-T-004",
+		Command:        []string{"sleep", "10"}, // Sleep longer than timeout
+		WorkDir:        workDir,
+		TaskID:         "T-004",
+		TimeoutSecs:    1, // Short timeout
+		Warn:           warn,
+		AuditLogger:    nil, // No audit logger
+		Role:           "worker",
+		WorktreePath:   "_governator/_local-state/task-T-004",
+		WorkerStateDir: workerStateDir,
 	}
 
 	result, err := ExecuteWorker(input)
@@ -250,6 +260,7 @@ func TestExecuteWorkerTimeoutWithoutAuditLogger(t *testing.T) {
 func TestExecuteWorkerTimeoutMissingFields(t *testing.T) {
 	t.Parallel()
 	workDir := t.TempDir()
+	workerStateDir := workerStateDirPath(workDir)
 
 	// Mock audit logger
 	var auditCalls []auditCall
@@ -261,14 +272,15 @@ func TestExecuteWorkerTimeoutMissingFields(t *testing.T) {
 	}
 
 	input := ExecInput{
-		Command:      []string{"sleep", "10"}, // Sleep longer than timeout
-		WorkDir:      workDir,
-		TaskID:       "T-005",
-		TimeoutSecs:  1, // Short timeout
-		Warn:         warn,
-		AuditLogger:  mockAuditLogger,
-		Role:         "", // Missing role
-		WorktreePath: "", // Missing worktree path
+		Command:        []string{"sleep", "10"}, // Sleep longer than timeout
+		WorkDir:        workDir,
+		TaskID:         "T-005",
+		TimeoutSecs:    1, // Short timeout
+		Warn:           warn,
+		AuditLogger:    mockAuditLogger,
+		Role:           "", // Missing role
+		WorktreePath:   "", // Missing worktree path
+		WorkerStateDir: workerStateDir,
 	}
 
 	result, err := ExecuteWorker(input)
@@ -289,6 +301,7 @@ func TestExecuteWorkerTimeoutMissingFields(t *testing.T) {
 func TestExecuteWorkerNonTimeoutFailureNoTimeoutMessage(t *testing.T) {
 	t.Parallel()
 	workDir := t.TempDir()
+	workerStateDir := workerStateDirPath(workDir)
 
 	// Mock audit logger
 	var auditCalls []auditCall
@@ -300,14 +313,15 @@ func TestExecuteWorkerNonTimeoutFailureNoTimeoutMessage(t *testing.T) {
 	}
 
 	input := ExecInput{
-		Command:      []string{"false"}, // Command that fails but doesn't timeout
-		WorkDir:      workDir,
-		TaskID:       "T-006",
-		TimeoutSecs:  10, // Long timeout
-		Warn:         warn,
-		AuditLogger:  mockAuditLogger,
-		Role:         "worker",
-		WorktreePath: "_governator/_local-state/task-T-006",
+		Command:        []string{"false"}, // Command that fails but doesn't timeout
+		WorkDir:        workDir,
+		TaskID:         "T-006",
+		TimeoutSecs:    10, // Long timeout
+		Warn:           warn,
+		AuditLogger:    mockAuditLogger,
+		Role:           "worker",
+		WorktreePath:   "_governator/_local-state/task-T-006",
+		WorkerStateDir: workerStateDir,
 	}
 
 	result, err := ExecuteWorker(input)
@@ -338,12 +352,14 @@ func TestExecuteWorkerNonTimeoutFailureNoTimeoutMessage(t *testing.T) {
 func TestExecuteWorkerNonZeroExit(t *testing.T) {
 	t.Parallel()
 	workDir := t.TempDir()
+	workerStateDir := workerStateDirPath(workDir)
 
 	input := ExecInput{
-		Command:     []string{"sh", "-c", "echo 'error message' >&2; exit 42"},
-		WorkDir:     workDir,
-		TaskID:      "T-003",
-		TimeoutSecs: 5,
+		Command:        []string{"sh", "-c", "echo 'error message' >&2; exit 42"},
+		WorkDir:        workDir,
+		TaskID:         "T-003",
+		TimeoutSecs:    5,
+		WorkerStateDir: workerStateDir,
 	}
 
 	result, err := ExecuteWorker(input)
@@ -379,6 +395,7 @@ func TestExecuteWorkerNonZeroExit(t *testing.T) {
 func TestExecuteWorkerValidation(t *testing.T) {
 	t.Parallel()
 	workDir := t.TempDir()
+	workerStateDir := workerStateDirPath(workDir)
 
 	tests := []struct {
 		name    string
@@ -388,52 +405,67 @@ func TestExecuteWorkerValidation(t *testing.T) {
 		{
 			name: "empty command",
 			input: ExecInput{
-				Command:     []string{},
-				WorkDir:     workDir,
-				TaskID:      "T-001",
-				TimeoutSecs: 5,
+				Command:        []string{},
+				WorkDir:        workDir,
+				TaskID:         "T-001",
+				TimeoutSecs:    5,
+				WorkerStateDir: workerStateDir,
 			},
 			wantErr: "command is required",
 		},
 		{
 			name: "empty work directory",
 			input: ExecInput{
-				Command:     []string{"echo", "test"},
-				WorkDir:     "",
-				TaskID:      "T-001",
-				TimeoutSecs: 5,
+				Command:        []string{"echo", "test"},
+				WorkDir:        "",
+				TaskID:         "T-001",
+				TimeoutSecs:    5,
+				WorkerStateDir: workerStateDir,
 			},
 			wantErr: "work directory is required",
 		},
 		{
 			name: "empty task id",
 			input: ExecInput{
-				Command:     []string{"echo", "test"},
-				WorkDir:     workDir,
-				TaskID:      "",
-				TimeoutSecs: 5,
+				Command:        []string{"echo", "test"},
+				WorkDir:        workDir,
+				TaskID:         "",
+				TimeoutSecs:    5,
+				WorkerStateDir: workerStateDir,
 			},
 			wantErr: "task id is required",
 		},
 		{
 			name: "zero timeout",
 			input: ExecInput{
-				Command:     []string{"echo", "test"},
-				WorkDir:     workDir,
-				TaskID:      "T-001",
-				TimeoutSecs: 0,
+				Command:        []string{"echo", "test"},
+				WorkDir:        workDir,
+				TaskID:         "T-001",
+				TimeoutSecs:    0,
+				WorkerStateDir: workerStateDir,
 			},
 			wantErr: "timeout seconds must be positive",
 		},
 		{
 			name: "negative timeout",
 			input: ExecInput{
-				Command:     []string{"echo", "test"},
-				WorkDir:     workDir,
-				TaskID:      "T-001",
-				TimeoutSecs: -1,
+				Command:        []string{"echo", "test"},
+				WorkDir:        workDir,
+				TaskID:         "T-001",
+				TimeoutSecs:    -1,
+				WorkerStateDir: workerStateDir,
 			},
 			wantErr: "timeout seconds must be positive",
+		},
+		{
+			name: "missing worker state dir",
+			input: ExecInput{
+				Command:     []string{"echo", "test"},
+				WorkDir:     workDir,
+				TaskID:      "T-002",
+				TimeoutSecs: 5,
+			},
+			wantErr: "worker state dir is required",
 		},
 	}
 
@@ -454,6 +486,7 @@ func TestExecuteWorkerValidation(t *testing.T) {
 func TestExecuteWorkerFromConfig(t *testing.T) {
 	t.Parallel()
 	workDir := t.TempDir()
+	workerStateDir := workerStateDirPath(workDir)
 
 	cfg := config.Config{
 		Workers: config.WorkersConfig{
@@ -477,6 +510,7 @@ func TestExecuteWorkerFromConfig(t *testing.T) {
 			"GOVERNATOR_TASK_ID": "T-004",
 			"GOVERNATOR_ROLE":    "worker",
 		},
+		WorkerStateDir: workerStateDir,
 	}
 
 	result, err := ExecuteWorkerFromConfig(cfg, task, stageResult, workDir, nil)
@@ -509,6 +543,7 @@ func TestExecuteWorkerFromConfig(t *testing.T) {
 func TestExecuteWorkerEnvironmentVariables(t *testing.T) {
 	t.Parallel()
 	workDir := t.TempDir()
+	workerStateDir := workerStateDirPath(workDir)
 
 	input := ExecInput{
 		Command:     []string{"sh", "-c", "echo $CUSTOM_VAR"},
@@ -518,6 +553,7 @@ func TestExecuteWorkerEnvironmentVariables(t *testing.T) {
 		EnvVars: map[string]string{
 			"CUSTOM_VAR": "custom_value",
 		},
+		WorkerStateDir: workerStateDir,
 	}
 
 	result, err := ExecuteWorker(input)
@@ -547,12 +583,14 @@ func TestExecuteWorkerEnvironmentVariables(t *testing.T) {
 func TestExecuteWorkerLogFileNaming(t *testing.T) {
 	t.Parallel()
 	workDir := t.TempDir()
+	workerStateDir := workerStateDirPath(workDir)
 
 	input := ExecInput{
-		Command:     []string{"echo", "test"},
-		WorkDir:     workDir,
-		TaskID:      "T-006",
-		TimeoutSecs: 5,
+		Command:        []string{"echo", "test"},
+		WorkDir:        workDir,
+		TaskID:         "T-006",
+		TimeoutSecs:    5,
+		WorkerStateDir: workerStateDir,
 	}
 
 	result, err := ExecuteWorker(input)
@@ -560,19 +598,25 @@ func TestExecuteWorkerLogFileNaming(t *testing.T) {
 		t.Fatalf("ExecuteWorker failed: %v", err)
 	}
 
-	// Check log file naming pattern
-	if !strings.Contains(result.StdoutPath, "T-006") {
-		t.Fatalf("stdout path = %q, want task ID in filename", result.StdoutPath)
-	}
-	if !strings.Contains(result.StderrPath, "T-006") {
-		t.Fatalf("stderr path = %q, want task ID in filename", result.StderrPath)
-	}
 	if !strings.HasSuffix(result.StdoutPath, "-stdout.log") {
 		t.Fatalf("stdout path = %q, want -stdout.log suffix", result.StdoutPath)
 	}
 	if !strings.HasSuffix(result.StderrPath, "-stderr.log") {
 		t.Fatalf("stderr path = %q, want -stderr.log suffix", result.StderrPath)
 	}
+	validateWorkerLogName := func(path string) {
+		base := filepath.Base(path)
+		segments := strings.Split(strings.TrimSuffix(base, ".log"), "-")
+		if len(segments) < 4 {
+			t.Fatalf("log name %q does not contain timestamp/pid segments", base)
+		}
+		pidSegment := segments[len(segments)-2]
+		if _, err := strconv.Atoi(pidSegment); err != nil {
+			t.Fatalf("expected pid segment in %q, got %q", base, pidSegment)
+		}
+	}
+	validateWorkerLogName(result.StdoutPath)
+	validateWorkerLogName(result.StderrPath)
 }
 
 // TestExecuteWorkerWithStubCommandSuccess confirms a stub worker completes and logs output.
@@ -580,12 +624,14 @@ func TestExecuteWorkerWithStubCommandSuccess(t *testing.T) {
 	t.Parallel()
 	workDir := t.TempDir()
 	stub := stubRunnerPath(t)
+	workerStateDir := workerStateDirPath(workDir)
 
 	input := ExecInput{
-		Command:     []string{stub, "success"},
-		WorkDir:     workDir,
-		TaskID:      "T-007",
-		TimeoutSecs: 5,
+		Command:        []string{stub, "success"},
+		WorkDir:        workDir,
+		TaskID:         "T-007",
+		TimeoutSecs:    5,
+		WorkerStateDir: workerStateDir,
 	}
 
 	result, err := ExecuteWorker(input)
@@ -618,6 +664,7 @@ func TestExecuteWorkerWithStubCommandTimeout(t *testing.T) {
 	t.Parallel()
 	workDir := t.TempDir()
 	stub := stubRunnerPath(t)
+	workerStateDir := workerStateDirPath(workDir)
 
 	var warnings []string
 	warn := func(msg string) {
@@ -625,11 +672,12 @@ func TestExecuteWorkerWithStubCommandTimeout(t *testing.T) {
 	}
 
 	input := ExecInput{
-		Command:     []string{stub, "sleep", "10"},
-		WorkDir:     workDir,
-		TaskID:      "T-008",
-		TimeoutSecs: 1,
-		Warn:        warn,
+		Command:        []string{stub, "sleep", "10"},
+		WorkDir:        workDir,
+		TaskID:         "T-008",
+		TimeoutSecs:    1,
+		Warn:           warn,
+		WorkerStateDir: workerStateDir,
 	}
 
 	result, err := ExecuteWorker(input)

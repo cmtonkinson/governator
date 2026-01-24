@@ -159,7 +159,6 @@ func TestInitCommand(t *testing.T) {
 		"_governator/templates",
 		"_governator/reasoning",
 		"_governator/_local-state",
-		"_governator/_local-state/logs",
 	}
 
 	for _, dir := range expectedDirs {

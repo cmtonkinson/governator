@@ -69,7 +69,7 @@ func DispatchWorker(input DispatchInput) (DispatchResult, error) {
 		return DispatchResult{}, fmt.Errorf("create worker state dir %s: %w", input.WorkerStateDir, err)
 	}
 
-	logFiles, err := createWorkerLogFiles(input.WorkDir, input.TaskID)
+	logFiles, err := createWorkerLogFiles(input.WorkDir, input.WorkerStateDir, input.TaskID)
 	if err != nil {
 		return DispatchResult{}, err
 	}
@@ -102,6 +102,9 @@ func DispatchWorker(input DispatchInput) (DispatchResult, error) {
 		return DispatchResult{}, fmt.Errorf("start worker process: %w", err)
 	}
 	pid := cmd.Process.Pid
+	if err := logFiles.renameWithPID(pid); err != nil {
+		return DispatchResult{}, fmt.Errorf("rename log files: %w", err)
+	}
 	if err := cmd.Process.Release(); err != nil {
 		emitWarning(input.Warn, fmt.Sprintf("failed to detach worker process: %v", err))
 	}
@@ -147,8 +150,7 @@ func exitStatusPath(workerStateDir string, taskID string, stage roles.Stage) (st
 	if strings.TrimSpace(workerStateDir) == "" {
 		return "", errors.New("worker state dir is required")
 	}
-	name := fmt.Sprintf("exit-%s-%s.json", stage, taskID)
-	return filepath.Join(workerStateDir, name), nil
+	return filepath.Join(workerStateDir, "exit.json"), nil
 }
 
 // ReadExitStatus reads the exit status file if present.
@@ -195,7 +197,7 @@ func writeDispatchWrapper(workerStateDir string, taskID string, stage roles.Stag
 	if strings.TrimSpace(workerStateDir) == "" {
 		return "", errors.New("worker state dir is required")
 	}
-	wrapperPath := filepath.Join(workerStateDir, fmt.Sprintf("dispatch-%s-%s.sh", stage, taskID))
+	wrapperPath := filepath.Join(workerStateDir, "dispatch.sh")
 	commandLine := shellCommandLine(command)
 	exitPathEscaped := shellEscapeArg(exitPath)
 	content := strings.Join([]string{

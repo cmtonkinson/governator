@@ -34,7 +34,6 @@ var v2DirectoryStructure = []string{
 	"_governator/templates",
 	"_governator/reasoning",
 	filepath.Join("_governator", "_local-state"),
-	filepath.Join("_governator", "_local-state", "logs"),
 }
 
 // InitOptions configures init-time behaviors such as verbose logging.
