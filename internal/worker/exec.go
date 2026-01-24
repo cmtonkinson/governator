@@ -150,7 +150,7 @@ func ExecuteWorkerFromConfig(cfg config.Config, task index.Task, stageResult Sta
 
 // ExecuteWorkerFromConfigWithAudit executes a worker using configuration and staging results with audit logging.
 func ExecuteWorkerFromConfigWithAudit(cfg config.Config, task index.Task, stageResult StageResult, workDir string, warn func(string), auditLogger AuditLogger, worktreePath string) (ExecResult, error) {
-	command, err := ResolveCommand(cfg, task.Role, task.Path, workDir)
+	command, err := ResolveCommand(cfg, task.Role, task.Path, workDir, stageResult.PromptPath)
 	if err != nil {
 		return ExecResult{}, fmt.Errorf("resolve worker command: %w", err)
 	}

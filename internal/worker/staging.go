@@ -19,18 +19,18 @@ const (
 	// workerStateDirName holds worker staging artifacts inside local state.
 	workerStateDirName = "worker"
 	workerContractPath = "_governator/worker-contract.md"
-	reasoningDirName  = "_governator/reasoning"
+	reasoningDirName   = "_governator/reasoning"
 )
 
 // StageInput defines the inputs required to stage worker prompts and environment.
 type StageInput struct {
-	RepoRoot     string
-	WorktreeRoot string
-	Task         index.Task
-	Stage        roles.Stage
-	Role         index.Role
+	RepoRoot        string
+	WorktreeRoot    string
+	Task            index.Task
+	Stage           roles.Stage
+	Role            index.Role
 	ReasoningEffort string
-	Warn         func(string)
+	Warn            func(string)
 }
 
 // StageResult captures staged prompt and environment artifacts.
@@ -96,9 +96,8 @@ func StageEnvAndPrompts(input StageInput) (StageResult, error) {
 		return StageResult{}, err
 	}
 
-	markerPath := repoRelativePath(absWorktree, filepath.Join(absWorktree, localStateDirName, markerFileName(input.Stage)))
 	promptPath := filepath.Join(stageDir, promptFileName(input.Stage))
-	if err := writePromptFile(promptPath, promptFiles, markerPath, input.Stage); err != nil {
+	if err := writePromptFile(promptPath, promptFiles, absWorktree); err != nil {
 		return StageResult{}, err
 	}
 
@@ -215,36 +214,36 @@ func writePromptList(path string, prompts []string) error {
 	return nil
 }
 
-// writePromptFile writes the worker prompt that references the ordered prompt inputs.
-func writePromptFile(path string, prompts []string, markerPath string, stage roles.Stage) error {
+// writePromptFile writes the worker prompt by concatenating every prompt file’s contents.
+func writePromptFile(path string, prompts []string, worktreeRoot string) error {
 	if len(prompts) == 0 {
 		return errors.New("prompt files are required")
 	}
-	content := buildPromptContent(prompts, markerPath, stage)
+	content, err := buildPromptContent(worktreeRoot, prompts)
+	if err != nil {
+		return err
+	}
 	if err := os.WriteFile(path, []byte(content+"\n"), 0o644); err != nil {
 		return fmt.Errorf("write worker prompt %s: %w", path, err)
 	}
 	return nil
 }
 
-// buildPromptContent builds the worker prompt text with stage requirements.
-func buildPromptContent(prompts []string, markerPath string, stage roles.Stage) string {
+// buildPromptContent concatenates the contents of the provided prompt files.
+func buildPromptContent(worktreeRoot string, prompts []string) (string, error) {
 	builder := &strings.Builder{}
-	builder.WriteString("Read and follow the instructions in the following files, in this order:\n")
-	for _, prompt := range prompts {
-		builder.WriteString("- ")
-		builder.WriteString(prompt)
-		builder.WriteString("\n")
+	for i, prompt := range prompts {
+		if i > 0 {
+			builder.WriteString("\n\n")
+		}
+		path := filepath.Join(worktreeRoot, filepath.FromSlash(prompt))
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", fmt.Errorf("read prompt %s: %w", prompt, err)
+		}
+		builder.Write(data)
 	}
-	builder.WriteString("\n")
-	builder.WriteString("Completion requirements for stage \"")
-	builder.WriteString(string(stage))
-	builder.WriteString("\":\n")
-	builder.WriteString("- Create ")
-	builder.WriteString(markerPath)
-	builder.WriteString(" with a short summary.\n")
-	builder.WriteString("- Create a commit on the task branch.\n")
-	return strings.TrimSpace(builder.String())
+	return strings.TrimSpace(builder.String()), nil
 }
 
 // buildEnvMap assembles the environment variables for worker execution.

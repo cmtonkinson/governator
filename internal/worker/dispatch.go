@@ -109,7 +109,7 @@ func DispatchWorker(input DispatchInput) (DispatchResult, error) {
 
 // DispatchWorkerFromConfig resolves the worker command and dispatches asynchronously.
 func DispatchWorkerFromConfig(cfg config.Config, task index.Task, stageResult StageResult, workDir string, stage roles.Stage, warn func(string)) (DispatchResult, error) {
-	command, err := ResolveCommand(cfg, task.Role, task.Path, workDir)
+	command, err := ResolveCommand(cfg, task.Role, task.Path, workDir, stageResult.PromptPath)
 	if err != nil {
 		return DispatchResult{}, fmt.Errorf("resolve worker command: %w", err)
 	}

@@ -17,13 +17,13 @@ var defaultWorkerCommand = []string{
 	"codex",
 	"exec",
 	"--sandbox=danger-full-access",
-	"{task_path}",
+	"{prompt_path}",
 }
 
 // Defaults returns the documented configuration defaults.
 //
 // Defaults:
-// - workers.commands.default: ["codex", "exec", "--sandbox=danger-full-access", "{task_path}"]
+// - workers.commands.default: ["codex", "exec", "--sandbox=danger-full-access", "{prompt_path}"]
 // - workers.commands.roles: {}
 // - concurrency.global: 1
 // - concurrency.default_role: 1

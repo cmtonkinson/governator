@@ -11,7 +11,7 @@ import (
 )
 
 // ResolveCommand resolves a worker command template for the given role and fills tokens.
-func ResolveCommand(cfg config.Config, role index.Role, taskPath string, repoRoot string) ([]string, error) {
+func ResolveCommand(cfg config.Config, role index.Role, taskPath string, repoRoot string, promptPath string) ([]string, error) {
 	if strings.TrimSpace(taskPath) == "" {
 		return nil, errors.New("task path is required")
 	}
@@ -22,7 +22,7 @@ func ResolveCommand(cfg config.Config, role index.Role, taskPath string, repoRoo
 	if err != nil {
 		return nil, err
 	}
-	resolved, err := applyTemplate(template, taskPath, repoRoot, role)
+	resolved, err := applyTemplate(template, taskPath, repoRoot, role, promptPath)
 	if err != nil {
 		return nil, err
 	}
@@ -46,21 +46,31 @@ func selectCommandTemplate(cfg config.Config, role index.Role) ([]string, error)
 }
 
 // applyTemplate substitutes supported tokens in the command template.
-func applyTemplate(template []string, taskPath string, repoRoot string, role index.Role) ([]string, error) {
+func applyTemplate(template []string, taskPath string, repoRoot string, role index.Role, promptPath string) ([]string, error) {
 	updated := make([]string, len(template))
 	replaced := 0
+	replacedPrompt := false
 	roleValue := string(role)
 	for i, token := range template {
 		if strings.Contains(token, "{task_path}") {
 			replaced++
 		}
+		if strings.Contains(token, "{prompt_path}") {
+			replacedPrompt = true
+		}
 		token = strings.ReplaceAll(token, "{task_path}", taskPath)
+		if promptPath != "" {
+			token = strings.ReplaceAll(token, "{prompt_path}", promptPath)
+		}
 		token = strings.ReplaceAll(token, "{repo_root}", repoRoot)
 		token = strings.ReplaceAll(token, "{role}", roleValue)
 		updated[i] = token
 	}
-	if replaced == 0 {
-		return nil, errors.New("worker command missing {task_path} token")
+	if replaced == 0 && !replacedPrompt {
+		return nil, errors.New("worker command must include {task_path} or {prompt_path}")
+	}
+	if replacedPrompt && strings.TrimSpace(promptPath) == "" {
+		return nil, errors.New("worker command uses {prompt_path} but prompt data is missing")
 	}
 	return updated, nil
 }

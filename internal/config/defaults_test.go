@@ -33,8 +33,8 @@ func TestDefaultsDocumentedValues(t *testing.T) {
 	if len(cfg.Workers.Commands.Default) == 0 {
 		t.Fatal("workers.commands.default should not be empty")
 	}
-	if !containsTaskPathToken(cfg.Workers.Commands.Default) {
-		t.Fatal("workers.commands.default should include {task_path}")
+	if !containsTaskOrPromptToken(cfg.Workers.Commands.Default) {
+		t.Fatal("workers.commands.default should include {task_path} or {prompt_path}")
 	}
 	if cfg.Workers.Commands.Roles == nil || len(cfg.Workers.Commands.Roles) != 0 {
 		t.Fatal("workers.commands.roles should default to empty map")
@@ -100,7 +100,7 @@ func TestApplyDefaultsInvalidValues(t *testing.T) {
 
 	normalized := ApplyDefaults(cfg, warn)
 
-	if !containsTaskPathToken(normalized.Workers.Commands.Default) {
+	if !containsTaskOrPromptToken(normalized.Workers.Commands.Default) {
 		t.Fatal("workers.commands.default should fall back to default command")
 	}
 	if _, ok := normalized.Workers.Commands.Roles["planner"]; ok {
@@ -205,6 +205,15 @@ func stringSlicesEqual(left []string, right []string) bool {
 func warningsContain(warnings []string, substr string) bool {
 	for _, warning := range warnings {
 		if strings.Contains(warning, substr) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsTaskOrPromptToken(command []string) bool {
+	for _, token := range command {
+		if strings.Contains(token, "{task_path}") || strings.Contains(token, "{prompt_path}") {
 			return true
 		}
 	}

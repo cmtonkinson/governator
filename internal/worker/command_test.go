@@ -22,7 +22,7 @@ func TestResolveCommandRoleOverride(t *testing.T) {
 		},
 	}
 
-	got, err := ResolveCommand(cfg, index.Role("review"), "/tmp/task.md", "/repo")
+	got, err := ResolveCommand(cfg, index.Role("review"), "/tmp/task.md", "/repo", "/tmp/prompt.md")
 	if err != nil {
 		t.Fatalf("ResolveCommand returned error: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestResolveCommandFallbackToDefault(t *testing.T) {
 		},
 	}
 
-	got, err := ResolveCommand(cfg, index.Role("worker"), "/task.md", "/repo")
+	got, err := ResolveCommand(cfg, index.Role("worker"), "/task.md", "/repo", "/tmp/prompt.md")
 	if err != nil {
 		t.Fatalf("ResolveCommand returned error: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestResolveCommandMissingDefault(t *testing.T) {
 		},
 	}
 
-	_, err := ResolveCommand(cfg, index.Role("worker"), "/task.md", "/repo")
+	_, err := ResolveCommand(cfg, index.Role("worker"), "/task.md", "/repo", "/tmp/prompt.md")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -85,7 +85,7 @@ func TestResolveCommandMissingTaskPathToken(t *testing.T) {
 		},
 	}
 
-	_, err := ResolveCommand(cfg, index.Role("worker"), "/task.md", "/repo")
+	_, err := ResolveCommand(cfg, index.Role("worker"), "/task.md", "/repo", "/tmp/prompt.md")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

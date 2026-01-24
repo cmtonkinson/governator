@@ -66,13 +66,17 @@ func TestStageEnvAndPromptsHappyPath(t *testing.T) {
 		t.Fatalf("read prompt file: %v", err)
 	}
 	prompt := string(promptBytes)
-	if !strings.Contains(prompt, "_governator/_local-state/worked.md") {
-		t.Fatalf("prompt missing worked marker requirement: %q", prompt)
+	if !strings.Contains(prompt, "reasoning prompt") {
+		t.Fatalf("prompt missing reasoning content: %q", prompt)
 	}
-	first := strings.Index(prompt, wantList[0])
-	last := strings.Index(prompt, wantList[len(wantList)-1])
-	if first == -1 || last == -1 || first > last {
-		t.Fatalf("prompt file order missing or unordered")
+	if !strings.Contains(prompt, "role prompt") {
+		t.Fatalf("prompt missing role content: %q", prompt)
+	}
+	if !strings.Contains(prompt, "custom prompt") {
+		t.Fatalf("prompt missing custom prompt content: %q", prompt)
+	}
+	if !strings.Contains(prompt, "task content") {
+		t.Fatalf("prompt missing task content: %q", prompt)
 	}
 	if _, err := os.Stat(result.EnvPath); err != nil {
 		t.Fatalf("env file missing: %v", err)
@@ -341,8 +345,11 @@ func TestStageEnvAndPromptsAllStages(t *testing.T) {
 				t.Fatalf("read prompt file: %v", err)
 			}
 			prompt := string(promptBytes)
-			if !strings.Contains(prompt, s.marker) {
-				t.Fatalf("prompt missing %s marker requirement: %q", s.marker, prompt)
+			if !strings.Contains(prompt, "reasoning prompt") {
+				t.Fatalf("prompt missing reasoning content: %q", prompt)
+			}
+			if !strings.Contains(prompt, "role prompt") {
+				t.Fatalf("prompt missing role content: %q", prompt)
 			}
 		})
 	}

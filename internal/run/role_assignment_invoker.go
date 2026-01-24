@@ -62,7 +62,7 @@ func (inv *workerCommandInvoker) Invoke(ctx context.Context, prompt string) (str
 		relativePath = filepath.ToSlash(promptPath)
 	}
 
-	command, err := worker.ResolveCommand(inv.cfg, "", relativePath, inv.repoRoot)
+	command, err := worker.ResolveCommand(inv.cfg, "", relativePath, inv.repoRoot, "")
 	if err != nil {
 		return "", fmt.Errorf("resolve role assignment command: %w", err)
 	}
