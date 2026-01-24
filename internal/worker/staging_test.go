@@ -29,10 +29,10 @@ func TestStageEnvAndPromptsHappyPath(t *testing.T) {
 		Role: "worker",
 	}
 	result, err := StageEnvAndPrompts(StageInput{
-		RepoRoot:     root,
-		WorktreeRoot: root,
-		Task:         task,
-		Stage:        roles.StageWork,
+		RepoRoot:        root,
+		WorktreeRoot:    root,
+		Task:            task,
+		Stage:           roles.StageWork,
 		ReasoningEffort: "medium",
 	})
 	if err != nil {
@@ -92,10 +92,10 @@ func TestStageEnvAndPromptsMissingFile(t *testing.T) {
 		Role: "worker",
 	}
 	_, err := StageEnvAndPrompts(StageInput{
-		RepoRoot:     root,
-		WorktreeRoot: root,
-		Task:         task,
-		Stage:        roles.StageWork,
+		RepoRoot:        root,
+		WorktreeRoot:    root,
+		Task:            task,
+		Stage:           roles.StageWork,
 		ReasoningEffort: "medium",
 	})
 	if err == nil {
@@ -103,6 +103,62 @@ func TestStageEnvAndPromptsMissingFile(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "missing prompt file") {
 		t.Fatalf("error = %q, want missing prompt file", err.Error())
+	}
+}
+
+// TestStageEnvAndPromptsFailsWhenReasoningPromptMissing ensures missing reasoning prompts error fast.
+func TestStageEnvAndPromptsFailsWhenReasoningPromptMissing(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "_governator", "roles", "worker.md"), "role prompt")
+	writeFile(t, filepath.Join(root, "_governator", "worker-contract.md"), "worker contract")
+	writeFile(t, filepath.Join(root, "_governator", "tasks", "T-003.md"), "task content")
+
+	task := index.Task{
+		ID:   "T-003",
+		Path: "_governator/tasks/T-003.md",
+		Role: "worker",
+	}
+	_, err := StageEnvAndPrompts(StageInput{
+		RepoRoot:        root,
+		WorktreeRoot:    root,
+		Task:            task,
+		Stage:           roles.StageWork,
+		ReasoningEffort: "heavy",
+	})
+	if err == nil {
+		t.Fatal("expected error for missing reasoning prompt file")
+	}
+	if !strings.Contains(err.Error(), "_governator/reasoning/heavy.md") {
+		t.Fatalf("error = %q, want missing reasoning path", err.Error())
+	}
+}
+
+// TestStageEnvAndPromptsFailsWhenWorkerContractMissing checks the contract prompt is required.
+func TestStageEnvAndPromptsFailsWhenWorkerContractMissing(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "_governator", "roles", "worker.md"), "role prompt")
+	writeFile(t, filepath.Join(root, "_governator", "reasoning", "medium.md"), "reasoning prompt")
+	writeFile(t, filepath.Join(root, "_governator", "tasks", "T-004.md"), "task content")
+
+	task := index.Task{
+		ID:   "T-004",
+		Path: "_governator/tasks/T-004.md",
+		Role: "worker",
+	}
+	_, err := StageEnvAndPrompts(StageInput{
+		RepoRoot:        root,
+		WorktreeRoot:    root,
+		Task:            task,
+		Stage:           roles.StageWork,
+		ReasoningEffort: "medium",
+	})
+	if err == nil {
+		t.Fatal("expected error for missing worker contract prompt")
+	}
+	if !strings.Contains(err.Error(), "_governator/worker-contract.md") {
+		t.Fatalf("error = %q, want worker contract path", err.Error())
 	}
 }
 
@@ -226,11 +282,11 @@ func TestStageEnvAndPromptsRoleOverride(t *testing.T) {
 		Role: "worker", // task has worker role
 	}
 	result, err := StageEnvAndPrompts(StageInput{
-		RepoRoot:     root,
-		WorktreeRoot: root,
-		Task:         task,
-		Stage:        roles.StageWork,
-		Role:         "planner", // but we override to planner
+		RepoRoot:        root,
+		WorktreeRoot:    root,
+		Task:            task,
+		Stage:           roles.StageWork,
+		Role:            "planner", // but we override to planner
 		ReasoningEffort: "medium",
 	})
 	if err != nil {
