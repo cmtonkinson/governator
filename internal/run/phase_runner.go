@@ -91,19 +91,20 @@ func (runner *phaseRunner) dispatchPhase(state *phase.State, spec phaseSpec) err
 		Role: spec.role,
 	}
 
-	stageInput := worker.StageInput{
-		RepoRoot:     runner.repoRoot,
-		WorktreeRoot: runner.repoRoot,
-		Task:         task,
-		Stage:        roles.StageWork,
-		Role:         spec.role,
-		Warn: func(msg string) {
+	stageInput := newWorkerStageInput(
+		runner.repoRoot,
+		runner.repoRoot,
+		task,
+		roles.StageWork,
+		spec.role,
+		runner.cfg,
+		func(msg string) {
 			if msg == "" {
 				return
 			}
 			fmt.Fprintf(runner.stderr, "Warning: %s\n", msg)
 		},
-	}
+	)
 
 	stageResult, err := worker.StageEnvAndPrompts(stageInput)
 	if err != nil {

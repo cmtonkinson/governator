@@ -1,6 +1,7 @@
 package testrepos
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -67,6 +68,46 @@ func (r *TempRepo) initialize(tb testing.TB) {
 
 	r.RunGit(tb, "add", "README.md")
 	r.RunGit(tb, "commit", "-m", "Initial commit")
+	r.setupGovernatorBaseline(tb)
+	r.RunGit(tb, "add", filepath.Join("_governator", "worker-contract.md"), filepath.Join("_governator", "reasoning"))
+	r.RunGit(tb, "commit", "-m", "Add governator scaffolding")
+}
+
+func (r *TempRepo) setupGovernatorBaseline(tb testing.TB) {
+	tb.Helper()
+	baseDir := filepath.Join(r.Root, "_governator")
+	if err := os.MkdirAll(baseDir, 0o755); err != nil {
+		tb.Fatalf("create _governator dir: %v", err)
+	}
+
+	contractPath := filepath.Join(baseDir, "worker-contract.md")
+	if _, err := os.Stat(contractPath); errors.Is(err, os.ErrNotExist) {
+		if err := os.WriteFile(contractPath, []byte("# Worker Contract\n"), 0o644); err != nil {
+			tb.Fatalf("write worker contract: %v", err)
+		}
+	}
+
+	reasoningDir := filepath.Join(baseDir, "reasoning")
+	if err := os.MkdirAll(reasoningDir, 0o755); err != nil {
+		tb.Fatalf("create reasoning dir: %v", err)
+	}
+
+	prompts := map[string]string{
+		"high.md":   "# System Note\nHigh reasoning test prompt.\n",
+		"medium.md": "# System Note\nMedium reasoning test prompt.\n",
+		"low.md":    "# System Note\nLow reasoning test prompt.\n",
+	}
+	for name, content := range prompts {
+		path := filepath.Join(reasoningDir, name)
+		if _, err := os.Stat(path); err == nil {
+			continue
+		} else if !errors.Is(err, os.ErrNotExist) {
+			tb.Fatalf("stat reasoning prompt %s: %v", name, err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			tb.Fatalf("write reasoning prompt %s: %v", name, err)
+		}
+	}
 }
 
 func runGit(dir string, args ...string) (string, error) {

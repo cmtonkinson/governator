@@ -497,16 +497,17 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 
 		emitTaskStart(opts.Stdout, task.ID, string(task.Role), string(roles.StageWork))
 
-		stageInput := worker.StageInput{
-			RepoRoot:     repoRoot,
-			WorktreeRoot: worktreePath,
-			Task:         task,
-			Stage:        roles.StageWork,
-			Role:         task.Role,
-			Warn: func(msg string) {
+		stageInput := newWorkerStageInput(
+			repoRoot,
+			worktreePath,
+			task,
+			roles.StageWork,
+			task.Role,
+			cfg,
+			func(msg string) {
 				fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
 			},
-		}
+		)
 		stageResult, err := worker.StageEnvAndPrompts(stageInput)
 		if err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to stage work environment for task %s: %v\n", task.ID, err)
@@ -568,16 +569,17 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 
 // ExecuteWorkAgent runs the work agent for a specific task.
 func ExecuteWorkAgent(repoRoot, worktreePath string, task index.Task, cfg config.Config, auditor *audit.Logger, opts Options) (worker.IngestResult, error) {
-	stageInput := worker.StageInput{
-		RepoRoot:     repoRoot,
-		WorktreeRoot: worktreePath,
-		Task:         task,
-		Stage:        roles.StageWork,
-		Role:         task.Role,
-		Warn: func(msg string) {
+	stageInput := newWorkerStageInput(
+		repoRoot,
+		worktreePath,
+		task,
+		roles.StageWork,
+		task.Role,
+		cfg,
+		func(msg string) {
 			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
 		},
-	}
+	)
 
 	logAgentInvoke(auditor, task.ID, task.Role, roles.StageWork, maxInt(task.Attempts.Total, 1), func(message string) {
 		fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
@@ -774,16 +776,17 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 
 		emitTaskStart(opts.Stdout, task.ID, string(task.Role), string(roles.StageTest))
 
-		stageInput := worker.StageInput{
-			RepoRoot:     repoRoot,
-			WorktreeRoot: worktreePath,
-			Task:         task,
-			Stage:        roles.StageTest,
-			Role:         task.Role,
-			Warn: func(msg string) {
+		stageInput := newWorkerStageInput(
+			repoRoot,
+			worktreePath,
+			task,
+			roles.StageTest,
+			task.Role,
+			cfg,
+			func(msg string) {
 				fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
 			},
-		}
+		)
 
 		stageResult, err := worker.StageEnvAndPrompts(stageInput)
 		if err != nil {
@@ -846,16 +849,17 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 // ExecuteTestAgent runs the test agent for a specific task.
 func ExecuteTestAgent(repoRoot, worktreePath string, task index.Task, cfg config.Config, auditor *audit.Logger, opts Options) (worker.IngestResult, error) {
 	// Stage environment and prompts for test execution
-	stageInput := worker.StageInput{
-		RepoRoot:     repoRoot,
-		WorktreeRoot: worktreePath,
-		Task:         task,
-		Stage:        roles.StageTest,
-		Role:         task.Role, // Use task's assigned role for test stage
-		Warn: func(msg string) {
+	stageInput := newWorkerStageInput(
+		repoRoot,
+		worktreePath,
+		task,
+		roles.StageTest,
+		task.Role,
+		cfg,
+		func(msg string) {
 			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
 		},
-	}
+	)
 
 	logAgentInvoke(auditor, task.ID, task.Role, roles.StageTest, maxInt(task.Attempts.Total, 1), func(message string) {
 		fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
@@ -1104,16 +1108,17 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 
 		emitTaskStart(opts.Stdout, task.ID, string(task.Role), string(roles.StageReview))
 
-		stageInput := worker.StageInput{
-			RepoRoot:     repoRoot,
-			WorktreeRoot: worktreePath,
-			Task:         task,
-			Stage:        roles.StageReview,
-			Role:         task.Role,
-			Warn: func(msg string) {
+		stageInput := newWorkerStageInput(
+			repoRoot,
+			worktreePath,
+			task,
+			roles.StageReview,
+			task.Role,
+			cfg,
+			func(msg string) {
 				fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
 			},
-		}
+		)
 
 		stageResult, err := worker.StageEnvAndPrompts(stageInput)
 		if err != nil {
@@ -1170,16 +1175,17 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 // ExecuteReviewAgent runs the review agent for a specific task.
 func ExecuteReviewAgent(repoRoot, worktreePath string, task index.Task, cfg config.Config, auditor *audit.Logger, opts Options) (worker.IngestResult, error) {
 	// Stage environment and prompts for review execution
-	stageInput := worker.StageInput{
-		RepoRoot:     repoRoot,
-		WorktreeRoot: worktreePath,
-		Task:         task,
-		Stage:        roles.StageReview,
-		Role:         task.Role, // Use task's assigned role for review stage
-		Warn: func(msg string) {
+	stageInput := newWorkerStageInput(
+		repoRoot,
+		worktreePath,
+		task,
+		roles.StageReview,
+		task.Role,
+		cfg,
+		func(msg string) {
 			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
 		},
-	}
+	)
 
 	logAgentInvoke(auditor, task.ID, task.Role, roles.StageReview, maxInt(task.Attempts.Total, 1), func(message string) {
 		fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
@@ -1401,16 +1407,17 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 		roleForLogs := resolveRoleForLogs(roleResult.Role, task.Role)
 		emitTaskStart(opts.Stdout, task.ID, roleForLogs, string(roles.StageResolve))
 
-		stageInput := worker.StageInput{
-			RepoRoot:     repoRoot,
-			WorktreeRoot: worktreePath,
-			Task:         task,
-			Stage:        roles.StageResolve,
-			Role:         roleResult.Role,
-			Warn: func(msg string) {
+		stageInput := newWorkerStageInput(
+			repoRoot,
+			worktreePath,
+			task,
+			roles.StageResolve,
+			roleResult.Role,
+			cfg,
+			func(msg string) {
 				fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
 			},
-		}
+		)
 		stageResult, err := worker.StageEnvAndPrompts(stageInput)
 		if err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to stage resolve environment for task %s: %v\n", task.ID, err)
@@ -1478,16 +1485,17 @@ func ExecuteConflictResolutionAgent(repoRoot, worktreePath string, task index.Ta
 	}
 
 	// Stage environment and prompts for conflict resolution execution
-	stageInput := worker.StageInput{
-		RepoRoot:     repoRoot,
-		WorktreeRoot: worktreePath,
-		Task:         task,
-		Stage:        roles.StageResolve,
-		Role:         roleResult.Role, // Use selected role for conflict resolution
-		Warn: func(msg string) {
+	stageInput := newWorkerStageInput(
+		repoRoot,
+		worktreePath,
+		task,
+		roles.StageResolve,
+		roleResult.Role,
+		cfg,
+		func(msg string) {
 			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
 		},
-	}
+	)
 
 	stageResult, err := worker.StageEnvAndPrompts(stageInput)
 	if err != nil {

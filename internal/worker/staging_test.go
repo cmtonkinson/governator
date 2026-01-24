@@ -18,6 +18,8 @@ func TestStageEnvAndPromptsHappyPath(t *testing.T) {
 	writeFile(t, filepath.Join(root, "_governator", "roles", "worker.md"), "role prompt")
 	writeFile(t, filepath.Join(root, "_governator", "custom-prompts", "_global.md"), "global prompt")
 	writeFile(t, filepath.Join(root, "_governator", "custom-prompts", "worker.md"), "custom prompt")
+	writeFile(t, filepath.Join(root, "_governator", "worker-contract.md"), "worker contract")
+	writeFile(t, filepath.Join(root, "_governator", "reasoning", "medium.md"), "reasoning prompt")
 	taskPath := filepath.Join(root, "_governator", "tasks", "T-001.md")
 	writeFile(t, taskPath, "task content")
 
@@ -31,6 +33,7 @@ func TestStageEnvAndPromptsHappyPath(t *testing.T) {
 		WorktreeRoot: root,
 		Task:         task,
 		Stage:        roles.StageWork,
+		ReasoningEffort: "medium",
 	})
 	if err != nil {
 		t.Fatalf("stage env and prompts: %v", err)
@@ -42,6 +45,8 @@ func TestStageEnvAndPromptsHappyPath(t *testing.T) {
 	}
 	gotList := strings.Split(strings.TrimSpace(string(promptListBytes)), "\n")
 	wantList := []string{
+		"_governator/reasoning/medium.md",
+		"_governator/worker-contract.md",
 		"_governator/roles/worker.md",
 		"_governator/custom-prompts/_global.md",
 		"_governator/custom-prompts/worker.md",
@@ -79,6 +84,8 @@ func TestStageEnvAndPromptsMissingFile(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "_governator", "roles", "worker.md"), "role prompt")
+	writeFile(t, filepath.Join(root, "_governator", "worker-contract.md"), "worker contract")
+	writeFile(t, filepath.Join(root, "_governator", "reasoning", "medium.md"), "reasoning prompt")
 	task := index.Task{
 		ID:   "T-002",
 		Path: "_governator/tasks/T-002.md",
@@ -89,6 +96,7 @@ func TestStageEnvAndPromptsMissingFile(t *testing.T) {
 		WorktreeRoot: root,
 		Task:         task,
 		Stage:        roles.StageWork,
+		ReasoningEffort: "medium",
 	})
 	if err == nil {
 		t.Fatal("expected error for missing task prompt file")
@@ -208,6 +216,8 @@ func TestStageEnvAndPromptsRoleOverride(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "_governator", "roles", "planner.md"), "planner role prompt")
+	writeFile(t, filepath.Join(root, "_governator", "worker-contract.md"), "worker contract")
+	writeFile(t, filepath.Join(root, "_governator", "reasoning", "medium.md"), "reasoning prompt")
 	writeFile(t, filepath.Join(root, "_governator", "tasks", "T-001.md"), "task content")
 
 	task := index.Task{
@@ -221,6 +231,7 @@ func TestStageEnvAndPromptsRoleOverride(t *testing.T) {
 		Task:         task,
 		Stage:        roles.StageWork,
 		Role:         "planner", // but we override to planner
+		ReasoningEffort: "medium",
 	})
 	if err != nil {
 		t.Fatalf("stage env and prompts: %v", err)
@@ -236,6 +247,8 @@ func TestStageEnvAndPromptsAllStages(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "_governator", "roles", "worker.md"), "role prompt")
+	writeFile(t, filepath.Join(root, "_governator", "worker-contract.md"), "worker contract")
+	writeFile(t, filepath.Join(root, "_governator", "reasoning", "medium.md"), "reasoning prompt")
 	writeFile(t, filepath.Join(root, "_governator", "tasks", "T-001.md"), "task content")
 
 	task := index.Task{
@@ -257,10 +270,11 @@ func TestStageEnvAndPromptsAllStages(t *testing.T) {
 	for _, s := range stages {
 		t.Run(string(s.stage), func(t *testing.T) {
 			result, err := StageEnvAndPrompts(StageInput{
-				RepoRoot:     root,
-				WorktreeRoot: root,
-				Task:         task,
-				Stage:        s.stage,
+				RepoRoot:        root,
+				WorktreeRoot:    root,
+				Task:            task,
+				Stage:           s.stage,
+				ReasoningEffort: "medium",
 			})
 			if err != nil {
 				t.Fatalf("stage env and prompts: %v", err)

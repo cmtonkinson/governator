@@ -18,6 +18,8 @@ const (
 	localStateDirName = "_governator/_local_state"
 	// workerStateDirName holds worker staging artifacts inside local state.
 	workerStateDirName = "worker"
+	workerContractPath = "_governator/worker-contract.md"
+	reasoningDirName  = "_governator/reasoning"
 )
 
 // StageInput defines the inputs required to stage worker prompts and environment.
@@ -27,6 +29,7 @@ type StageInput struct {
 	Task         index.Task
 	Stage        roles.Stage
 	Role         index.Role
+	ReasoningEffort string
 	Warn         func(string)
 }
 
@@ -77,7 +80,8 @@ func StageEnvAndPrompts(input StageInput) (StageResult, error) {
 	if err != nil {
 		return StageResult{}, fmt.Errorf("load role registry: %w", err)
 	}
-	promptFiles, err := orderedPromptFiles(absWorktree, registry, role, taskPath)
+	reasoningLevel := strings.TrimSpace(input.ReasoningEffort)
+	promptFiles, err := orderedPromptFiles(absWorktree, registry, role, reasoningLevel, taskPath)
 	if err != nil {
 		return StageResult{}, err
 	}
@@ -115,19 +119,29 @@ func StageEnvAndPrompts(input StageInput) (StageResult, error) {
 
 // orderedPromptFiles returns the stable prompt order for worker execution.
 // Prompt order:
-//  1. _governator/roles/<role>.md
-//  2. _governator/custom-prompts/_global.md (optional)
-//  3. _governator/custom-prompts/<role>.md (optional)
-//  4. <task path>
-func orderedPromptFiles(worktreeRoot string, registry roles.Registry, role index.Role, taskPath string) ([]string, error) {
+//  1. _governator/reasoning/<level>.md (when configured)
+//  2. _governator/worker-contract.md
+//  3. _governator/roles/<role>.md
+//  4. _governator/custom-prompts/_global.md (optional)
+//  5. _governator/custom-prompts/<role>.md (optional)
+//  6. <task path>
+func orderedPromptFiles(worktreeRoot string, registry roles.Registry, role index.Role, reasoningLevel string, taskPath string) ([]string, error) {
 	rolePrompt, ok := registry.RolePromptPath(role)
 	if !ok {
 		return nil, fmt.Errorf("missing role prompt for %q", role)
 	}
-	promptFiles := registry.PromptFiles(role)
-	if len(promptFiles) == 0 || promptFiles[0] != rolePrompt {
+	rolePrompts := registry.PromptFiles(role)
+	if len(rolePrompts) == 0 || rolePrompts[0] != rolePrompt {
 		return nil, fmt.Errorf("role prompt %s missing from prompt order", rolePrompt)
 	}
+
+	promptFiles := make([]string, 0, len(rolePrompts)+3)
+	if reasoningLevel != "" {
+		promptFiles = append(promptFiles, reasoningPromptPath(reasoningLevel))
+	}
+	promptFiles = append(promptFiles, workerContractPath)
+	promptFiles = append(promptFiles, rolePrompts...)
+
 	taskPath = filepath.ToSlash(taskPath)
 	promptFiles = append(promptFiles, taskPath)
 	for _, prompt := range promptFiles {
@@ -137,6 +151,10 @@ func orderedPromptFiles(worktreeRoot string, registry roles.Registry, role index
 		}
 	}
 	return promptFiles, nil
+}
+
+func reasoningPromptPath(level string) string {
+	return filepath.ToSlash(filepath.Join(reasoningDirName, fmt.Sprintf("%s.md", level)))
 }
 
 // ensurePromptFile validates that the prompt file exists and is a regular file.

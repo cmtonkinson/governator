@@ -13,9 +13,10 @@ import (
 const (
 	bootstrapRoot = "bootstrap"
 	planningRoot  = "planning"
+	reasoningRoot = "reasoning"
 )
 
-//go:embed bootstrap/*.md planning/*.md
+//go:embed bootstrap/*.md planning/*.md reasoning/*.md
 var embeddedFS embed.FS
 
 var requiredTemplates = []string{
@@ -74,8 +75,9 @@ func sanitizeName(name string) (string, error) {
 	}
 
 	cleaned := path.Clean(trimmed)
-	if !strings.HasPrefix(cleaned, bootstrapRoot+"/") && !strings.HasPrefix(cleaned, planningRoot+"/") {
-		return "", errors.New("template name must start with bootstrap/ or planning/")
+	validRoot := strings.HasPrefix(cleaned, bootstrapRoot+"/") || strings.HasPrefix(cleaned, planningRoot+"/") || strings.HasPrefix(cleaned, reasoningRoot+"/")
+	if !validRoot {
+		return "", errors.New("template name must start with bootstrap/, planning/, or reasoning/")
 	}
 	return cleaned, nil
 }

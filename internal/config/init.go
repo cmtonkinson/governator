@@ -32,6 +32,7 @@ var v2DirectoryStructure = []string{
 	"_governator/roles",
 	"_governator/custom-prompts",
 	"_governator/prompts",
+	"_governator/reasoning",
 	"_governator/_local_state",
 	"_governator/_local_state/logs",
 	templatesDirName,
@@ -147,6 +148,10 @@ func InitFullLayout(repoRoot string, opts InitOptions) error {
 		return fmt.Errorf("create worker contract: %w", err)
 	}
 
+	if err := ensureReasoningPrompts(repoRoot, opts); err != nil {
+		return fmt.Errorf("create reasoning prompts: %w", err)
+	}
+
 	return nil
 }
 
@@ -204,6 +209,33 @@ func ensureWorkerContract(repoRoot string, opts InitOptions) error {
 		return fmt.Errorf("write worker contract %s: %w", path, err)
 	}
 	opts.logf("created worker contract %s", repoRelativePath(repoRoot, path))
+	return nil
+}
+
+func ensureReasoningPrompts(repoRoot string, opts InitOptions) error {
+	reasoningDir := filepath.Join(repoRoot, "_governator", "reasoning")
+	if err := ensureDir(reasoningDir, opts); err != nil {
+		return fmt.Errorf("create reasoning directory %s: %w", reasoningDir, err)
+	}
+	prompts := []string{"high.md", "medium.md", "low.md"}
+	for _, name := range prompts {
+		path := filepath.Join(reasoningDir, name)
+		exists, err := pathExists(path)
+		if err != nil {
+			return fmt.Errorf("check reasoning prompt %s: %w", path, err)
+		}
+		if exists {
+			continue
+		}
+		data, err := templates.Read(filepath.ToSlash(filepath.Join("reasoning", name)))
+		if err != nil {
+			return fmt.Errorf("read reasoning template %s: %w", name, err)
+		}
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			return fmt.Errorf("write reasoning prompt %s: %w", path, err)
+		}
+		opts.logf("created reasoning prompt %s", repoRelativePath(repoRoot, path))
+	}
 	return nil
 }
 

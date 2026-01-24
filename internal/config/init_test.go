@@ -138,6 +138,19 @@ func TestInitFullLayout(t *testing.T) {
 			}
 		}
 
+		// Verify reasoning prompts were created
+		reasoningFiles := []string{
+			"_governator/reasoning/high.md",
+			"_governator/reasoning/medium.md",
+			"_governator/reasoning/low.md",
+		}
+		for _, file := range reasoningFiles {
+			filePath := filepath.Join(tempDir, file)
+			if _, err := os.Stat(filePath); os.IsNotExist(err) {
+				t.Errorf("Reasoning prompt %s was not created", file)
+			}
+		}
+
 		// Verify config file was created
 		configPath := filepath.Join(tempDir, repoConfigDir, repoConfigFileName)
 		if _, err := os.Stat(configPath); os.IsNotExist(err) {
