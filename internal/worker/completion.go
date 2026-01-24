@@ -21,9 +21,12 @@ type StageCompletion struct {
 }
 
 // CheckStageCompletion inspects the worktree to determine whether a stage completed.
-func CheckStageCompletion(worktreePath string, stage roles.Stage) (StageCompletion, error) {
+func CheckStageCompletion(worktreePath string, workerStateDir string, stage roles.Stage) (StageCompletion, error) {
 	if strings.TrimSpace(worktreePath) == "" {
 		return StageCompletion{}, errors.New("worktree path is required")
+	}
+	if strings.TrimSpace(workerStateDir) == "" {
+		return StageCompletion{}, errors.New("worker state dir is required")
 	}
 	if !stage.Valid() {
 		return StageCompletion{}, fmt.Errorf("invalid stage %q", stage)
@@ -34,7 +37,7 @@ func CheckStageCompletion(worktreePath string, stage roles.Stage) (StageCompleti
 		return StageCompletion{}, fmt.Errorf("check for commit: %w", err)
 	}
 
-	markerPath := filepath.Join(worktreePath, localStateDirName, markerFileName(stage))
+	markerPath := filepath.Join(workerStateDir, markerFileName(stage))
 	hasMarker, err := checkForMarkerFile(markerPath)
 	if err != nil {
 		return StageCompletion{}, fmt.Errorf("check for marker file: %w", err)

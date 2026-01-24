@@ -14,20 +14,20 @@ import (
 // setupBranchTestRepo creates a test git repository with initial commit for branch tests
 func setupBranchTestRepo(t *testing.T) string {
 	t.Helper()
-	
+
 	tempDir := t.TempDir()
 	repoRoot := filepath.Join(tempDir, "test-repo")
-	
+
 	// Initialize git repository
 	if err := os.MkdirAll(repoRoot, 0755); err != nil {
 		t.Fatalf("Failed to create test repo directory: %v", err)
 	}
-	
+
 	// Initialize git repo
 	runGitCmd(t, repoRoot, "init")
 	runGitCmd(t, repoRoot, "config", "user.name", "Test User")
 	runGitCmd(t, repoRoot, "config", "user.email", "test@example.com")
-	
+
 	// Create initial commit
 	readmeFile := filepath.Join(repoRoot, "README.md")
 	if err := os.WriteFile(readmeFile, []byte("# Test Repo\n"), 0644); err != nil {
@@ -35,10 +35,10 @@ func setupBranchTestRepo(t *testing.T) string {
 	}
 	runGitCmd(t, repoRoot, "add", "README.md")
 	runGitCmd(t, repoRoot, "commit", "-m", "Initial commit")
-	
+
 	// Ensure we're on main branch (rename if needed)
 	runGitCmd(t, repoRoot, "branch", "-M", "main")
-	
+
 	return repoRoot
 }
 
@@ -56,8 +56,9 @@ func TestBranchLifecycleManager_CreateTaskBranch(t *testing.T) {
 
 	// Test task
 	task := index.Task{
-		ID:   "test-task-01",
-		Role: "default",
+		ID:    "test-task-01",
+		Role:  "default",
+		Title: "Test Task One",
 	}
 
 	t.Run("CreateTaskBranch_Success", func(t *testing.T) {
@@ -67,7 +68,7 @@ func TestBranchLifecycleManager_CreateTaskBranch(t *testing.T) {
 		}
 
 		// Verify branch was created
-		branchName := "task-test-task-01"
+		branchName := TaskBranchName(task)
 		exists, err := blm.BranchExists(branchName)
 		if err != nil {
 			t.Fatalf("Failed to check if branch exists: %v", err)
@@ -108,8 +109,9 @@ func TestBranchLifecycleManager_CleanupTaskBranch(t *testing.T) {
 
 	// Test task
 	task := index.Task{
-		ID:   "test-task-02",
-		Role: "default",
+		ID:    "test-task-02",
+		Role:  "default",
+		Title: "Cleanup Task",
 	}
 
 	t.Run("CleanupTaskBranch_Success", func(t *testing.T) {
@@ -120,7 +122,7 @@ func TestBranchLifecycleManager_CleanupTaskBranch(t *testing.T) {
 		}
 
 		// Verify branch exists
-		branchName := "task-test-task-02"
+		branchName := TaskBranchName(task)
 		exists, err := blm.BranchExists(branchName)
 		if err != nil {
 			t.Fatalf("Failed to check if branch exists: %v", err)
@@ -173,8 +175,9 @@ func TestBranchLifecycleManager_EnsureTaskBranch(t *testing.T) {
 
 	// Test task
 	task := index.Task{
-		ID:   "test-task-03",
-		Role: "default",
+		ID:    "test-task-03",
+		Role:  "default",
+		Title: "Ensure Task Branch",
 	}
 
 	t.Run("EnsureTaskBranch_CreateNew", func(t *testing.T) {
@@ -184,7 +187,7 @@ func TestBranchLifecycleManager_EnsureTaskBranch(t *testing.T) {
 		}
 
 		// Verify branch was created
-		branchName := "task-test-task-03"
+		branchName := TaskBranchName(task)
 		exists, err := blm.BranchExists(branchName)
 		if err != nil {
 			t.Fatalf("Failed to check if branch exists: %v", err)
@@ -207,17 +210,33 @@ func TestBranchLifecycleManager_GetTaskBranchName(t *testing.T) {
 	blm := &BranchLifecycleManager{}
 
 	tests := []struct {
-		taskID   string
+		name     string
+		task     index.Task
 		expected string
 	}{
-		{"task-01", "task-task-01"},
-		{"simple", "task-simple"},
-		{"complex-task-name", "task-complex-task-name"},
+		{
+			name: "noTitle",
+			task: index.Task{
+				ID:    "task-01",
+				Role:  "default",
+				Title: "",
+			},
+			expected: "task-task-01",
+		},
+		{
+			name: "withTitle",
+			task: index.Task{
+				ID:    "complex-task",
+				Role:  "default",
+				Title: "Add logging steps",
+			},
+			expected: "task-complex-task-add-logging-steps",
+		},
 	}
 
 	for _, test := range tests {
-		t.Run(test.taskID, func(t *testing.T) {
-			result := blm.GetTaskBranchName(test.taskID)
+		t.Run(test.name, func(t *testing.T) {
+			result := blm.GetTaskBranchName(test.task)
 			if result != test.expected {
 				t.Errorf("Expected %s, got %s", test.expected, result)
 			}

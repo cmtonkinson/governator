@@ -34,6 +34,7 @@ func TestStageEnvAndPromptsHappyPath(t *testing.T) {
 		Task:            task,
 		Stage:           roles.StageWork,
 		ReasoningEffort: "medium",
+		WorkerStateDir:  workerStateDirPath(root),
 	})
 	if err != nil {
 		t.Fatalf("stage env and prompts: %v", err)
@@ -101,6 +102,7 @@ func TestStageEnvAndPromptsMissingFile(t *testing.T) {
 		Task:            task,
 		Stage:           roles.StageWork,
 		ReasoningEffort: "medium",
+		WorkerStateDir:  workerStateDirPath(root),
 	})
 	if err == nil {
 		t.Fatal("expected error for missing task prompt file")
@@ -129,6 +131,7 @@ func TestStageEnvAndPromptsFailsWhenReasoningPromptMissing(t *testing.T) {
 		Task:            task,
 		Stage:           roles.StageWork,
 		ReasoningEffort: "heavy",
+		WorkerStateDir:  workerStateDirPath(root),
 	})
 	if err == nil {
 		t.Fatal("expected error for missing reasoning prompt file")
@@ -157,6 +160,7 @@ func TestStageEnvAndPromptsFailsWhenWorkerContractMissing(t *testing.T) {
 		Task:            task,
 		Stage:           roles.StageWork,
 		ReasoningEffort: "medium",
+		WorkerStateDir:  workerStateDirPath(root),
 	})
 	if err == nil {
 		t.Fatal("expected error for missing worker contract prompt")
@@ -187,30 +191,33 @@ func TestStageEnvAndPromptsValidation(t *testing.T) {
 		{
 			name: "empty repo root",
 			input: StageInput{
-				RepoRoot:     "",
-				WorktreeRoot: root,
-				Task:         task,
-				Stage:        roles.StageWork,
+				RepoRoot:       "",
+				WorktreeRoot:   root,
+				Task:           task,
+				Stage:          roles.StageWork,
+				WorkerStateDir: workerStateDirPath(root),
 			},
 			wantErr: "repo root is required",
 		},
 		{
 			name: "empty worktree root",
 			input: StageInput{
-				RepoRoot:     root,
-				WorktreeRoot: "",
-				Task:         task,
-				Stage:        roles.StageWork,
+				RepoRoot:       root,
+				WorktreeRoot:   "",
+				Task:           task,
+				Stage:          roles.StageWork,
+				WorkerStateDir: workerStateDirPath(root),
 			},
 			wantErr: "worktree root is required",
 		},
 		{
 			name: "invalid stage",
 			input: StageInput{
-				RepoRoot:     root,
-				WorktreeRoot: root,
-				Task:         task,
-				Stage:        "invalid",
+				RepoRoot:       root,
+				WorktreeRoot:   root,
+				Task:           task,
+				Stage:          "invalid",
+				WorkerStateDir: workerStateDirPath(root),
 			},
 			wantErr: "unsupported stage",
 		},
@@ -224,7 +231,8 @@ func TestStageEnvAndPromptsValidation(t *testing.T) {
 					Path: "_governator/tasks/T-001.md",
 					Role: "worker",
 				},
-				Stage: roles.StageWork,
+				Stage:          roles.StageWork,
+				WorkerStateDir: workerStateDirPath(root),
 			},
 			wantErr: "task id is required",
 		},
@@ -238,7 +246,8 @@ func TestStageEnvAndPromptsValidation(t *testing.T) {
 					Path: "",
 					Role: "worker",
 				},
-				Stage: roles.StageWork,
+				Stage:          roles.StageWork,
+				WorkerStateDir: workerStateDirPath(root),
 			},
 			wantErr: "task path is required",
 		},
@@ -252,7 +261,8 @@ func TestStageEnvAndPromptsValidation(t *testing.T) {
 					Path: "_governator/tasks/T-001.md",
 					Role: "",
 				},
-				Stage: roles.StageWork,
+				Stage:          roles.StageWork,
+				WorkerStateDir: workerStateDirPath(root),
 			},
 			wantErr: "role is required",
 		},
@@ -292,6 +302,7 @@ func TestStageEnvAndPromptsRoleOverride(t *testing.T) {
 		Stage:           roles.StageWork,
 		Role:            "planner", // but we override to planner
 		ReasoningEffort: "medium",
+		WorkerStateDir:  workerStateDirPath(root),
 	})
 	if err != nil {
 		t.Fatalf("stage env and prompts: %v", err)
@@ -335,6 +346,7 @@ func TestStageEnvAndPromptsAllStages(t *testing.T) {
 				Task:            task,
 				Stage:           s.stage,
 				ReasoningEffort: "medium",
+				WorkerStateDir:  workerStateDirPath(root),
 			})
 			if err != nil {
 				t.Fatalf("stage env and prompts: %v", err)
@@ -364,4 +376,8 @@ func writeFile(t *testing.T, path string, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write file: %v", err)
 	}
+}
+
+func workerStateDirPath(root string) string {
+	return filepath.Join(root, "_governator", "_local-state", "worker-test")
 }

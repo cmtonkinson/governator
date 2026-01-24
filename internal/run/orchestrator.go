@@ -333,7 +333,13 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 			}
 		}
 
-		exitStatus, finished, err := worker.ReadExitStatus(worktreePath, task.ID, roles.StageWork)
+		entry, entryOK := inFlight.Entry(task.ID)
+		if !entryOK || strings.TrimSpace(entry.WorkerStateDir) == "" {
+			fmt.Fprintf(opts.Stderr, "Warning: missing worker state dir for task %s\n", task.ID)
+			continue
+		}
+
+		exitStatus, finished, err := worker.ReadExitStatus(entry.WorkerStateDir, task.ID, roles.StageWork)
 		if err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to read exit status for task %s: %v\n", task.ID, err)
 			continue
@@ -378,7 +384,7 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 				BlockReason: fmt.Sprintf("worker process exited with code %d", exitStatus.ExitCode),
 			}
 		} else {
-			completion, err := worker.CheckStageCompletion(worktreePath, roles.StageWork)
+			completion, err := worker.CheckStageCompletion(worktreePath, entry.WorkerStateDir, roles.StageWork)
 			if err != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to check work completion for task %s: %v\n", task.ID, err)
 				continue
@@ -439,7 +445,7 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 		}
 
 		worktreePath := ""
-		branchName := taskBranchName(task.ID)
+		branchName := TaskBranchName(task)
 		if resumePath, ok := resumeWorktrees[task.ID]; ok && strings.TrimSpace(resumePath) != "" {
 			if err := validateWorktreePath(resumePath); err != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to validate resume worktree for task %s: %v\n", task.ID, err)
@@ -462,10 +468,9 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 			worktreePath = resumePath
 		} else {
 			spec := worktree.Spec{
-				TaskID:     task.ID,
-				Attempt:    attempt,
-				Branch:     branchName,
-				BaseBranch: baseBranch,
+				WorkstreamID: task.ID,
+				Branch:       branchName,
+				BaseBranch:   baseBranch,
 			}
 			worktreeResult, err := manager.EnsureWorktree(spec)
 			if err != nil {
@@ -503,6 +508,7 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 			task,
 			roles.StageWork,
 			task.Role,
+			attempt,
 			cfg,
 			func(msg string) {
 				fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
@@ -557,7 +563,7 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 			fmt.Fprintf(opts.Stderr, "Warning: failed to record dispatch metadata for task %s: %v\n", task.ID, err)
 		}
 
-		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath); err == nil {
+		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath, dispatchResult.WorkerStateDir, string(roles.StageWork), string(task.Role)); err == nil {
 			result.InFlightUpdated = true
 		}
 		result.TasksDispatched++
@@ -575,6 +581,7 @@ func ExecuteWorkAgent(repoRoot, worktreePath string, task index.Task, cfg config
 		task,
 		roles.StageWork,
 		task.Role,
+		maxInt(task.Attempts.Total, 1),
 		cfg,
 		func(msg string) {
 			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
@@ -666,8 +673,13 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 				continue
 			}
 		}
+		entry, entryOK := inFlight.Entry(task.ID)
+		if !entryOK || strings.TrimSpace(entry.WorkerStateDir) == "" {
+			fmt.Fprintf(opts.Stderr, "Warning: missing worker state dir for task %s\n", task.ID)
+			continue
+		}
 
-		exitStatus, finished, err := worker.ReadExitStatus(worktreePath, task.ID, roles.StageTest)
+		exitStatus, finished, err := worker.ReadExitStatus(entry.WorkerStateDir, task.ID, roles.StageTest)
 		if err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to read exit status for task %s: %v\n", task.ID, err)
 			continue
@@ -712,7 +724,7 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 				BlockReason: fmt.Sprintf("worker process exited with code %d", exitStatus.ExitCode),
 			}
 		} else {
-			completion, err := worker.CheckStageCompletion(worktreePath, roles.StageTest)
+			completion, err := worker.CheckStageCompletion(worktreePath, entry.WorkerStateDir, roles.StageTest)
 			if err != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to check test completion for task %s: %v\n", task.ID, err)
 				continue
@@ -782,6 +794,7 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 			task,
 			roles.StageTest,
 			task.Role,
+			maxInt(task.Attempts.Total, 1),
 			cfg,
 			func(msg string) {
 				fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
@@ -837,7 +850,7 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 			fmt.Fprintf(opts.Stderr, "Warning: failed to record dispatch metadata for task %s: %v\n", task.ID, err)
 		}
 
-		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath); err == nil {
+		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath, dispatchResult.WorkerStateDir, string(roles.StageTest), string(task.Role)); err == nil {
 			result.InFlightUpdated = true
 		}
 		result.TasksDispatched++
@@ -855,6 +868,7 @@ func ExecuteTestAgent(repoRoot, worktreePath string, task index.Task, cfg config
 		task,
 		roles.StageTest,
 		task.Role,
+		maxInt(task.Attempts.Total, 1),
 		cfg,
 		func(msg string) {
 			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
@@ -956,8 +970,13 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 				continue
 			}
 		}
+		entry, entryOK := inFlight.Entry(task.ID)
+		if !entryOK || strings.TrimSpace(entry.WorkerStateDir) == "" {
+			fmt.Fprintf(opts.Stderr, "Warning: missing worker state dir for task %s\n", task.ID)
+			continue
+		}
 
-		exitStatus, finished, err := worker.ReadExitStatus(worktreePath, task.ID, roles.StageReview)
+		exitStatus, finished, err := worker.ReadExitStatus(entry.WorkerStateDir, task.ID, roles.StageReview)
 		if err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to read exit status for task %s: %v\n", task.ID, err)
 			continue
@@ -999,7 +1018,7 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 				BlockReason: fmt.Sprintf("worker process exited with code %d", exitStatus.ExitCode),
 			}
 		} else {
-			completion, err := worker.CheckStageCompletion(worktreePath, roles.StageReview)
+			completion, err := worker.CheckStageCompletion(worktreePath, entry.WorkerStateDir, roles.StageReview)
 			if err != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to check review completion for task %s: %v\n", task.ID, err)
 				continue
@@ -1114,6 +1133,7 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 			task,
 			roles.StageReview,
 			task.Role,
+			maxInt(task.Attempts.Total, 1),
 			cfg,
 			func(msg string) {
 				fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
@@ -1163,7 +1183,7 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 			fmt.Fprintf(opts.Stderr, "Warning: failed to record dispatch metadata for task %s: %v\n", task.ID, err)
 		}
 
-		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath); err == nil {
+		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath, dispatchResult.WorkerStateDir, string(roles.StageReview), string(task.Role)); err == nil {
 			result.InFlightUpdated = true
 		}
 		result.TasksDispatched++
@@ -1181,6 +1201,7 @@ func ExecuteReviewAgent(repoRoot, worktreePath string, task index.Task, cfg conf
 		task,
 		roles.StageReview,
 		task.Role,
+		maxInt(task.Attempts.Total, 1),
 		cfg,
 		func(msg string) {
 			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
@@ -1279,8 +1300,13 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 			fmt.Fprintf(opts.Stderr, "Warning: failed to get worktree path for task %s: %v\n", task.ID, err)
 			continue
 		}
+		entry, entryOK := inFlight.Entry(task.ID)
+		if !entryOK || strings.TrimSpace(entry.WorkerStateDir) == "" {
+			fmt.Fprintf(opts.Stderr, "Warning: missing worker state dir for task %s\n", task.ID)
+			continue
+		}
 
-		exitStatus, finished, err := worker.ReadExitStatus(worktreePath, task.ID, roles.StageResolve)
+		exitStatus, finished, err := worker.ReadExitStatus(entry.WorkerStateDir, task.ID, roles.StageResolve)
 		if err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to read exit status for task %s: %v\n", task.ID, err)
 			continue
@@ -1325,7 +1351,7 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 				BlockReason: fmt.Sprintf("worker process exited with code %d", exitStatus.ExitCode),
 			}
 		} else {
-			completion, err := worker.CheckStageCompletion(worktreePath, roles.StageResolve)
+			completion, err := worker.CheckStageCompletion(worktreePath, entry.WorkerStateDir, roles.StageResolve)
 			if err != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to check resolve completion for task %s: %v\n", task.ID, err)
 				continue
@@ -1413,6 +1439,7 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 			task,
 			roles.StageResolve,
 			roleResult.Role,
+			maxInt(task.Attempts.Total, 1),
 			cfg,
 			func(msg string) {
 				fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
@@ -1467,7 +1494,7 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 		if err := recordTaskDispatch(idx, task.ID, dispatchResult.PID, string(roleResult.Role)); err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to record dispatch metadata for task %s: %v\n", task.ID, err)
 		}
-		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath); err == nil {
+		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath, dispatchResult.WorkerStateDir, string(roles.StageResolve), string(roleResult.Role)); err == nil {
 			result.InFlightUpdated = true
 		}
 		result.TasksDispatched++
@@ -1491,6 +1518,7 @@ func ExecuteConflictResolutionAgent(repoRoot, worktreePath string, task index.Ta
 		task,
 		roles.StageResolve,
 		roleResult.Role,
+		maxInt(task.Attempts.Total, 1),
 		cfg,
 		func(msg string) {
 			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
@@ -1732,23 +1760,12 @@ func resolveWorktreePath(manager worktree.Manager, task index.Task, overrides ma
 			return path, nil
 		}
 	}
-	candidate, err := manager.WorktreePath(task.ID, task.Attempts.Total)
-	if err != nil {
+	if path, ok, err := manager.ExistingWorktreePath(task.ID); err != nil {
 		return "", err
+	} else if ok {
+		return path, nil
 	}
-	if exists, err := pathExists(candidate); err == nil && exists {
-		return candidate, nil
-	}
-	if task.Attempts.Total > 1 {
-		fallback, err := manager.WorktreePath(task.ID, 1)
-		if err != nil {
-			return "", err
-		}
-		if exists, err := pathExists(fallback); err == nil && exists {
-			return fallback, nil
-		}
-	}
-	return candidate, nil
+	return manager.WorktreePath(task.ID)
 }
 
 // validateWorktreePath ensures the worktree path exists and is a directory.
@@ -1764,11 +1781,6 @@ func validateWorktreePath(path string) error {
 		return fmt.Errorf("worktree path %s is not a directory", path)
 	}
 	return nil
-}
-
-// taskBranchName returns the deterministic branch name for the task.
-func taskBranchName(taskID string) string {
-	return fmt.Sprintf("task-%s", taskID)
 }
 
 func isRoleInFlight(state index.TaskState) bool {
@@ -2005,7 +2017,7 @@ func EnsureBranchesForOpenTasks(repoRoot string, idx *index.Index, auditor *audi
 	// Process each open task to ensure it has a branch
 	for _, task := range openTasks {
 		// Check if branch already exists
-		branchName := branchManager.GetTaskBranchName(task.ID)
+		branchName := branchManager.GetTaskBranchName(task)
 		exists, err := branchManager.BranchExists(branchName)
 		if err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to check if branch exists for task %s: %v\n", task.ID, err)

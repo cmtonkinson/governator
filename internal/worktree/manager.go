@@ -3,6 +3,7 @@ package worktree
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -14,24 +15,25 @@ import (
 const (
 	// localStateDirName is the relative path for transient governator state.
 	localStateDirName = "_governator/_local-state"
-	// worktreesDirName is the directory name that holds task worktrees.
-	worktreesDirName = "worktrees"
-	// worktreesDirMode defines permissions for the worktrees directory.
-	worktreesDirMode = 0o755
+	// metadataDirName holds metadata for workstreams.
+	metadataDirName = "meta"
+	// localStateDirMode defines permissions for the local state directory.
+	localStateDirMode = 0o755
+	// taskDirPrefix prefixes per-task worktree directories.
+	taskDirPrefix = "task-"
 )
 
 // Manager coordinates creation and reuse of task worktrees.
 type Manager struct {
-	repoRoot    string
-	worktreeDir string
+	repoRoot      string
+	localStateDir string
 }
 
 // Spec defines the inputs needed to locate or create a task worktree.
 type Spec struct {
-	TaskID     string
-	Attempt    int
-	Branch     string
-	BaseBranch string
+	WorkstreamID string
+	Branch       string
+	BaseBranch   string
 }
 
 // Result captures the resolved worktree location and whether it was reused.
@@ -57,53 +59,47 @@ func NewManager(repoRoot string) (Manager, error) {
 	if !info.IsDir() {
 		return Manager{}, fmt.Errorf("repo root %s is not a directory", absRoot)
 	}
-	worktreeDir := filepath.Join(absRoot, localStateDirName, worktreesDirName)
-	return Manager{repoRoot: absRoot, worktreeDir: worktreeDir}, nil
+	localStateDir := filepath.Join(absRoot, localStateDirName)
+	return Manager{repoRoot: absRoot, localStateDir: localStateDir}, nil
 }
 
 // WorktreePath returns the deterministic worktree path for a task attempt.
-func (manager Manager) WorktreePath(taskID string, attempt int) (string, error) {
-	if strings.TrimSpace(manager.worktreeDir) == "" {
+func (manager Manager) WorktreePath(workstreamID string) (string, error) {
+	if strings.TrimSpace(manager.localStateDir) == "" {
 		return "", errors.New("worktree manager is not initialized")
 	}
-	if err := validateTaskID(taskID); err != nil {
+	if err := validateWorkstreamID(workstreamID); err != nil {
 		return "", err
 	}
-	if attempt < 1 {
-		return "", errors.New("attempt must be positive")
-	}
-	dirName := worktreeDirName(taskID, attempt)
-	return filepath.Join(manager.worktreeDir, dirName), nil
+	dirName := taskDirName(workstreamID)
+	return filepath.Join(manager.localStateDir, dirName), nil
 }
 
 // EnsureWorktree returns a task worktree path, creating it when needed.
 // This method now integrates with branch lifecycle management to ensure
 // task branches are created before worktrees.
 func (manager Manager) EnsureWorktree(spec Spec) (Result, error) {
-	if strings.TrimSpace(manager.repoRoot) == "" || strings.TrimSpace(manager.worktreeDir) == "" {
+	if strings.TrimSpace(manager.repoRoot) == "" || strings.TrimSpace(manager.localStateDir) == "" {
 		return Result{}, errors.New("worktree manager is not initialized")
 	}
-	if err := validateTaskID(spec.TaskID); err != nil {
+	if err := validateWorkstreamID(spec.WorkstreamID); err != nil {
 		return Result{}, err
-	}
-	if spec.Attempt < 1 {
-		return Result{}, errors.New("attempt must be positive")
 	}
 	if strings.TrimSpace(spec.Branch) == "" {
 		return Result{}, errors.New("branch is required")
 	}
 
-	path, err := manager.WorktreePath(spec.TaskID, spec.Attempt)
+	if err := os.MkdirAll(manager.localStateDir, localStateDirMode); err != nil {
+		return Result{}, fmt.Errorf("create worktree directory %s: %w", manager.localStateDir, err)
+	}
+
+	path, reused, err := manager.locateExistingWorktree(spec)
 	if err != nil {
 		return Result{}, err
 	}
 
-	exists, err := pathExists(path)
-	if err != nil {
-		return Result{}, err
-	}
-	if exists {
-		if err := ensureIsWorktree(path, spec.Branch); err != nil {
+	if reused {
+		if err := manager.ensureMetadata(spec.WorkstreamID, path, spec.Branch); err != nil {
 			return Result{}, err
 		}
 		relative, err := repoRelativePath(manager.repoRoot, path)
@@ -113,19 +109,24 @@ func (manager Manager) EnsureWorktree(spec Spec) (Result, error) {
 		return Result{Path: path, RelativePath: relative, Reused: true}, nil
 	}
 
-	if err := os.MkdirAll(manager.worktreeDir, worktreesDirMode); err != nil {
-		return Result{}, fmt.Errorf("create worktree directory %s: %w", manager.worktreeDir, err)
-	}
-
-	if err := manager.addWorktree(path, spec); err != nil {
-		return Result{}, err
-	}
-
-	relative, err := repoRelativePath(manager.repoRoot, path)
+	target, err := manager.WorktreePath(spec.WorkstreamID)
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Path: path, RelativePath: relative, Reused: false}, nil
+
+	if err := manager.addWorktree(target, spec); err != nil {
+		return Result{}, err
+	}
+
+	if err := manager.ensureMetadata(spec.WorkstreamID, target, spec.Branch); err != nil {
+		return Result{}, err
+	}
+
+	relative, err := repoRelativePath(manager.repoRoot, target)
+	if err != nil {
+		return Result{}, err
+	}
+	return Result{Path: target, RelativePath: relative, Reused: false}, nil
 }
 
 // addWorktree creates the git worktree for the given spec.
@@ -152,6 +153,111 @@ func (manager Manager) addWorktree(path string, spec Spec) error {
 	}
 	if _, err := manager.runGit("worktree", "add", "-b", spec.Branch, path, spec.BaseBranch); err != nil {
 		return err
+	}
+	return nil
+}
+
+func (manager Manager) locateExistingWorktree(spec Spec) (string, bool, error) {
+	if meta, ok, err := manager.readMetadata(spec.WorkstreamID); err != nil {
+		return "", false, err
+	} else if ok && meta.WorktreeRelPath != "" {
+		path := filepath.Join(manager.repoRoot, filepath.FromSlash(meta.WorktreeRelPath))
+		if exists, err := pathExists(path); err != nil {
+			return "", false, err
+		} else if exists {
+			if strings.TrimSpace(spec.Branch) != "" {
+				if err := ensureIsWorktree(path, spec.Branch); err != nil {
+					return "", false, err
+				}
+			}
+			return path, true, nil
+		}
+	}
+
+	canonical, err := manager.WorktreePath(spec.WorkstreamID)
+	if err != nil {
+		return "", false, err
+	}
+	if exists, err := pathExists(canonical); err != nil {
+		return "", false, err
+	} else if exists {
+		if strings.TrimSpace(spec.Branch) != "" {
+			if err := ensureIsWorktree(canonical, spec.Branch); err != nil {
+				return "", false, err
+			}
+		}
+		return canonical, true, nil
+	}
+	return "", false, nil
+}
+
+// ExistingWorktreePath returns the actual worktree path for a workstream when present.
+func (manager Manager) ExistingWorktreePath(workstreamID string) (string, bool, error) {
+	if err := validateWorkstreamID(workstreamID); err != nil {
+		return "", false, err
+	}
+	return manager.locateExistingWorktree(Spec{WorkstreamID: workstreamID})
+}
+
+func (manager Manager) ensureMetadata(workstreamID, path, branch string) error {
+	if strings.TrimSpace(path) == "" {
+		return errors.New("worktree path is required")
+	}
+	meta := metadata{
+		Branch: branch,
+	}
+	relative, err := repoRelativePath(manager.repoRoot, path)
+	if err != nil {
+		return err
+	}
+	meta.WorktreeRelPath = relative
+	return manager.writeMetadata(workstreamID, meta)
+}
+
+func (manager Manager) metadataDir() string {
+	return filepath.Join(manager.localStateDir, metadataDirName)
+}
+
+func (manager Manager) metadataFilePath(workstreamID string) string {
+	return filepath.Join(manager.metadataDir(), fmt.Sprintf("%s.json", workstreamID))
+}
+
+type metadata struct {
+	WorktreeRelPath string `json:"worktree_rel_path"`
+	Branch          string `json:"branch,omitempty"`
+}
+
+func (manager Manager) readMetadata(workstreamID string) (metadata, bool, error) {
+	metaPath := manager.metadataFilePath(workstreamID)
+	data, err := os.ReadFile(metaPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return metadata{}, false, nil
+		}
+		return metadata{}, false, fmt.Errorf("read metadata %s: %w", metaPath, err)
+	}
+	var meta metadata
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return metadata{}, false, fmt.Errorf("decode metadata %s: %w", metaPath, err)
+	}
+	return meta, true, nil
+}
+
+func (manager Manager) writeMetadata(workstreamID string, meta metadata) error {
+	dir := manager.metadataDir()
+	if err := os.MkdirAll(dir, localStateDirMode); err != nil {
+		return fmt.Errorf("create metadata directory %s: %w", dir, err)
+	}
+	metaPath := manager.metadataFilePath(workstreamID)
+	data, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode metadata %s: %w", metaPath, err)
+	}
+	if len(data) == 0 || data[len(data)-1] != '\n' {
+		data = append(data, '\n')
+	}
+	if err := os.WriteFile(metaPath, data, 0o644); err != nil {
+		return fmt.Errorf("write metadata %s: %w", metaPath, err)
 	}
 	return nil
 }
@@ -229,24 +335,21 @@ func pathExists(path string) (bool, error) {
 	return false, fmt.Errorf("stat path %s: %w", path, err)
 }
 
-// worktreeDirName builds the worktree directory name for a task attempt.
-func worktreeDirName(taskID string, attempt int) string {
-	if attempt <= 1 {
-		return taskID
-	}
-	return fmt.Sprintf("%s-attempt-%d", taskID, attempt)
+// taskDirName builds the worktree directory name for a workstream.
+func taskDirName(workstreamID string) string {
+	return fmt.Sprintf("%s%s", taskDirPrefix, workstreamID)
 }
 
-// validateTaskID ensures the task id is safe for filesystem use.
-func validateTaskID(taskID string) error {
-	if strings.TrimSpace(taskID) == "" {
-		return errors.New("task id is required")
+// validateWorkstreamID ensures the workstream id is safe for filesystem use.
+func validateWorkstreamID(workstreamID string) error {
+	if strings.TrimSpace(workstreamID) == "" {
+		return errors.New("workstream id is required")
 	}
-	if strings.Contains(taskID, "/") || strings.Contains(taskID, "\\") {
-		return fmt.Errorf("task id %q must not contain path separators", taskID)
+	if strings.Contains(workstreamID, "/") || strings.Contains(workstreamID, "\\") {
+		return fmt.Errorf("workstream id %q must not contain path separators", workstreamID)
 	}
-	if strings.Contains(taskID, "..") {
-		return fmt.Errorf("task id %q must not contain '..'", taskID)
+	if strings.Contains(workstreamID, "..") {
+		return fmt.Errorf("workstream id %q must not contain '..'", workstreamID)
 	}
 	return nil
 }

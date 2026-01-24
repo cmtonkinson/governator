@@ -103,7 +103,7 @@ func ExecuteReviewMergeFlow(input MergeFlowInput) (MergeFlowResult, error) {
 	}()
 
 	// Step 4: Perform squash merge of task branch in the isolated worktree.
-	taskBranch := fmt.Sprintf("task-%s", input.Task.ID)
+	taskBranch := TaskBranchName(input.Task)
 	mergeErr := runGitInWorktree(mergeWorktreePath, "merge", "--squash", taskBranch)
 	if mergeErr != nil {
 		// Check if this is a merge conflict
@@ -133,8 +133,12 @@ func ExecuteReviewMergeFlow(input MergeFlowInput) (MergeFlowResult, error) {
 
 	// Step 5: Commit the squashed changes
 	commitMsg := fmt.Sprintf("governator: %s - %s", input.Task.ID, input.Task.Title)
-	if err := runGitInWorktree(mergeWorktreePath, "commit", "-m", commitMsg); err != nil {
-		return MergeFlowResult{}, fmt.Errorf("commit squashed changes: %w", err)
+	commitErr := runGitInWorktree(mergeWorktreePath, "commit", "-m", commitMsg)
+	if commitErr != nil {
+		lower := strings.ToLower(commitErr.Error())
+		if !strings.Contains(lower, "nothing to commit") && !strings.Contains(lower, "working tree clean") {
+			return MergeFlowResult{}, fmt.Errorf("commit squashed changes: %w", commitErr)
+		}
 	}
 
 	// Step 6: Clean up task branch after successful merge
@@ -317,6 +321,7 @@ func createMergeWorktree(repoRoot string, mainBranch string, taskID string) (str
 
 	suffix := time.Now().UTC().Format("20060102-150405")
 	worktreePath := filepath.Join(mergeDir, fmt.Sprintf("%s-%s", taskID, suffix))
+	mergeBranch := fmt.Sprintf("governator-merge-%s-%s", taskID, suffix)
 	if _, err := os.Stat(worktreePath); err == nil {
 		return "", nil, fmt.Errorf("merge worktree path %s already exists", worktreePath)
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -327,12 +332,18 @@ func createMergeWorktree(repoRoot string, mainBranch string, taskID string) (str
 		return "", nil, fmt.Errorf("fetch main branch %s: %w", mainBranch, err)
 	}
 
-	if err := runGitInRepo(repoRoot, "worktree", "add", "--detach", worktreePath, "origin/"+mainBranch); err != nil {
+	if err := runGitInRepo(repoRoot, "worktree", "add", "-b", mergeBranch, worktreePath, "origin/"+mainBranch); err != nil {
 		return "", nil, fmt.Errorf("create merge worktree: %w", err)
 	}
 
 	cleanup := func() error {
-		return runGitInRepo(repoRoot, "worktree", "remove", "--force", worktreePath)
+		if err := runGitInRepo(repoRoot, "worktree", "remove", "--force", worktreePath); err != nil {
+			return err
+		}
+		if err := runGitInRepo(repoRoot, "branch", "-D", mergeBranch); err != nil {
+			return err
+		}
+		return nil
 	}
 
 	if err := ensureCleanWorktree(worktreePath); err != nil {

@@ -9,37 +9,28 @@ import (
 	"testing"
 )
 
-// TestWorktreePathDeterministic verifies deterministic paths per task attempt.
-func TestWorktreePathDeterministic(t *testing.T) {
+// TestWorktreePathStable verifies the directory path is stable for a workstream.
+func TestWorktreePathStable(t *testing.T) {
 	repoRoot := t.TempDir()
 	manager, err := NewManager(repoRoot)
 	if err != nil {
 		t.Fatalf("NewManager error: %v", err)
 	}
 
-	first, err := manager.WorktreePath("T-014", 1)
+	path, err := manager.WorktreePath("T-014")
 	if err != nil {
-		t.Fatalf("WorktreePath attempt 1 error: %v", err)
+		t.Fatalf("WorktreePath error: %v", err)
 	}
-	wantFirst := filepath.Join(repoRoot, "_governator", "_local-state", "worktrees", "T-014")
-	if first != wantFirst {
-		t.Fatalf("WorktreePath attempt 1 = %q, want %q", first, wantFirst)
-	}
-
-	second, err := manager.WorktreePath("T-014", 2)
-	if err != nil {
-		t.Fatalf("WorktreePath attempt 2 error: %v", err)
-	}
-	wantSecond := filepath.Join(repoRoot, "_governator", "_local-state", "worktrees", "T-014-attempt-2")
-	if second != wantSecond {
-		t.Fatalf("WorktreePath attempt 2 = %q, want %q", second, wantSecond)
+	want := filepath.Join(repoRoot, "_governator", "_local-state", "task-T-014")
+	if path != want {
+		t.Fatalf("WorktreePath = %q, want %q", path, want)
 	}
 }
 
 // TestEnsureWorktreeCreatesWorktree verifies worktrees are created for new tasks.
 func TestEnsureWorktreeCreatesWorktree(t *testing.T) {
 	repoRoot := initRepo(t)
-	branch := "gov/T-001"
+	branch := "task-T-001"
 	runGit(t, repoRoot, "branch", branch)
 
 	manager, err := NewManager(repoRoot)
@@ -48,9 +39,9 @@ func TestEnsureWorktreeCreatesWorktree(t *testing.T) {
 	}
 
 	result, err := manager.EnsureWorktree(Spec{
-		TaskID:  "T-001",
-		Attempt: 1,
-		Branch:  branch,
+		WorkstreamID: "T-001",
+		Branch:       branch,
+		BaseBranch:   "main",
 	})
 	if err != nil {
 		t.Fatalf("EnsureWorktree error: %v", err)
@@ -66,15 +57,15 @@ func TestEnsureWorktreeCreatesWorktree(t *testing.T) {
 	if current != branch {
 		t.Fatalf("worktree branch = %q, want %q", current, branch)
 	}
-	if result.RelativePath != "_governator/_local-state/worktrees/T-001" {
-		t.Fatalf("relative path = %q, want %q", result.RelativePath, "_governator/_local-state/worktrees/T-001")
+	if result.RelativePath != "_governator/_local-state/task-T-001" {
+		t.Fatalf("relative path = %q, want %q", result.RelativePath, "_governator/_local-state/task-T-001")
 	}
 }
 
 // TestEnsureWorktreeReusePreservesChanges verifies reuse preserves uncommitted changes.
 func TestEnsureWorktreeReusePreservesChanges(t *testing.T) {
 	repoRoot := initRepo(t)
-	branch := "gov/T-002"
+	branch := "task-T-002"
 	runGit(t, repoRoot, "branch", branch)
 
 	manager, err := NewManager(repoRoot)
@@ -83,9 +74,9 @@ func TestEnsureWorktreeReusePreservesChanges(t *testing.T) {
 	}
 
 	first, err := manager.EnsureWorktree(Spec{
-		TaskID:  "T-002",
-		Attempt: 1,
-		Branch:  branch,
+		WorkstreamID: "T-002",
+		Branch:       branch,
+		BaseBranch:   "main",
 	})
 	if err != nil {
 		t.Fatalf("EnsureWorktree first error: %v", err)
@@ -97,9 +88,9 @@ func TestEnsureWorktreeReusePreservesChanges(t *testing.T) {
 	}
 
 	second, err := manager.EnsureWorktree(Spec{
-		TaskID:  "T-002",
-		Attempt: 1,
-		Branch:  branch,
+		WorkstreamID: "T-002",
+		Branch:       branch,
+		BaseBranch:   "main",
 	})
 	if err != nil {
 		t.Fatalf("EnsureWorktree second error: %v", err)

@@ -23,21 +23,23 @@ const (
 
 // DispatchInput defines the inputs required for asynchronous worker dispatch.
 type DispatchInput struct {
-	Command []string
-	WorkDir string
-	TaskID  string
-	Stage   roles.Stage
-	EnvVars map[string]string
-	Warn    func(string)
+	Command        []string
+	WorkDir        string
+	TaskID         string
+	Stage          roles.Stage
+	EnvVars        map[string]string
+	Warn           func(string)
+	WorkerStateDir string
 }
 
 // DispatchResult captures the worker dispatch metadata.
 type DispatchResult struct {
-	PID        int
-	StartedAt  time.Time
-	StdoutPath string
-	StderrPath string
-	ExitPath   string
+	PID            int
+	StartedAt      time.Time
+	StdoutPath     string
+	StderrPath     string
+	ExitPath       string
+	WorkerStateDir string
 }
 
 // ExitStatus records the terminal status of a worker process.
@@ -60,6 +62,12 @@ func DispatchWorker(input DispatchInput) (DispatchResult, error) {
 	if !input.Stage.Valid() {
 		return DispatchResult{}, fmt.Errorf("invalid stage %q", input.Stage)
 	}
+	if strings.TrimSpace(input.WorkerStateDir) == "" {
+		return DispatchResult{}, errors.New("worker state dir is required")
+	}
+	if err := os.MkdirAll(input.WorkerStateDir, 0o755); err != nil {
+		return DispatchResult{}, fmt.Errorf("create worker state dir %s: %w", input.WorkerStateDir, err)
+	}
 
 	logFiles, err := createWorkerLogFiles(input.WorkDir, input.TaskID)
 	if err != nil {
@@ -68,11 +76,11 @@ func DispatchWorker(input DispatchInput) (DispatchResult, error) {
 	defer logFiles.stdoutFile.Close()
 	defer logFiles.stderrFile.Close()
 
-	exitPath, err := exitStatusPath(input.WorkDir, input.TaskID, input.Stage)
+	exitPath, err := exitStatusPath(input.WorkerStateDir, input.TaskID, input.Stage)
 	if err != nil {
 		return DispatchResult{}, err
 	}
-	wrapperPath, err := writeDispatchWrapper(input.WorkDir, input.TaskID, input.Stage, input.Command, exitPath)
+	wrapperPath, err := writeDispatchWrapper(input.WorkerStateDir, input.TaskID, input.Stage, input.Command, exitPath)
 	if err != nil {
 		return DispatchResult{}, err
 	}
@@ -99,11 +107,12 @@ func DispatchWorker(input DispatchInput) (DispatchResult, error) {
 	}
 
 	return DispatchResult{
-		PID:        pid,
-		StartedAt:  startedAt,
-		StdoutPath: repoRelativePath(input.WorkDir, logFiles.stdoutPath),
-		StderrPath: repoRelativePath(input.WorkDir, logFiles.stderrPath),
-		ExitPath:   repoRelativePath(input.WorkDir, exitPath),
+		PID:            pid,
+		StartedAt:      startedAt,
+		StdoutPath:     repoRelativePath(input.WorkDir, logFiles.stdoutPath),
+		StderrPath:     repoRelativePath(input.WorkDir, logFiles.stderrPath),
+		ExitPath:       repoRelativePath(input.WorkDir, exitPath),
+		WorkerStateDir: input.WorkerStateDir,
 	}, nil
 }
 
@@ -115,39 +124,39 @@ func DispatchWorkerFromConfig(cfg config.Config, task index.Task, stageResult St
 	}
 
 	input := DispatchInput{
-		Command: command,
-		WorkDir: workDir,
-		TaskID:  task.ID,
-		Stage:   stage,
-		EnvVars: stageResult.Env,
-		Warn:    warn,
+		Command:        command,
+		WorkDir:        workDir,
+		TaskID:         task.ID,
+		Stage:          stage,
+		EnvVars:        stageResult.Env,
+		Warn:           warn,
+		WorkerStateDir: stageResult.WorkerStateDir,
 	}
 
 	return DispatchWorker(input)
 }
 
 // exitStatusPath returns the absolute path for the worker exit status file.
-func exitStatusPath(workDir string, taskID string, stage roles.Stage) (string, error) {
-	if strings.TrimSpace(workDir) == "" {
-		return "", errors.New("work directory is required")
-	}
+func exitStatusPath(workerStateDir string, taskID string, stage roles.Stage) (string, error) {
 	if strings.TrimSpace(taskID) == "" {
 		return "", errors.New("task id is required")
 	}
 	if !stage.Valid() {
 		return "", fmt.Errorf("invalid stage %q", stage)
 	}
-	dir := filepath.Join(workDir, localStateDirName, workerStateDirName)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", fmt.Errorf("create worker state dir %s: %w", dir, err)
+	if strings.TrimSpace(workerStateDir) == "" {
+		return "", errors.New("worker state dir is required")
 	}
 	name := fmt.Sprintf("exit-%s-%s.json", stage, taskID)
-	return filepath.Join(dir, name), nil
+	return filepath.Join(workerStateDir, name), nil
 }
 
 // ReadExitStatus reads the exit status file if present.
-func ReadExitStatus(workDir string, taskID string, stage roles.Stage) (ExitStatus, bool, error) {
-	path, err := exitStatusPath(workDir, taskID, stage)
+func ReadExitStatus(workerStateDir string, taskID string, stage roles.Stage) (ExitStatus, bool, error) {
+	if strings.TrimSpace(workerStateDir) == "" {
+		return ExitStatus{}, false, errors.New("worker state dir is required")
+	}
+	path, err := exitStatusPath(workerStateDir, taskID, stage)
 	if err != nil {
 		return ExitStatus{}, false, err
 	}
@@ -169,10 +178,7 @@ func ReadExitStatus(workDir string, taskID string, stage roles.Stage) (ExitStatu
 }
 
 // writeDispatchWrapper writes a wrapper script that captures exit status after execution.
-func writeDispatchWrapper(workDir string, taskID string, stage roles.Stage, command []string, exitPath string) (string, error) {
-	if strings.TrimSpace(workDir) == "" {
-		return "", errors.New("work directory is required")
-	}
+func writeDispatchWrapper(workerStateDir string, taskID string, stage roles.Stage, command []string, exitPath string) (string, error) {
 	if strings.TrimSpace(taskID) == "" {
 		return "", errors.New("task id is required")
 	}
@@ -186,11 +192,10 @@ func writeDispatchWrapper(workDir string, taskID string, stage roles.Stage, comm
 		return "", errors.New("exit path is required")
 	}
 
-	wrapperDir := filepath.Join(workDir, localStateDirName, workerStateDirName)
-	if err := os.MkdirAll(wrapperDir, 0o755); err != nil {
-		return "", fmt.Errorf("create wrapper dir %s: %w", wrapperDir, err)
+	if strings.TrimSpace(workerStateDir) == "" {
+		return "", errors.New("worker state dir is required")
 	}
-	wrapperPath := filepath.Join(wrapperDir, fmt.Sprintf("dispatch-%s-%s.sh", stage, taskID))
+	wrapperPath := filepath.Join(workerStateDir, fmt.Sprintf("dispatch-%s-%s.sh", stage, taskID))
 	commandLine := shellCommandLine(command)
 	exitPathEscaped := shellEscapeArg(exitPath)
 	content := strings.Join([]string{

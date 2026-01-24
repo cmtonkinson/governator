@@ -5,11 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"testing"
 
 	"github.com/cmtonkinson/governator/internal/digests"
 	"github.com/cmtonkinson/governator/internal/index"
+	"github.com/cmtonkinson/governator/internal/slug"
 )
 
 const (
@@ -34,30 +34,7 @@ func writeTestTaskFile(t *testing.T, repoRoot, id, title, role string) string {
 }
 
 func slugify(text string) string {
-	clean := strings.TrimSpace(text)
-	if clean == "" {
-		return ""
-	}
-	builder := strings.Builder{}
-	builder.Grow(len(clean))
-	prevHyphen := false
-	for _, r := range strings.ToLower(clean) {
-		switch {
-		case r >= 'a' && r <= 'z':
-			builder.WriteRune(r)
-			prevHyphen = false
-		case r >= '0' && r <= '9':
-			builder.WriteRune(r)
-			prevHyphen = false
-		default:
-			if !prevHyphen {
-				builder.WriteRune('-')
-				prevHyphen = true
-			}
-		}
-	}
-	result := strings.Trim(builder.String(), "-")
-	return result
+	return slug.Slugify(text)
 }
 
 func writeTestTaskIndex(t *testing.T, repoRoot string, tasks []index.Task) {

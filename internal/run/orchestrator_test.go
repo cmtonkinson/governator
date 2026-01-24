@@ -58,7 +58,7 @@ func TestRunHappyPathWithResume(t *testing.T) {
 		t.Fatalf("create worktree manager: %v", err)
 	}
 
-	worktreePath, err := manager.WorktreePath("T-001", 1)
+	worktreePath, err := manager.WorktreePath("T-001")
 	if err != nil {
 		t.Fatalf("get worktree path: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestRunBlocksTasksExceedingRetryLimit(t *testing.T) {
 		t.Fatalf("create worktree manager: %v", err)
 	}
 
-	worktreePath, err := manager.WorktreePath("T-001", 3)
+	worktreePath, err := manager.WorktreePath("T-001")
 	if err != nil {
 		t.Fatalf("get worktree path: %v", err)
 	}

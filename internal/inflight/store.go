@@ -27,9 +27,12 @@ type Store struct {
 
 // Entry captures per-task in-flight metadata.
 type Entry struct {
-	ID        string    `json:"id"`
-	StartedAt time.Time `json:"started_at,omitempty"`
-	Worktree  string    `json:"worktree_path,omitempty"`
+	ID             string    `json:"id"`
+	StartedAt      time.Time `json:"started_at,omitempty"`
+	Worktree       string    `json:"worktree_path,omitempty"`
+	WorkerStateDir string    `json:"worker_state_dir,omitempty"`
+	Stage          string    `json:"stage,omitempty"`
+	Role           string    `json:"role,omitempty"`
 }
 
 // Set tracks in-flight task IDs in memory along with metadata.
@@ -237,8 +240,8 @@ func (set Set) AddWithStart(id string, startedAt time.Time) error {
 	return nil
 }
 
-// AddWithStartAndPath tracks a task ID with the provided start time and worktree path.
-func (set Set) AddWithStartAndPath(id string, startedAt time.Time, worktreePath string) error {
+// AddWithStartAndPath tracks a task ID with the provided start time, worktree path, worker state dir, stage, and role.
+func (set Set) AddWithStartAndPath(id string, startedAt time.Time, worktreePath string, workerStateDir string, stage string, role string) error {
 	if id == "" {
 		return errors.New("task id is required")
 	}
@@ -248,7 +251,18 @@ func (set Set) AddWithStartAndPath(id string, startedAt time.Time, worktreePath 
 	if startedAt.IsZero() {
 		startedAt = time.Now().UTC()
 	}
-	set[id] = Entry{ID: id, StartedAt: startedAt, Worktree: strings.TrimSpace(worktreePath)}
+	roleValue := strings.TrimSpace(role)
+	if roleValue == "" {
+		roleValue = strings.TrimSpace(stage)
+	}
+	set[id] = Entry{
+		ID:             id,
+		StartedAt:      startedAt,
+		Worktree:       strings.TrimSpace(worktreePath),
+		WorkerStateDir: strings.TrimSpace(workerStateDir),
+		Stage:          strings.TrimSpace(stage),
+		Role:           roleValue,
+	}
 	return nil
 }
 
@@ -277,4 +291,13 @@ func (set Set) WorktreePath(id string) (string, bool) {
 		return "", false
 	}
 	return entry.Worktree, true
+}
+
+// Entry returns the stored entry for a task when present.
+func (set Set) Entry(id string) (Entry, bool) {
+	if set == nil {
+		return Entry{}, false
+	}
+	entry, ok := set[id]
+	return entry, ok
 }

@@ -3,7 +3,6 @@ package run
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/cmtonkinson/governator/internal/config"
@@ -43,30 +42,22 @@ func DetectResumeCandidates(repoRoot string, idx index.Index, cfg config.Config)
 			continue
 		}
 
-		// Check if there's a preserved worktree for the current attempt
-		currentAttempt := task.Attempts.Total
-		if currentAttempt == 0 {
-			currentAttempt = 1 // First attempt
-		}
-
-		worktreePath, err := manager.WorktreePath(task.ID, currentAttempt)
+		worktreePath, ok, err := manager.ExistingWorktreePath(task.ID)
 		if err != nil {
 			continue // Skip tasks with invalid IDs
 		}
-
-		// Check if the worktree exists
-		exists, err := pathExists(worktreePath)
-		if err != nil {
-			continue // Skip on error
-		}
-		if !exists {
+		if !ok || worktreePath == "" {
 			continue // No preserved worktree
 		}
 
+		attempt := task.Attempts.Total
+		if attempt <= 0 {
+			attempt = 1
+		}
 		candidates = append(candidates, ResumeCandidate{
 			Task:         task,
 			WorktreePath: worktreePath,
-			Attempt:      currentAttempt,
+			Attempt:      attempt,
 		})
 	}
 
@@ -107,21 +98,6 @@ func getMaxAttempts(task index.Task, cfg config.Config) int {
 	}
 	// Default to 3 attempts if nothing is configured
 	return 3
-}
-
-// pathExists reports whether the path exists on disk.
-func pathExists(path string) (bool, error) {
-	if strings.TrimSpace(path) == "" {
-		return false, fmt.Errorf("path is required")
-	}
-	info, err := os.Stat(path)
-	if err == nil {
-		return info.IsDir(), nil
-	}
-	if os.IsNotExist(err) {
-		return false, nil
-	}
-	return false, fmt.Errorf("stat path %s: %w", path, err)
 }
 
 // PrepareTaskForResume increments the attempt counter and transitions the task to open.

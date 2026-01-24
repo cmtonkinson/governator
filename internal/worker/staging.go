@@ -31,6 +31,7 @@ type StageInput struct {
 	Role            index.Role
 	ReasoningEffort string
 	Warn            func(string)
+	WorkerStateDir  string
 }
 
 // StageResult captures staged prompt and environment artifacts.
@@ -40,6 +41,7 @@ type StageResult struct {
 	PromptListPath string
 	EnvPath        string
 	Env            map[string]string
+	WorkerStateDir string
 }
 
 // StageEnvAndPrompts prepares worker prompt and environment staging artifacts.
@@ -86,7 +88,14 @@ func StageEnvAndPrompts(input StageInput) (StageResult, error) {
 		return StageResult{}, err
 	}
 
-	stageDir := filepath.Join(absWorktree, localStateDirName, workerStateDirName)
+	stageDir := strings.TrimSpace(input.WorkerStateDir)
+	if stageDir == "" {
+		return StageResult{}, errors.New("worker state dir is required")
+	}
+	stageDir, err = filepath.Abs(stageDir)
+	if err != nil {
+		return StageResult{}, fmt.Errorf("resolve worker state dir %s: %w", input.WorkerStateDir, err)
+	}
 	if err := os.MkdirAll(stageDir, 0o755); err != nil {
 		return StageResult{}, fmt.Errorf("create worker stage dir %s: %w", stageDir, err)
 	}
@@ -102,7 +111,7 @@ func StageEnvAndPrompts(input StageInput) (StageResult, error) {
 	}
 
 	envPath := filepath.Join(stageDir, envFileName(input.Stage))
-	env := buildEnvMap(absWorktree, taskID, taskPath, role, input.Stage, promptPath, promptListPath)
+	env := buildEnvMap(absWorktree, taskID, taskPath, role, input.Stage, promptPath, promptListPath, stageDir)
 	if err := writeEnvFile(envPath, env); err != nil {
 		return StageResult{}, err
 	}
@@ -113,6 +122,7 @@ func StageEnvAndPrompts(input StageInput) (StageResult, error) {
 		PromptListPath: promptListPath,
 		EnvPath:        envPath,
 		Env:            env,
+		WorkerStateDir: stageDir,
 	}, nil
 }
 
@@ -247,8 +257,8 @@ func buildPromptContent(worktreeRoot string, prompts []string) (string, error) {
 }
 
 // buildEnvMap assembles the environment variables for worker execution.
-func buildEnvMap(worktreeRoot string, taskID string, taskPath string, role index.Role, stage roles.Stage, promptPath string, promptListPath string) map[string]string {
-	return map[string]string{
+func buildEnvMap(worktreeRoot string, taskID string, taskPath string, role index.Role, stage roles.Stage, promptPath string, promptListPath string, workerStateDir string) map[string]string {
+	env := map[string]string{
 		"GOVERNATOR_PROMPT_LIST":  repoRelativePath(worktreeRoot, promptListPath),
 		"GOVERNATOR_PROMPT_PATH":  repoRelativePath(worktreeRoot, promptPath),
 		"GOVERNATOR_ROLE":         string(role),
@@ -257,6 +267,11 @@ func buildEnvMap(worktreeRoot string, taskID string, taskPath string, role index
 		"GOVERNATOR_TASK_PATH":    filepath.ToSlash(taskPath),
 		"GOVERNATOR_WORKTREE_DIR": worktreeRoot,
 	}
+	if strings.TrimSpace(workerStateDir) != "" {
+		env["GOVERNATOR_WORKER_STATE_PATH"] = workerStateDir
+		env["GOVERNATOR_WORKER_STATE_DIR"] = repoRelativePath(worktreeRoot, workerStateDir)
+	}
+	return env
 }
 
 // writeEnvFile writes a dotenv-style file for worker execution context.

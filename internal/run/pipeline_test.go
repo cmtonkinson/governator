@@ -69,7 +69,7 @@ func TestPipelineIntegrationHappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("worktree manager: %v", err)
 	}
-	worktreePath, err := manager.WorktreePath("T-PIPE-001", 1)
+	worktreePath, err := manager.WorktreePath("T-PIPE-001")
 	if err != nil {
 		t.Fatalf("worktree path: %v", err)
 	}
@@ -157,7 +157,11 @@ func TestPipelineWorkerHelper(t *testing.T) {
 		fmt.Fprintf(os.Stderr, "unsupported stage %q\n", stage)
 		os.Exit(2)
 	}
-	markerPath := filepath.Join("_governator", "_local-state", marker)
+	stateDir := os.Getenv("GOVERNATOR_WORKER_STATE_PATH")
+	if stateDir == "" {
+		stateDir = filepath.Join("_governator", "_local-state")
+	}
+	markerPath := filepath.Join(stateDir, marker)
 	if err := os.MkdirAll(filepath.Dir(markerPath), 0o755); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
@@ -252,10 +256,9 @@ func prepareWorkedTask(t *testing.T, repoRoot string, idx *index.Index, repo *te
 		task.Attempts.Total = 1
 		branchName := fmt.Sprintf("task-%s", task.ID)
 		spec := worktree.Spec{
-			TaskID:     task.ID,
-			Attempt:    task.Attempts.Total,
-			Branch:     branchName,
-			BaseBranch: effectiveBranch,
+			WorkstreamID: task.ID,
+			Branch:       branchName,
+			BaseBranch:   effectiveBranch,
 		}
 		worktreeResult, err := manager.EnsureWorktree(spec)
 		if err != nil {
@@ -292,6 +295,13 @@ func commitWorktreeChange(t *testing.T, worktreePath, taskID string) error {
 	}
 	if err := os.WriteFile(markerPath, []byte("workstage marker\n"), 0o644); err != nil {
 		return fmt.Errorf("write worked marker: %w", err)
+	}
+	stateMarkerDir := filepath.Join(worktreePath, "_governator", "_local-state", "worker-1-work-worker")
+	if err := os.MkdirAll(stateMarkerDir, 0o755); err != nil {
+		return fmt.Errorf("mkdir worker state dir: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(stateMarkerDir, "worked.md"), []byte("workstage marker\n"), 0o644); err != nil {
+		return fmt.Errorf("write worker state marker: %w", err)
 	}
 	if _, err := execGitCommand(worktreePath, "add", "_governator/_local-state/worked.md"); err != nil {
 		return err

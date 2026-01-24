@@ -178,7 +178,7 @@ func TestExecuteWorkerTimeoutWithAuditLogging(t *testing.T) {
 		Warn:         warn,
 		AuditLogger:  mockAuditLogger,
 		Role:         "worker",
-		WorktreePath: "_governator/_local-state/worktrees/T-003",
+		WorktreePath: "_governator/_local-state/task-T-003",
 	}
 
 	result, err := ExecuteWorker(input)
@@ -203,8 +203,8 @@ func TestExecuteWorkerTimeoutWithAuditLogging(t *testing.T) {
 	if call.timeoutSecs != 1 {
 		t.Fatalf("audit call timeout seconds = %d, want %d", call.timeoutSecs, 1)
 	}
-	if call.worktreePath != "_governator/_local-state/worktrees/T-003" {
-		t.Fatalf("audit call worktree path = %q, want %q", call.worktreePath, "_governator/_local-state/worktrees/T-003")
+	if call.worktreePath != "_governator/_local-state/task-T-003" {
+		t.Fatalf("audit call worktree path = %q, want %q", call.worktreePath, "_governator/_local-state/task-T-003")
 	}
 }
 
@@ -226,7 +226,7 @@ func TestExecuteWorkerTimeoutWithoutAuditLogger(t *testing.T) {
 		Warn:         warn,
 		AuditLogger:  nil, // No audit logger
 		Role:         "worker",
-		WorktreePath: "_governator/_local-state/worktrees/T-004",
+		WorktreePath: "_governator/_local-state/task-T-004",
 	}
 
 	result, err := ExecuteWorker(input)
@@ -307,7 +307,7 @@ func TestExecuteWorkerNonTimeoutFailureNoTimeoutMessage(t *testing.T) {
 		Warn:         warn,
 		AuditLogger:  mockAuditLogger,
 		Role:         "worker",
-		WorktreePath: "_governator/_local-state/worktrees/T-006",
+		WorktreePath: "_governator/_local-state/task-T-006",
 	}
 
 	result, err := ExecuteWorker(input)

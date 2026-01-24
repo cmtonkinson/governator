@@ -65,7 +65,7 @@ func TestLifecycleEndToEndHappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("worktree manager: %v", err)
 	}
-	worktreePath, err := manager.WorktreePath("T-LIFE-001", 1)
+	worktreePath, err := manager.WorktreePath("T-LIFE-001")
 	if err != nil {
 		t.Fatalf("worktree path: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestLifecycleEndToEndTimeoutResume(t *testing.T) {
 	if err != nil {
 		t.Fatalf("worktree manager: %v", err)
 	}
-	worktreePath, err := manager.WorktreePath("T-LIFE-001", 1)
+	worktreePath, err := manager.WorktreePath("T-LIFE-001")
 	if err != nil {
 		t.Fatalf("worktree path: %v", err)
 	}
@@ -337,7 +337,11 @@ func TestLifecycleWorkerHelper(t *testing.T) {
 		fmt.Fprintf(os.Stderr, "unsupported stage %q\n", stage)
 		os.Exit(2)
 	}
-	markerPath := filepath.Join("_governator", "_local-state", marker)
+	stateDir := os.Getenv("GOVERNATOR_WORKER_STATE_PATH")
+	if stateDir == "" {
+		stateDir = filepath.Join("_governator", "_local-state")
+	}
+	markerPath := filepath.Join(stateDir, marker)
 	if err := os.MkdirAll(filepath.Dir(markerPath), 0o755); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)

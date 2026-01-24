@@ -25,7 +25,6 @@ func NewBranchLifecycleManager(repoRoot string, auditor *audit.Logger) *BranchLi
 }
 
 // CreateTaskBranch creates a new branch for a task when it transitions to open state.
-// Branch naming follows the pattern: task-{taskID}
 func (blm *BranchLifecycleManager) CreateTaskBranch(task index.Task, baseBranch string) error {
 	if strings.TrimSpace(task.ID) == "" {
 		return fmt.Errorf("task ID is required")
@@ -34,7 +33,7 @@ func (blm *BranchLifecycleManager) CreateTaskBranch(task index.Task, baseBranch 
 		baseBranch = "main" // Default to main branch
 	}
 
-	branchName := fmt.Sprintf("task-%s", task.ID)
+	branchName := TaskBranchName(task)
 
 	// Check if branch exists
 	exists, err := blm.BranchExists(branchName)
@@ -85,7 +84,7 @@ func (blm *BranchLifecycleManager) CleanupTaskBranch(task index.Task) error {
 		return fmt.Errorf("task ID is required")
 	}
 
-	branchName := fmt.Sprintf("task-%s", task.ID)
+	branchName := TaskBranchName(task)
 
 	// Check if branch exists
 	exists, err := blm.BranchExists(branchName)
@@ -128,7 +127,7 @@ func (blm *BranchLifecycleManager) EnsureTaskBranch(task index.Task, baseBranch 
 		baseBranch = "main" // Default to main branch
 	}
 
-	branchName := fmt.Sprintf("task-%s", task.ID)
+	branchName := TaskBranchName(task)
 
 	// Check if branch exists
 	exists, err := blm.BranchExists(branchName)
@@ -150,8 +149,8 @@ func (blm *BranchLifecycleManager) EnsureTaskBranch(task index.Task, baseBranch 
 }
 
 // GetTaskBranchName returns the deterministic branch name for a task.
-func (blm *BranchLifecycleManager) GetTaskBranchName(taskID string) string {
-	return fmt.Sprintf("task-%s", taskID)
+func (blm *BranchLifecycleManager) GetTaskBranchName(task index.Task) string {
+	return TaskBranchName(task)
 }
 
 // BranchExists checks if a branch exists in the repository.

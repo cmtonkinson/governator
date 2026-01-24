@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -14,14 +15,17 @@ import (
 	"github.com/cmtonkinson/governator/internal/phase"
 	"github.com/cmtonkinson/governator/internal/roles"
 	"github.com/cmtonkinson/governator/internal/worker"
+	"github.com/cmtonkinson/governator/internal/worktree"
 )
 
 type phaseRunner struct {
-	repoRoot string
-	cfg      config.Config
-	stdout   io.Writer
-	stderr   io.Writer
-	store    *phase.Store
+	repoRoot            string
+	cfg                 config.Config
+	stdout              io.Writer
+	stderr              io.Writer
+	store               *phase.Store
+	worktreeManager     worktree.Manager
+	worktreeManagerInit bool
 }
 
 func newPhaseRunner(repoRoot string, cfg config.Config, opts Options, store *phase.Store) *phaseRunner {
@@ -42,7 +46,23 @@ func newPhaseRunner(repoRoot string, cfg config.Config, opts Options, store *pha
 	}
 }
 
+func (runner *phaseRunner) ensureWorktreeManager() error {
+	if runner.worktreeManagerInit {
+		return nil
+	}
+	manager, err := worktree.NewManager(runner.repoRoot)
+	if err != nil {
+		return err
+	}
+	runner.worktreeManager = manager
+	runner.worktreeManagerInit = true
+	return nil
+}
+
 func (runner *phaseRunner) EnsurePlanningPhases(state *phase.State) (bool, error) {
+	if err := runner.ensureWorktreeManager(); err != nil {
+		return false, fmt.Errorf("create worktree manager: %w", err)
+	}
 	for state.Current < phase.PhaseExecution {
 		spec, ok := planningPhaseSpecs[state.Current]
 		if !ok {
@@ -91,12 +111,27 @@ func (runner *phaseRunner) dispatchPhase(state *phase.State, spec phaseSpec) err
 		Role: spec.role,
 	}
 
+	branchName := fmt.Sprintf("phase-%s", spec.phase.String())
+	baseBranch := strings.TrimSpace(runner.cfg.Branches.Base)
+	if baseBranch == "" {
+		baseBranch = config.Defaults().Branches.Base
+	}
+	worktreeResult, err := runner.worktreeManager.EnsureWorktree(worktree.Spec{
+		WorkstreamID: taskID,
+		Branch:       branchName,
+		BaseBranch:   baseBranch,
+	})
+	if err != nil {
+		return fmt.Errorf("ensure worktree for phase %s: %w", spec.phase.String(), err)
+	}
+
 	stageInput := newWorkerStageInput(
 		runner.repoRoot,
-		runner.repoRoot,
+		worktreeResult.Path,
 		task,
 		roles.StageWork,
 		spec.role,
+		1,
 		runner.cfg,
 		func(msg string) {
 			if msg == "" {
@@ -111,7 +146,7 @@ func (runner *phaseRunner) dispatchPhase(state *phase.State, spec phaseSpec) err
 		return fmt.Errorf("stage planning prompts: %w", err)
 	}
 
-	dispatchResult, err := worker.DispatchWorkerFromConfig(runner.cfg, task, stageResult, runner.repoRoot, roles.StageWork, func(msg string) {
+	dispatchResult, err := worker.DispatchWorkerFromConfig(runner.cfg, task, stageResult, worktreeResult.Path, roles.StageWork, func(msg string) {
 		if msg == "" {
 			return
 		}

@@ -28,7 +28,8 @@ func TestExecuteReviewMergeFlow_Success(t *testing.T) {
 		State: index.TaskStateTested,
 	}
 
-	repo.RunGit(t, "checkout", "-b", "task-"+task.ID)
+	branchName := TaskBranchName(task)
+	repo.RunGit(t, "checkout", "-b", branchName)
 	featureFile := filepath.Join(repoRoot, "FEATURE.md")
 	if err := os.WriteFile(featureFile, []byte("merge flow\n"), 0o644); err != nil {
 		t.Fatalf("write feature file: %v", err)
@@ -43,10 +44,9 @@ func TestExecuteReviewMergeFlow_Success(t *testing.T) {
 		t.Fatalf("create worktree manager: %v", err)
 	}
 	worktreeResult, err := manager.EnsureWorktree(worktree.Spec{
-		TaskID:     task.ID,
-		Attempt:    1,
-		Branch:     "task-" + task.ID,
-		BaseBranch: "main",
+		WorkstreamID: task.ID,
+	Branch:       branchName,
+		BaseBranch:   "main",
 	})
 	if err != nil {
 		t.Fatalf("ensure worktree: %v", err)
