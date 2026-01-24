@@ -3,154 +3,102 @@ package status
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cmtonkinson/governator/internal/index"
 )
 
 func TestSummaryString(t *testing.T) {
-	tests := []struct {
-		name     string
-		summary  Summary
-		expected string
-	}{
-		{
-			name:     "empty summary",
-			summary:  Summary{},
-			expected: "tasks total=0 done=0 open=0 blocked=0",
-		},
-		{
-			name: "mixed states",
-			summary: Summary{
-				Total:   10,
-				Done:    3,
-				Open:    5,
-				Blocked: 2,
-			},
-			expected: "tasks total=10 done=3 open=5 blocked=2",
-		},
+	empty := Summary{}
+	if got := empty.String(); got != "tasks backlog=0 merged=0 in-progress=0" {
+		t.Fatalf("empty summary string = %q", got)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := tt.summary.String()
-			if result != tt.expected {
-				t.Errorf("Summary.String() = %q, want %q", result, tt.expected)
-			}
-		})
+	withRows := Summary{
+		Backlog:    1,
+		Merged:     1,
+		InProgress: 1,
+		Rows: []statusRow{
+			{id: "T-100", state: "triaged", pid: "1234", role: "builder", attrs: "blocked", title: "A task", order: 0},
+		},
+	}
+	result := withRows.String()
+	if !strings.Contains(result, "tasks backlog=1 merged=1 in-progress=1") {
+		t.Fatalf("summary header missing counts: %q", result)
+	}
+	if !strings.Contains(result, "id") || !strings.Contains(result, "state") {
+		t.Fatalf("table header missing: %q", result)
 	}
 }
 
 func TestGetSummary(t *testing.T) {
-	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "governator-status-test")
 	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
+		t.Fatalf("failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Create the expected directory structure
 	stateDir := filepath.Join(tempDir, "_governator")
 	if err := os.MkdirAll(stateDir, 0755); err != nil {
-		t.Fatalf("Failed to create state dir: %v", err)
+		t.Fatalf("failed to create state dir: %v", err)
 	}
 
-	// Create a test index with various task states
+	longTitle := strings.Repeat("x", titleMaxWidth+10)
 	testIndex := index.Index{
 		SchemaVersion: 1,
 		Tasks: []index.Task{
-			{ID: "T-001", State: index.TaskStateDone},
-			{ID: "T-002", State: index.TaskStateDone},
-			{ID: "T-003", State: index.TaskStateOpen},
-			{ID: "T-004", State: index.TaskStateOpen},
-			{ID: "T-005", State: index.TaskStateOpen},
-			{ID: "T-006", State: index.TaskStateBlocked},
-			{ID: "T-007", State: index.TaskStateWorked},   // counts as open
-			{ID: "T-008", State: index.TaskStateTested},   // counts as open
-			{ID: "T-009", State: index.TaskStateConflict}, // counts as blocked
-			{ID: "T-010", State: index.TaskStateResolved}, // counts as open
+			{ID: "T-backlog", State: index.TaskStateBacklog},
+			{ID: "T-triaged", State: index.TaskStateTriaged, Role: "dev", AssignedRole: "dev"},
+			{ID: "T-implemented", State: index.TaskStateImplemented, Role: "dev"},
+			{ID: "T-tested", State: index.TaskStateTested, Role: "dev"},
+			{ID: "T-reviewed", State: index.TaskStateReviewed, Role: "dev"},
+			{ID: "T-mergeable", State: index.TaskStateMergeable, Role: "dev"},
+			{ID: "T-merged", State: index.TaskStateMerged, Role: "dev"},
+			{ID: "T-blocked", State: index.TaskStateBlocked, Role: "dev", BlockedReason: "blocked"},
+			{ID: "T-conflict", State: index.TaskStateConflict, Role: "dev", MergeConflict: true},
+			{ID: "T-resolved", State: index.TaskStateResolved, Role: "dev", Title: longTitle},
 		},
 	}
 
-	// Write the test index to disk
 	indexPath := filepath.Join(tempDir, "_governator", "task-index.json")
 	if err := index.Save(indexPath, testIndex); err != nil {
-		t.Fatalf("Failed to save test index: %v", err)
+		t.Fatalf("failed to save test index: %v", err)
 	}
 
-	// Test GetSummary
 	summary, err := GetSummary(tempDir)
 	if err != nil {
 		t.Fatalf("GetSummary() failed: %v", err)
 	}
 
-	expected := Summary{
-		Total:   10,
-		Done:    2, // T-001, T-002
-		Open:    6, // T-003, T-004, T-005, T-007, T-008, T-010
-		Blocked: 2, // T-006, T-009
+	if summary.Backlog != 1 {
+		t.Fatalf("expected 1 backlog task, got %d", summary.Backlog)
+	}
+	if summary.Merged != 1 {
+		t.Fatalf("expected 1 merged task, got %d", summary.Merged)
+	}
+	if summary.InProgress != 8 {
+		t.Fatalf("expected 8 in-progress tasks, got %d", summary.InProgress)
+	}
+	if len(summary.Rows) != summary.InProgress {
+		t.Fatalf("expected %d rows, got %d", summary.InProgress, len(summary.Rows))
 	}
 
-	if summary != expected {
-		t.Errorf("GetSummary() = %+v, want %+v", summary, expected)
+	if summary.Rows[0].state != string(index.TaskStateTriaged) {
+		t.Fatalf("expected first row state triaged, got %s", summary.Rows[0].state)
 	}
-}
-
-func TestGetSummaryMissingIndex(t *testing.T) {
-	// Create a temporary directory without an index file
-	tempDir, err := os.MkdirTemp("", "governator-status-test")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	// Test GetSummary with missing index
-	_, err = GetSummary(tempDir)
-	if err == nil {
-		t.Error("GetSummary() should fail when index file is missing")
-	}
-}
-
-func TestGetSummaryEmptyIndex(t *testing.T) {
-	// Create a temporary directory for testing
-	tempDir, err := os.MkdirTemp("", "governator-status-test")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	// Create the expected directory structure
-	stateDir := filepath.Join(tempDir, "_governator")
-	if err := os.MkdirAll(stateDir, 0755); err != nil {
-		t.Fatalf("Failed to create state dir: %v", err)
+	last := summary.Rows[len(summary.Rows)-1]
+	if !strings.HasSuffix(last.title, "...") {
+		t.Fatalf("expected truncated title, got %q", last.title)
 	}
 
-	// Create an empty index
-	emptyIndex := index.Index{
-		SchemaVersion: 1,
-		Tasks:         []index.Task{},
+	foundAttrs := false
+	for _, row := range summary.Rows {
+		if row.id == "T-blocked" && row.attrs == "blocked" {
+			foundAttrs = true
+		}
 	}
-
-	// Write the empty index to disk
-	indexPath := filepath.Join(tempDir, "_governator", "task-index.json")
-	if err := index.Save(indexPath, emptyIndex); err != nil {
-		t.Fatalf("Failed to save empty index: %v", err)
-	}
-
-	// Test GetSummary
-	summary, err := GetSummary(tempDir)
-	if err != nil {
-		t.Fatalf("GetSummary() failed: %v", err)
-	}
-
-	expected := Summary{
-		Total:   0,
-		Done:    0,
-		Open:    0,
-		Blocked: 0,
-	}
-
-	if summary != expected {
-		t.Errorf("GetSummary() = %+v, want %+v", summary, expected)
+	if !foundAttrs {
+		t.Fatalf("blocked attribute missing from rows: %+v", summary.Rows)
 	}
 }

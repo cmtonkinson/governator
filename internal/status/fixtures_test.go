@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cmtonkinson/governator/internal/index"
 	"github.com/cmtonkinson/governator/internal/testrepos"
 )
 
@@ -21,15 +22,23 @@ func TestGetSummaryUsesSingleTaskFixture(t *testing.T) {
 		t.Fatalf("GetSummary() failed: %v", err)
 	}
 
-	expected := Summary{
-		Total:   1,
-		Done:    0,
-		Open:    1,
-		Blocked: 0,
+	if summary.Total != 1 {
+		t.Fatalf("total = %d", summary.Total)
 	}
-
-	if summary != expected {
-		t.Fatalf("GetSummary() = %+v, want %+v", summary, expected)
+	if summary.Backlog != 0 {
+		t.Fatalf("backlog = %d", summary.Backlog)
+	}
+	if summary.Merged != 0 {
+		t.Fatalf("merged = %d", summary.Merged)
+	}
+	if summary.InProgress != 1 {
+		t.Fatalf("in-progress = %d", summary.InProgress)
+	}
+	if len(summary.Rows) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(summary.Rows))
+	}
+	if summary.Rows[0].state != string(index.TaskStateTriaged) {
+		t.Fatalf("unexpected row state %q", summary.Rows[0].state)
 	}
 }
 

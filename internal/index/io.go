@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strings"
 )
 
 const indexFileMode os.FileMode = 0o644
@@ -76,6 +77,9 @@ func decodeIndex(reader io.Reader) (Index, error) {
 	}
 	if err := ensureEOF(decoder); err != nil {
 		return Index{}, err
+	}
+	for i := range idx.Tasks {
+		idx.Tasks[i].State = normalizeTaskState(idx.Tasks[i].State)
 	}
 	return idx, nil
 }
@@ -155,6 +159,19 @@ func sortedStrings(values []string) []string {
 	copy(normalized, values)
 	sort.Strings(normalized)
 	return normalized
+}
+
+func normalizeTaskState(raw TaskState) TaskState {
+	switch strings.ToLower(string(raw)) {
+	case "open":
+		return TaskStateTriaged
+	case "worked":
+		return TaskStateImplemented
+	case "done":
+		return TaskStateMerged
+	default:
+		return raw
+	}
 }
 
 // encodePlanningDocs sorts planning doc entries for stable JSON output.

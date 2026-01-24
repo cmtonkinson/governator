@@ -456,7 +456,7 @@ func TestUpdateTaskStateFromReviewResult(t *testing.T) {
 	// Test successful review result
 	successResult := worker.IngestResult{
 		Success:  true,
-		NewState: index.TaskStateDone,
+		NewState: index.TaskStateReviewed,
 	}
 
 	err := UpdateTaskStateFromReviewResult(&idx, "T-001", successResult, auditor)
@@ -464,9 +464,9 @@ func TestUpdateTaskStateFromReviewResult(t *testing.T) {
 		t.Fatalf("update task state from review result: %v", err)
 	}
 
-	// Verify task state was updated to done
-	if idx.Tasks[0].State != index.TaskStateDone {
-		t.Fatalf("task state = %q, want %q", idx.Tasks[0].State, index.TaskStateDone)
+	// Verify task state was updated to reviewed
+	if idx.Tasks[0].State != index.TaskStateReviewed {
+		t.Fatalf("task state = %q, want %q", idx.Tasks[0].State, index.TaskStateReviewed)
 	}
 
 	// Verify audit log was called
@@ -477,8 +477,8 @@ func TestUpdateTaskStateFromReviewResult(t *testing.T) {
 	if transition.from != string(index.TaskStateTested) {
 		t.Fatalf("transition from = %q, want %q", transition.from, index.TaskStateTested)
 	}
-	if transition.to != string(index.TaskStateDone) {
-		t.Fatalf("transition to = %q, want %q", transition.to, index.TaskStateDone)
+	if transition.to != string(index.TaskStateReviewed) {
+		t.Fatalf("transition to = %q, want %q", transition.to, index.TaskStateReviewed)
 	}
 }
 
@@ -511,9 +511,9 @@ func TestUpdateTaskStateFromReviewResultFailure(t *testing.T) {
 		t.Fatalf("update task state from review result: %v", err)
 	}
 
-	// Verify task state was updated to open
-	if idx.Tasks[0].State != index.TaskStateOpen {
-		t.Fatalf("task state = %q, want %q", idx.Tasks[0].State, index.TaskStateOpen)
+	// Verify task state was updated to triaged
+	if idx.Tasks[0].State != index.TaskStateTriaged {
+		t.Fatalf("task state = %q, want %q", idx.Tasks[0].State, index.TaskStateTriaged)
 	}
 
 	// Verify audit log was called

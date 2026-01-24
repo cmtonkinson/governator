@@ -18,36 +18,50 @@ type Digests struct {
 
 // Task captures a single task entry from the task index.
 type Task struct {
-	ID           string          `json:"id"`
-	Title        string          `json:"title,omitempty"`
-	Path         string          `json:"path"`
-	State        TaskState       `json:"state"`
-	Role         Role            `json:"role"`
-	Dependencies []string        `json:"dependencies"`
-	Retries      RetryPolicy     `json:"retries"`
-	Attempts     AttemptCounters `json:"attempts"`
-	Order        int             `json:"order"`
-	Overlap      []string        `json:"overlap"`
+	ID            string          `json:"id"`
+	Title         string          `json:"title,omitempty"`
+	Path          string          `json:"path"`
+	State         TaskState       `json:"state"`
+	Role          Role            `json:"role"`
+	AssignedRole  string          `json:"assigned_role,omitempty"`
+	BlockedReason string          `json:"blocked,omitempty"`
+	MergeConflict bool            `json:"merge_conflict,omitempty"`
+	PID           int             `json:"pid,omitempty"`
+	Dependencies  []string        `json:"dependencies"`
+	Retries       RetryPolicy     `json:"retries"`
+	Attempts      AttemptCounters `json:"attempts"`
+	Order         int             `json:"order"`
+	Overlap       []string        `json:"overlap"`
 }
 
 // TaskState labels the lifecycle state for a task.
 type TaskState = state.TaskState
 
 const (
-	// TaskStateOpen indicates the task has not been started.
-	TaskStateOpen TaskState = state.TaskStateOpen
-	// TaskStateWorked indicates the task has work completed and awaits testing.
-	TaskStateWorked TaskState = state.TaskStateWorked
+	// TaskStateBacklog indicates the task is awaiting triage.
+	TaskStateBacklog TaskState = state.TaskStateBacklog
+	// TaskStateTriaged indicates the task has been triaged and awaits implementation.
+	TaskStateTriaged TaskState = state.TaskStateTriaged
+	// TaskStateImplemented indicates the task has implementation work done and awaits testing.
+	TaskStateImplemented TaskState = state.TaskStateImplemented
 	// TaskStateTested indicates the task has been tested and awaits review.
 	TaskStateTested TaskState = state.TaskStateTested
-	// TaskStateDone indicates the task is complete.
-	TaskStateDone TaskState = state.TaskStateDone
+	// TaskStateReviewed indicates the task has been reviewed and is merge-ready.
+	TaskStateReviewed TaskState = state.TaskStateReviewed
+	// TaskStateMergeable indicates the task is ready to be merged.
+	TaskStateMergeable TaskState = state.TaskStateMergeable
+	// TaskStateMerged indicates the task has been merged into main.
+	TaskStateMerged TaskState = state.TaskStateMerged
 	// TaskStateBlocked indicates the task cannot proceed without intervention.
 	TaskStateBlocked TaskState = state.TaskStateBlocked
 	// TaskStateConflict indicates the task has a merge or execution conflict.
 	TaskStateConflict TaskState = state.TaskStateConflict
 	// TaskStateResolved indicates a previously conflicted task has been resolved.
 	TaskStateResolved TaskState = state.TaskStateResolved
+	// Backwards compatibility aliases
+	TaskStateOpen   TaskState = TaskStateTriaged
+	TaskStateWorked TaskState = TaskStateImplemented
+	TaskStateDone   TaskState = TaskStateMerged
 )
 
 // Role names the worker role assigned to a task.

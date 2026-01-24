@@ -67,11 +67,14 @@ func emitWarning(warn func(string), message string) {
 
 // knownTaskStates enumerates the allowed task state values.
 var knownTaskStates = map[TaskState]struct{}{
-	TaskStateOpen:     {},
-	TaskStateWorked:   {},
-	TaskStateTested:   {},
-	TaskStateDone:     {},
-	TaskStateBlocked:  {},
-	TaskStateConflict: {},
-	TaskStateResolved: {},
+	TaskStateBacklog:     {},
+	TaskStateTriaged:     {},
+	TaskStateImplemented: {},
+	TaskStateTested:      {},
+	TaskStateReviewed:    {},
+	TaskStateMergeable:   {},
+	TaskStateMerged:      {},
+	TaskStateBlocked:     {},
+	TaskStateConflict:    {},
+	TaskStateResolved:    {},
 }

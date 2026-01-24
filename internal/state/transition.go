@@ -7,14 +7,20 @@ import "fmt"
 type TaskState string
 
 const (
-	// TaskStateOpen indicates the task has not been started.
-	TaskStateOpen TaskState = "open"
-	// TaskStateWorked indicates the task has work completed and awaits testing.
-	TaskStateWorked TaskState = "worked"
+	// TaskStateBacklog indicates the task is still awaiting triage.
+	TaskStateBacklog TaskState = "backlog"
+	// TaskStateTriaged indicates the task has been triaged and is ready for implementation.
+	TaskStateTriaged TaskState = "triaged"
+	// TaskStateImplemented indicates the task has implementation work done and awaits testing.
+	TaskStateImplemented TaskState = "implemented"
 	// TaskStateTested indicates the task has been tested and awaits review.
 	TaskStateTested TaskState = "tested"
-	// TaskStateDone indicates the task is complete.
-	TaskStateDone TaskState = "done"
+	// TaskStateReviewed indicates the task has been reviewed and is mergeable.
+	TaskStateReviewed TaskState = "reviewed"
+	// TaskStateMergeable indicates the task is ready to be merged.
+	TaskStateMergeable TaskState = "mergeable"
+	// TaskStateMerged indicates the task has been merged into main.
+	TaskStateMerged TaskState = "merged"
 	// TaskStateBlocked indicates the task cannot proceed without intervention.
 	TaskStateBlocked TaskState = "blocked"
 	// TaskStateConflict indicates the task has a merge or execution conflict.
@@ -25,32 +31,52 @@ const (
 
 // allowedTransitions defines the permitted lifecycle state changes.
 var allowedTransitions = map[TaskState]map[TaskState]struct{}{
-	TaskStateOpen: {
-		TaskStateWorked:  {},
-		TaskStateBlocked: {},
+	TaskStateBacklog: {
+		TaskStateTriaged: {},
 	},
-	TaskStateWorked: {
+	TaskStateTriaged: {
+		TaskStateImplemented: {},
+		TaskStateBlocked:     {},
+	},
+	TaskStateImplemented: {
 		TaskStateTested:  {},
 		TaskStateBlocked: {},
 	},
 	TaskStateTested: {
-		TaskStateDone:     {},
+		TaskStateReviewed: {},
 		TaskStateConflict: {},
-		TaskStateOpen:     {},
+		TaskStateTriaged:  {},
 		TaskStateBlocked:  {},
 	},
+	TaskStateReviewed: {
+		TaskStateMergeable: {},
+		TaskStateBlocked:   {},
+	},
+	TaskStateMergeable: {
+		TaskStateMerged:   {},
+		TaskStateConflict: {},
+		TaskStateBlocked:  {},
+	},
+	TaskStateMerged: {},
 	TaskStateConflict: {
 		TaskStateResolved: {},
 		TaskStateBlocked:  {},
 	},
 	TaskStateResolved: {
-		TaskStateDone:     {},
-		TaskStateConflict: {},
+		TaskStateMergeable: {},
+		TaskStateConflict:  {},
 	},
 	TaskStateBlocked: {
-		TaskStateOpen: {},
+		TaskStateTriaged: {},
 	},
 }
+
+const (
+	// Deprecated aliases for legacy state names.
+	TaskStateOpen   = TaskStateTriaged
+	TaskStateWorked = TaskStateImplemented
+	TaskStateDone   = TaskStateMerged
+)
 
 // IsValidTransition reports whether the lifecycle allows the requested change.
 func IsValidTransition(from TaskState, to TaskState) bool {

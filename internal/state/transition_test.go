@@ -12,19 +12,23 @@ func TestValidTransitionsAcceptsAllowedPairs(t *testing.T) {
 		from TaskState
 		to   TaskState
 	}{
-		{TaskStateOpen, TaskStateWorked},
-		{TaskStateOpen, TaskStateBlocked},
-		{TaskStateWorked, TaskStateTested},
-		{TaskStateWorked, TaskStateBlocked},
-		{TaskStateTested, TaskStateDone},
+		{TaskStateBacklog, TaskStateTriaged},
+		{TaskStateTriaged, TaskStateImplemented},
+		{TaskStateTriaged, TaskStateBlocked},
+		{TaskStateImplemented, TaskStateTested},
+		{TaskStateTested, TaskStateReviewed},
 		{TaskStateTested, TaskStateConflict},
-		{TaskStateTested, TaskStateOpen},
+		{TaskStateTested, TaskStateTriaged},
 		{TaskStateTested, TaskStateBlocked},
+		{TaskStateReviewed, TaskStateMergeable},
+		{TaskStateReviewed, TaskStateBlocked},
+		{TaskStateMergeable, TaskStateMerged},
+		{TaskStateMergeable, TaskStateConflict},
 		{TaskStateConflict, TaskStateResolved},
 		{TaskStateConflict, TaskStateBlocked},
-		{TaskStateResolved, TaskStateDone},
+		{TaskStateResolved, TaskStateMergeable},
 		{TaskStateResolved, TaskStateConflict},
-		{TaskStateBlocked, TaskStateOpen},
+		{TaskStateBlocked, TaskStateTriaged},
 	}
 
 	for _, tc := range cases {
@@ -43,12 +47,12 @@ func TestInvalidTransitionsRejectsUnknownPairs(t *testing.T) {
 		from TaskState
 		to   TaskState
 	}{
-		{TaskStateDone, TaskStateWorked},
-		{TaskStateBlocked, TaskStateDone},
-		{TaskStateResolved, TaskStateWorked},
-		{TaskStateOpen, TaskStateDone},
+		{TaskStateMerged, TaskStateImplemented},
+		{TaskStateBlocked, TaskStateMerged},
+		{TaskStateResolved, TaskStateImplemented},
+		{TaskStateBacklog, TaskStateMerged},
 		{"", TaskStateOpen},
-		{TaskStateOpen, ""},
+		{TaskStateTriaged, ""},
 	}
 
 	for _, tc := range cases {

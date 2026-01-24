@@ -14,6 +14,7 @@ import (
 	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/index"
 	"github.com/cmtonkinson/governator/internal/inflight"
+	"github.com/cmtonkinson/governator/internal/phase"
 	"github.com/cmtonkinson/governator/internal/roles"
 	"github.com/cmtonkinson/governator/internal/scheduler"
 	"github.com/cmtonkinson/governator/internal/worker"
@@ -51,6 +52,24 @@ func Run(repoRoot string, opts Options) (Result, error) {
 	cfg, err := config.Load(repoRoot, nil, nil)
 	if err != nil {
 		return Result{}, fmt.Errorf("load config: %w", err)
+	}
+
+	stateStore := phase.NewStore(repoRoot)
+	state, err := stateStore.Load()
+	if err != nil {
+		return Result{}, fmt.Errorf("load phase state: %w", err)
+	}
+
+	phaseRunner := newPhaseRunner(repoRoot, cfg, opts, stateStore)
+	handled, err := phaseRunner.EnsurePlanningPhases(&state)
+	if err != nil {
+		return Result{}, fmt.Errorf("run phases: %w", err)
+	}
+	if handled {
+		return Result{}, nil
+	}
+	if state.Current < phase.PhaseExecution {
+		return Result{}, fmt.Errorf("phase %d (%s) still pending", state.Current.Number(), state.Current)
 	}
 
 	// Build role caps before executing stages
@@ -302,7 +321,7 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 	baseBranch := baseBranchName(cfg)
 
 	for _, task := range idx.Tasks {
-		if task.State != index.TaskStateOpen || !inFlight.Contains(task.ID) {
+		if task.State != index.TaskStateTriaged || !inFlight.Contains(task.ID) {
 			continue
 		}
 		worktreePath, ok := worktreePathForTask(inFlight, task.ID)
@@ -403,7 +422,7 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 	}
 
 	adjustedCaps := adjustCapsForInFlight(caps, *idx, inFlight)
-	selectedTasks, err := selectTasksForStage(*idx, adjustedCaps, inFlight, index.TaskStateOpen)
+	selectedTasks, err := selectTasksForStage(*idx, adjustedCaps, inFlight, index.TaskStateTriaged)
 	if err != nil {
 		return result, fmt.Errorf("schedule work tasks: %w", err)
 	}
@@ -533,6 +552,9 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 		logAgentInvoke(workerAuditor, task.ID, task.Role, roles.StageWork, attempt, func(message string) {
 			fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
 		})
+		if err := recordTaskDispatch(idx, task.ID, dispatchResult.PID, string(task.Role)); err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to record dispatch metadata for task %s: %v\n", task.ID, err)
+		}
 
 		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath); err == nil {
 			result.InFlightUpdated = true
@@ -604,6 +626,17 @@ func UpdateTaskStateFromWorkResult(idx *index.Index, taskID string, workResult w
 	if err := applyTaskStateTransition(idx, taskID, target, auditor); err != nil {
 		return fmt.Errorf("task %q: %w", taskID, err)
 	}
+	if err := updateIndexTask(idx, taskID, func(task *index.Task) {
+		task.PID = 0
+		if workResult.Success {
+			task.BlockedReason = ""
+			task.MergeConflict = false
+		} else {
+			task.BlockedReason = workResult.BlockReason
+		}
+	}); err != nil {
+		return fmt.Errorf("task %q metadata: %w", taskID, err)
+	}
 	return nil
 }
 
@@ -620,7 +653,7 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 	}
 
 	for _, task := range idx.Tasks {
-		if task.State != index.TaskStateWorked || !inFlight.Contains(task.ID) {
+		if task.State != index.TaskStateImplemented || !inFlight.Contains(task.ID) {
 			continue
 		}
 		worktreePath, ok := worktreePathForTask(inFlight, task.ID)
@@ -720,7 +753,7 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 	}
 
 	adjustedCaps := adjustCapsForInFlight(caps, *idx, inFlight)
-	selectedTasks, err := selectTasksForStage(*idx, adjustedCaps, inFlight, index.TaskStateWorked)
+	selectedTasks, err := selectTasksForStage(*idx, adjustedCaps, inFlight, index.TaskStateImplemented)
 	if err != nil {
 		return result, fmt.Errorf("schedule test tasks: %w", err)
 	}
@@ -797,6 +830,9 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 		logAgentInvoke(workerAuditor, task.ID, task.Role, roles.StageTest, maxInt(task.Attempts.Total, 1), func(message string) {
 			fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
 		})
+		if err := recordTaskDispatch(idx, task.ID, dispatchResult.PID, string(task.Role)); err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to record dispatch metadata for task %s: %v\n", task.ID, err)
+		}
 
 		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath); err == nil {
 			result.InFlightUpdated = true
@@ -870,6 +906,17 @@ func UpdateTaskStateFromTestResult(idx *index.Index, taskID string, testResult w
 	if err := applyTaskStateTransition(idx, taskID, target, auditor); err != nil {
 		return fmt.Errorf("task %q: %w", taskID, err)
 	}
+	if err := updateIndexTask(idx, taskID, func(task *index.Task) {
+		task.PID = 0
+		if testResult.Success {
+			task.BlockedReason = ""
+			task.MergeConflict = false
+		} else {
+			task.BlockedReason = testResult.BlockReason
+		}
+	}); err != nil {
+		return fmt.Errorf("task %q metadata: %w", taskID, err)
+	}
 	return nil
 }
 
@@ -915,7 +962,7 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 			if startedAt, ok := startedAtForTask(inFlight, task.ID); ok && timedOut(startedAt, cfg.Timeouts.WorkerSeconds) {
 				failedResult := worker.IngestResult{
 					Success:     false,
-					NewState:    index.TaskStateOpen,
+					NewState:    index.TaskStateTriaged,
 					BlockReason: formatTimeoutReason(cfg.Timeouts.WorkerSeconds),
 					TimedOut:    true,
 				}
@@ -944,7 +991,7 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 		if exitStatus.ExitCode != 0 {
 			reviewResult = worker.IngestResult{
 				Success:     false,
-				NewState:    index.TaskStateOpen,
+				NewState:    index.TaskStateTriaged,
 				BlockReason: fmt.Sprintf("worker process exited with code %d", exitStatus.ExitCode),
 			}
 		} else {
@@ -965,10 +1012,17 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 		})
 
 		if reviewResult.Success {
+			if err := UpdateTaskStateFromReviewResult(idx, task.ID, reviewResult, transitionAuditor); err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s after review: %v\n", task.ID, err)
+				continue
+			}
 			result.TasksReviewed++
 			emitTaskComplete(opts.Stdout, task.ID, string(task.Role), string(roles.StageReview))
 
 			emitTaskStart(opts.Stdout, task.ID, string(task.Role), mergeStageName)
+			if err := applyTaskStateTransition(idx, task.ID, index.TaskStateMergeable, transitionAuditor); err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to mark %s as mergeable: %v\n", task.ID, err)
+			}
 			mergeInput := MergeFlowInput{
 				RepoRoot:     repoRoot,
 				WorktreePath: worktreePath,
@@ -998,8 +1052,13 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 				continue
 			}
 
-			if err := applyTaskStateTransition(idx, task.ID, mergeResult.NewState, transitionAuditor); err != nil {
-				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, err)
+			finalResult := worker.IngestResult{
+				Success:     mergeResult.Success,
+				NewState:    mergeResult.NewState,
+				BlockReason: mergeResult.ConflictError,
+			}
+			if updateErr := UpdateTaskStateFromMerge(idx, task.ID, finalResult, transitionAuditor); updateErr != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
 			}
 
 			if mergeResult.Success {
@@ -1061,7 +1120,7 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 			fmt.Fprintf(opts.Stderr, "Warning: failed to stage review environment for task %s: %v\n", task.ID, err)
 			failedResult := worker.IngestResult{
 				Success:     false,
-				NewState:    index.TaskStateOpen,
+				NewState:    index.TaskStateTriaged,
 				BlockReason: fmt.Sprintf("review agent staging failed: %v", err),
 			}
 			if updateErr := UpdateTaskStateFromReviewResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
@@ -1080,7 +1139,7 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 			fmt.Fprintf(opts.Stderr, "Warning: failed to dispatch review agent for task %s: %v\n", task.ID, err)
 			failedResult := worker.IngestResult{
 				Success:     false,
-				NewState:    index.TaskStateOpen,
+				NewState:    index.TaskStateTriaged,
 				BlockReason: fmt.Sprintf("review agent dispatch failed: %v", err),
 			}
 			if updateErr := UpdateTaskStateFromReviewResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
@@ -1095,6 +1154,9 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 		logAgentInvoke(workerAuditor, task.ID, task.Role, roles.StageReview, maxInt(task.Attempts.Total, 1), func(message string) {
 			fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
 		})
+		if err := recordTaskDispatch(idx, task.ID, dispatchResult.PID, string(task.Role)); err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to record dispatch metadata for task %s: %v\n", task.ID, err)
+		}
 
 		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath); err == nil {
 			result.InFlightUpdated = true
@@ -1161,12 +1223,23 @@ func ExecuteReviewAgent(repoRoot, worktreePath string, task index.Task, cfg conf
 
 // UpdateTaskStateFromReviewResult updates the task index based on review execution results.
 func UpdateTaskStateFromReviewResult(idx *index.Index, taskID string, reviewResult worker.IngestResult, auditor index.TransitionAuditor) error {
-	target := index.TaskStateOpen
+	target := index.TaskStateTriaged
 	if reviewResult.Success {
 		target = reviewResult.NewState
 	}
 	if err := applyTaskStateTransition(idx, taskID, target, auditor); err != nil {
 		return fmt.Errorf("task %q: %w", taskID, err)
+	}
+	if err := updateIndexTask(idx, taskID, func(task *index.Task) {
+		task.PID = 0
+		if reviewResult.Success {
+			task.BlockedReason = ""
+			task.MergeConflict = false
+		} else {
+			task.BlockedReason = reviewResult.BlockReason
+		}
+	}); err != nil {
+		return fmt.Errorf("task %q metadata: %w", taskID, err)
 	}
 	return nil
 }
@@ -1384,6 +1457,9 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 			fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
 		})
 
+		if err := recordTaskDispatch(idx, task.ID, dispatchResult.PID, string(roleResult.Role)); err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to record dispatch metadata for task %s: %v\n", task.ID, err)
+		}
 		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath); err == nil {
 			result.InFlightUpdated = true
 		}
@@ -1464,6 +1540,17 @@ func UpdateTaskStateFromConflictResolution(idx *index.Index, taskID string, reso
 	}
 	if err := applyTaskStateTransition(idx, taskID, target, auditor); err != nil {
 		return fmt.Errorf("task %q: %w", taskID, err)
+	}
+	if err := updateIndexTask(idx, taskID, func(task *index.Task) {
+		task.PID = 0
+		if resolutionResult.Success {
+			task.BlockedReason = ""
+			task.MergeConflict = false
+		} else {
+			task.BlockedReason = resolutionResult.BlockReason
+		}
+	}); err != nil {
+		return fmt.Errorf("task %q metadata: %w", taskID, err)
 	}
 	return nil
 }
@@ -1678,7 +1765,7 @@ func taskBranchName(taskID string) string {
 
 func isRoleInFlight(state index.TaskState) bool {
 	switch state {
-	case index.TaskStateWorked, index.TaskStateTested, index.TaskStateConflict, index.TaskStateResolved:
+	case index.TaskStateImplemented, index.TaskStateTested, index.TaskStateConflict, index.TaskStateResolved:
 		return true
 	default:
 		return false
@@ -1722,6 +1809,9 @@ func ExecuteMergeStage(repoRoot string, idx *index.Index, cfg config.Config, cap
 			continue
 		}
 
+		if err := applyTaskStateTransition(idx, task.ID, index.TaskStateMergeable, transitionAuditor); err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to mark %s as mergeable before merge stage: %v\n", task.ID, err)
+		}
 		emitTaskStart(opts.Stdout, task.ID, string(task.Role), mergeStageName)
 
 		// Execute conflict resolution merge flow
@@ -1831,6 +1921,30 @@ func findIndexTask(idx *index.Index, taskID string) (*index.Task, error) {
 	return nil, fmt.Errorf("task %q not found in index", taskID)
 }
 
+func updateIndexTask(idx *index.Index, taskID string, updater func(*index.Task)) error {
+	if idx == nil {
+		return fmt.Errorf("index is nil")
+	}
+	if strings.TrimSpace(taskID) == "" {
+		return fmt.Errorf("task id is required")
+	}
+	for i := range idx.Tasks {
+		if idx.Tasks[i].ID == taskID {
+			updater(&idx.Tasks[i])
+			return nil
+		}
+	}
+	return fmt.Errorf("task %q not found in index", taskID)
+}
+
+func recordTaskDispatch(idx *index.Index, taskID string, pid int, assignedRole string) error {
+	return updateIndexTask(idx, taskID, func(task *index.Task) {
+		task.PID = pid
+		task.AssignedRole = assignedRole
+		task.BlockedReason = ""
+	})
+}
+
 // UpdateTaskStateFromMerge updates the task index based on merge results.
 func UpdateTaskStateFromMerge(idx *index.Index, taskID string, mergeResult worker.IngestResult, auditor index.TransitionAuditor) error {
 	target := index.TaskStateConflict
@@ -1839,6 +1953,13 @@ func UpdateTaskStateFromMerge(idx *index.Index, taskID string, mergeResult worke
 	}
 	if err := applyTaskStateTransition(idx, taskID, target, auditor); err != nil {
 		return fmt.Errorf("task %q: %w", taskID, err)
+	}
+	if err := updateIndexTask(idx, taskID, func(task *index.Task) {
+		task.PID = 0
+		task.BlockedReason = mergeResult.BlockReason
+		task.MergeConflict = target == index.TaskStateConflict
+	}); err != nil {
+		return fmt.Errorf("task %q metadata: %w", taskID, err)
 	}
 	return nil
 }
@@ -1856,7 +1977,7 @@ func EnsureBranchesForOpenTasks(repoRoot string, idx *index.Index, auditor *audi
 	// Find tasks in open state
 	var openTasks []index.Task
 	for _, task := range idx.Tasks {
-		if task.State == index.TaskStateOpen {
+		if task.State == index.TaskStateTriaged {
 			openTasks = append(openTasks, task)
 		}
 	}

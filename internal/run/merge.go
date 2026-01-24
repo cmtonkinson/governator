@@ -159,13 +159,13 @@ func ExecuteReviewMergeFlow(input MergeFlowInput) (MergeFlowResult, error) {
 			input.Task.ID,
 			string(input.Task.Role),
 			string(index.TaskStateTested),
-			string(index.TaskStateDone),
+			string(index.TaskStateMerged),
 		)
 	}
 
 	return MergeFlowResult{
 		Success:  true,
-		NewState: index.TaskStateDone,
+		NewState: index.TaskStateMerged,
 	}, nil
 }
 
@@ -207,7 +207,7 @@ func ExecuteConflictResolutionMergeFlow(input MergeFlowInput) (MergeFlowResult, 
 				input.Task.ID,
 				string(input.Task.Role),
 				string(index.TaskStateResolved),
-				string(index.TaskStateDone),
+				string(index.TaskStateMerged),
 			)
 		} else if result.NewState == index.TaskStateConflict {
 			_ = input.Auditor.LogTaskTransition(

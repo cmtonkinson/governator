@@ -312,9 +312,9 @@ func TestIngestWorkerResultAllStages(t *testing.T) {
 		successState index.TaskState
 		markerFile   string
 	}{
-		{roles.StageWork, index.TaskStateWorked, "worked.md"},
+		{roles.StageWork, index.TaskStateImplemented, "worked.md"},
 		{roles.StageTest, index.TaskStateTested, "tested.md"},
-		{roles.StageReview, index.TaskStateDone, "reviewed.md"},
+		{roles.StageReview, index.TaskStateReviewed, "reviewed.md"},
 		{roles.StageResolve, index.TaskStateResolved, "resolved.md"},
 	}
 

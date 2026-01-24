@@ -258,7 +258,7 @@ func TestStatusCommand(t *testing.T) {
 		}
 
 		outputStr := strings.TrimSpace(string(output))
-		expected := "tasks total=0 done=0 open=0 blocked=0"
+		expected := "tasks backlog=0 merged=0 in-progress=0"
 		if outputStr != expected {
 			t.Errorf("Expected %q, got %q", expected, outputStr)
 		}
@@ -291,9 +291,16 @@ func TestStatusCommand(t *testing.T) {
 		}
 
 		outputStr := strings.TrimSpace(string(output))
-		expected := "tasks total=7 done=2 open=3 blocked=2"
-		if outputStr != expected {
-			t.Errorf("Expected %q, got %q", expected, outputStr)
+		if !strings.Contains(outputStr, "tasks backlog=0 merged=2 in-progress=5") {
+			t.Fatalf("expected counts line in output, got %q", outputStr)
+		}
+		if !strings.Contains(outputStr, "id             state") {
+			t.Fatalf("expected table header, got %q", outputStr)
+		}
+		for _, id := range []string{"T-003", "T-004", "T-005", "T-006", "T-007"} {
+			if !strings.Contains(outputStr, id) {
+				t.Fatalf("expected task %s in output, got %q", id, outputStr)
+			}
 		}
 	})
 }

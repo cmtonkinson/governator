@@ -13,27 +13,27 @@ type TransitionAuditor interface {
 	LogTaskTransition(taskID string, role string, from string, to string) error
 }
 
-// TransitionTaskToWorked moves a task from open to worked.
-func TransitionTaskToWorked(idx *Index, taskID string) error {
-	return transitionTaskState(idx, taskID, TaskStateWorked)
+// TransitionTaskToImplemented moves a task from triaged to implemented.
+func TransitionTaskToImplemented(idx *Index, taskID string) error {
+	return transitionTaskState(idx, taskID, TaskStateImplemented)
 }
 
-// TransitionTaskToTested moves a task from worked to tested.
+// TransitionTaskToTested moves a task from implemented to tested.
 func TransitionTaskToTested(idx *Index, taskID string) error {
 	return transitionTaskState(idx, taskID, TaskStateTested)
 }
 
-// TransitionTaskToDone moves a task from tested or resolved to done.
-func TransitionTaskToDone(idx *Index, taskID string) error {
-	return transitionTaskState(idx, taskID, TaskStateDone)
+// TransitionTaskToMerged moves a task from mergeable or resolved to merged.
+func TransitionTaskToMerged(idx *Index, taskID string) error {
+	return transitionTaskState(idx, taskID, TaskStateMerged)
 }
 
-// TransitionTaskToBlocked moves a task from open, worked, tested, or conflict to blocked.
+// TransitionTaskToBlocked moves a task from triaged, implemented, tested, mergeable, conflict, or resolved to blocked.
 func TransitionTaskToBlocked(idx *Index, taskID string) error {
 	return transitionTaskState(idx, taskID, TaskStateBlocked)
 }
 
-// TransitionTaskToConflict moves a task from tested or resolved to conflict.
+// TransitionTaskToConflict moves a task from tested, mergeable, or resolved to conflict.
 func TransitionTaskToConflict(idx *Index, taskID string) error {
 	return transitionTaskState(idx, taskID, TaskStateConflict)
 }
@@ -43,9 +43,32 @@ func TransitionTaskToResolved(idx *Index, taskID string) error {
 	return transitionTaskState(idx, taskID, TaskStateResolved)
 }
 
-// TransitionTaskToOpen moves a task from blocked to open.
+// TransitionTaskToTriaged moves a task from blocked to triaged.
+func TransitionTaskToTriaged(idx *Index, taskID string) error {
+	return transitionTaskState(idx, taskID, TaskStateTriaged)
+}
+
+// TransitionTaskToReviewed marks a tested task as reviewed.
+func TransitionTaskToReviewed(idx *Index, taskID string) error {
+	return transitionTaskState(idx, taskID, TaskStateReviewed)
+}
+
+// TransitionTaskToMergeable marks a reviewed or resolved task as mergeable.
+func TransitionTaskToMergeable(idx *Index, taskID string) error {
+	return transitionTaskState(idx, taskID, TaskStateMergeable)
+}
+
+// Legacy wrappers kept for compatibility.
+func TransitionTaskToWorked(idx *Index, taskID string) error {
+	return TransitionTaskToImplemented(idx, taskID)
+}
+
+func TransitionTaskToDone(idx *Index, taskID string) error {
+	return TransitionTaskToMerged(idx, taskID)
+}
+
 func TransitionTaskToOpen(idx *Index, taskID string) error {
-	return transitionTaskState(idx, taskID, TaskStateOpen)
+	return TransitionTaskToTriaged(idx, taskID)
 }
 
 // TransitionTaskStateWithAudit moves a task to the target state and records an audit entry.

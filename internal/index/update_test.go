@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// TestTransitionHappyPath moves a task through open, worked, tested, and done.
+// TestTransitionHappyPath moves a task through triaged, implemented, tested, and merged.
 func TestTransitionHappyPath(t *testing.T) {
 	idx := Index{
 		SchemaVersion: 1,
@@ -17,24 +17,30 @@ func TestTransitionHappyPath(t *testing.T) {
 			{
 				ID:    "task-1",
 				Path:  "_governator/tasks/task-1.md",
-				State: TaskStateOpen,
+				State: TaskStateTriaged,
 				Role:  "builder",
 			},
 		},
 	}
 
-	if err := TransitionTaskToWorked(&idx, "task-1"); err != nil {
-		t.Fatalf("transition to worked: %v", err)
+	if err := TransitionTaskToImplemented(&idx, "task-1"); err != nil {
+		t.Fatalf("transition to implemented: %v", err)
 	}
 	if err := TransitionTaskToTested(&idx, "task-1"); err != nil {
 		t.Fatalf("transition to tested: %v", err)
 	}
-	if err := TransitionTaskToDone(&idx, "task-1"); err != nil {
-		t.Fatalf("transition to done: %v", err)
+	if err := TransitionTaskToReviewed(&idx, "task-1"); err != nil {
+		t.Fatalf("transition to reviewed: %v", err)
+	}
+	if err := TransitionTaskToMergeable(&idx, "task-1"); err != nil {
+		t.Fatalf("transition to mergeable: %v", err)
+	}
+	if err := TransitionTaskToMerged(&idx, "task-1"); err != nil {
+		t.Fatalf("transition to merged: %v", err)
 	}
 
-	if got := idx.Tasks[0].State; got != TaskStateDone {
-		t.Fatalf("expected final state %q, got %q", TaskStateDone, got)
+	if got := idx.Tasks[0].State; got != TaskStateMerged {
+		t.Fatalf("expected final state %q, got %q", TaskStateMerged, got)
 	}
 	if got := idx.Tasks[0].ID; got != "task-1" {
 		t.Fatalf("expected task id %q, got %q", "task-1", got)
@@ -52,14 +58,14 @@ func TestTransitionConflictResolutionFlow(t *testing.T) {
 			{
 				ID:    "task-1",
 				Path:  "_governator/tasks/task-1.md",
-				State: TaskStateOpen,
+				State: TaskStateTriaged,
 				Role:  "builder",
 			},
 		},
 	}
 
-	if err := TransitionTaskToWorked(&idx, "task-1"); err != nil {
-		t.Fatalf("transition to worked: %v", err)
+	if err := TransitionTaskToImplemented(&idx, "task-1"); err != nil {
+		t.Fatalf("transition to implemented: %v", err)
 	}
 	if err := TransitionTaskToTested(&idx, "task-1"); err != nil {
 		t.Fatalf("transition to tested: %v", err)
@@ -70,8 +76,11 @@ func TestTransitionConflictResolutionFlow(t *testing.T) {
 	if err := TransitionTaskToResolved(&idx, "task-1"); err != nil {
 		t.Fatalf("transition to resolved: %v", err)
 	}
-	if err := TransitionTaskToDone(&idx, "task-1"); err != nil {
-		t.Fatalf("transition to done: %v", err)
+	if err := TransitionTaskToMergeable(&idx, "task-1"); err != nil {
+		t.Fatalf("transition to mergeable: %v", err)
+	}
+	if err := TransitionTaskToMerged(&idx, "task-1"); err != nil {
+		t.Fatalf("transition to merged: %v", err)
 	}
 
 	if got := idx.Tasks[0].State; got != TaskStateDone {
@@ -93,11 +102,11 @@ func TestTransitionBlockedReset(t *testing.T) {
 		},
 	}
 
-	if err := TransitionTaskToOpen(&idx, "task-1"); err != nil {
-		t.Fatalf("transition to open: %v", err)
+	if err := TransitionTaskToTriaged(&idx, "task-1"); err != nil {
+		t.Fatalf("transition to triaged: %v", err)
 	}
-	if got := idx.Tasks[0].State; got != TaskStateOpen {
-		t.Fatalf("expected state %q, got %q", TaskStateOpen, got)
+	if got := idx.Tasks[0].State; got != TaskStateTriaged {
+		t.Fatalf("expected state %q, got %q", TaskStateTriaged, got)
 	}
 }
 
@@ -109,7 +118,7 @@ func TestIncrementTaskAttempt(t *testing.T) {
 			{
 				ID:    "task-1",
 				Path:  "_governator/tasks/task-1.md",
-				State: TaskStateOpen,
+				State: TaskStateTriaged,
 				Role:  "builder",
 				Attempts: AttemptCounters{
 					Total: 1,
@@ -134,7 +143,7 @@ func TestIncrementTaskFailedAttempt(t *testing.T) {
 			{
 				ID:    "task-1",
 				Path:  "_governator/tasks/task-1.md",
-				State: TaskStateOpen,
+				State: TaskStateTriaged,
 				Role:  "builder",
 				Attempts: AttemptCounters{
 					Failed: 1,
@@ -159,7 +168,7 @@ func TestTransitionFromDoneToWorkedFails(t *testing.T) {
 			{
 				ID:    "task-1",
 				Path:  "_governator/tasks/task-1.md",
-				State: TaskStateDone,
+				State: TaskStateMerged,
 				Role:  "builder",
 			},
 		},
@@ -175,7 +184,7 @@ func TestTransitionFromDoneToWorkedFails(t *testing.T) {
 		log.SetFlags(prevFlags)
 	}()
 
-	err := TransitionTaskToWorked(&idx, "task-1")
+	err := TransitionTaskToImplemented(&idx, "task-1")
 	if err == nil {
 		t.Fatal("expected error for done to worked transition")
 	}
@@ -195,24 +204,24 @@ func TestTransitionTaskStateWithAuditLogs(t *testing.T) {
 			{
 				ID:    "task-1",
 				Path:  "_governator/tasks/task-1.md",
-				State: TaskStateOpen,
+				State: TaskStateTriaged,
 				Role:  "builder",
 			},
 		},
 	}
 
 	auditor := &transitionAuditCollector{}
-	if err := TransitionTaskStateWithAudit(&idx, "task-1", TaskStateWorked, auditor); err != nil {
+	if err := TransitionTaskStateWithAudit(&idx, "task-1", TaskStateImplemented, auditor); err != nil {
 		t.Fatalf("transition with audit: %v", err)
 	}
-	if got := idx.Tasks[0].State; got != TaskStateWorked {
-		t.Fatalf("expected state %q, got %q", TaskStateWorked, got)
+	if got := idx.Tasks[0].State; got != TaskStateImplemented {
+		t.Fatalf("expected state %q, got %q", TaskStateImplemented, got)
 	}
 	if len(auditor.calls) != 1 {
 		t.Fatalf("expected 1 audit call, got %d", len(auditor.calls))
 	}
 	call := auditor.calls[0]
-	if call.from != "open" || call.to != "worked" {
+	if call.from != "triaged" || call.to != "implemented" {
 		t.Fatalf("unexpected transition audit call: %#v", call)
 	}
 }
@@ -225,7 +234,7 @@ func TestTransitionTaskStateWithAuditIgnoresAuditFailures(t *testing.T) {
 			{
 				ID:    "task-1",
 				Path:  "_governator/tasks/task-1.md",
-				State: TaskStateOpen,
+				State: TaskStateTriaged,
 				Role:  "builder",
 			},
 		},
@@ -242,7 +251,7 @@ func TestTransitionTaskStateWithAuditIgnoresAuditFailures(t *testing.T) {
 	}()
 
 	auditor := &transitionAuditCollector{err: errors.New("audit down")}
-	if err := TransitionTaskStateWithAudit(&idx, "task-1", TaskStateWorked, auditor); err != nil {
+	if err := TransitionTaskStateWithAudit(&idx, "task-1", TaskStateImplemented, auditor); err != nil {
 		t.Fatalf("transition with audit failure: %v", err)
 	}
 	if !strings.Contains(buf.String(), "transition audit log failed") {

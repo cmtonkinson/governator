@@ -349,7 +349,7 @@ func TestUpdateTaskStateFromMerge_Success(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "task-01",
-				State: index.TaskStateResolved,
+				State: index.TaskStateMergeable,
 				Role:  "generalist",
 			},
 		},
@@ -357,10 +357,10 @@ func TestUpdateTaskStateFromMerge_Success(t *testing.T) {
 
 	auditor := &mockTransitionAuditor{}
 
-	// Test successful merge (resolved -> done)
+	// Test successful merge (mergeable -> merged)
 	result := worker.IngestResult{
 		Success:  true,
-		NewState: index.TaskStateDone,
+		NewState: index.TaskStateMerged,
 	}
 
 	err := UpdateTaskStateFromMerge(idx, "task-01", result, auditor)
@@ -369,8 +369,8 @@ func TestUpdateTaskStateFromMerge_Success(t *testing.T) {
 	}
 
 	// Verify task state was updated
-	if idx.Tasks[0].State != index.TaskStateDone {
-		t.Errorf("expected task state %s, got %s", index.TaskStateDone, idx.Tasks[0].State)
+	if idx.Tasks[0].State != index.TaskStateMerged {
+		t.Errorf("expected task state %s, got %s", index.TaskStateMerged, idx.Tasks[0].State)
 	}
 
 	// Verify audit log was called
@@ -379,11 +379,11 @@ func TestUpdateTaskStateFromMerge_Success(t *testing.T) {
 	}
 
 	transition := auditor.transitions[0]
-	if transition.from != string(index.TaskStateResolved) {
-		t.Errorf("expected from state %s, got %s", index.TaskStateResolved, transition.from)
+	if transition.from != string(index.TaskStateMergeable) {
+		t.Errorf("expected from state %s, got %s", index.TaskStateMergeable, transition.from)
 	}
-	if transition.to != string(index.TaskStateDone) {
-		t.Errorf("expected to state %s, got %s", index.TaskStateDone, transition.to)
+	if transition.to != string(index.TaskStateMerged) {
+		t.Errorf("expected to state %s, got %s", index.TaskStateMerged, transition.to)
 	}
 }
 
@@ -393,7 +393,7 @@ func TestUpdateTaskStateFromMerge_Failure(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "task-01",
-				State: index.TaskStateResolved,
+				State: index.TaskStateMergeable,
 				Role:  "generalist",
 			},
 		},
@@ -424,8 +424,8 @@ func TestUpdateTaskStateFromMerge_Failure(t *testing.T) {
 	}
 
 	transition := auditor.transitions[0]
-	if transition.from != string(index.TaskStateResolved) {
-		t.Errorf("expected from state %s, got %s", index.TaskStateResolved, transition.from)
+	if transition.from != string(index.TaskStateMergeable) {
+		t.Errorf("expected from state %s, got %s", index.TaskStateMergeable, transition.from)
 	}
 	if transition.to != string(index.TaskStateConflict) {
 		t.Errorf("expected to state %s, got %s", index.TaskStateConflict, transition.to)

@@ -10,9 +10,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cmtonkinson/governator/internal/digests"
 	"github.com/cmtonkinson/governator/internal/index"
+	"github.com/cmtonkinson/governator/internal/phase"
 	"github.com/cmtonkinson/governator/internal/testrepos"
 	"github.com/cmtonkinson/governator/internal/worktree"
 )
@@ -374,6 +376,60 @@ func setupTestRepoWithConfig(t *testing.T) string {
 	governatorContent := "# Test Project\n"
 	if err := os.WriteFile(governatorPath, []byte(governatorContent), 0o644); err != nil {
 		t.Fatalf("write GOVERNATOR.md: %v", err)
+	}
+
+	// Create placeholder role prompts required by phase runner
+	rolesDir := filepath.Join(repoRoot, "_governator", "roles")
+	if err := os.MkdirAll(rolesDir, 0o755); err != nil {
+		t.Fatalf("create roles dir: %v", err)
+	}
+	for _, role := range []string{"architect", "generalist", "planner"} {
+		path := filepath.Join(rolesDir, fmt.Sprintf("%s.md", role))
+		content := fmt.Sprintf("# Role: %s\nRole prompt placeholder.\n", role)
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatalf("write role prompt %s: %v", role, err)
+		}
+	}
+
+	// Create planning prompts
+	promptsDir := filepath.Join(repoRoot, "_governator", "prompts")
+	if err := os.MkdirAll(promptsDir, 0o755); err != nil {
+		t.Fatalf("create prompts dir: %v", err)
+	}
+	promptMap := map[string]string{
+		"architecture-baseline.md": "Architecture baseline prompt placeholder.",
+		"gap-analysis.md":          "Gap analysis prompt placeholder.",
+		"roadmap.md":               "Roadmap prompt placeholder.",
+		"task-planning.md":         "Task planning prompt placeholder.",
+	}
+	for name, content := range promptMap {
+		path := filepath.Join(promptsDir, name)
+		if err := os.WriteFile(path, []byte(content+"\n"), 0o644); err != nil {
+			t.Fatalf("write prompt %s: %v", name, err)
+		}
+	}
+
+	workerContract := filepath.Join(repoRoot, "_governator", "worker-contract.md")
+	if err := os.WriteFile(workerContract, []byte("# Worker Contract\n\nPlaceholder.\n"), 0o644); err != nil {
+		t.Fatalf("write worker contract: %v", err)
+	}
+
+	stateStore := phase.NewStore(repoRoot)
+	state := phase.DefaultState()
+	state.Current = phase.PhaseExecution
+	state.LastCompleted = phase.PhaseTaskPlanning
+	for _, p := range []phase.Phase{
+		phase.PhaseArchitectureBaseline,
+		phase.PhaseGapAnalysis,
+		phase.PhaseProjectPlanning,
+		phase.PhaseTaskPlanning,
+	} {
+		record := state.RecordFor(p)
+		record.CompletedAt = time.Now().UTC()
+		state.SetRecord(p, record)
+	}
+	if err := stateStore.Save(state); err != nil {
+		t.Fatalf("save phase state: %v", err)
 	}
 
 	return repoRoot

@@ -15,6 +15,7 @@ import (
 
 	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/index"
+	"github.com/cmtonkinson/governator/internal/phase"
 	"github.com/cmtonkinson/governator/internal/roles"
 	"github.com/cmtonkinson/governator/internal/testrepos"
 	"github.com/cmtonkinson/governator/internal/worktree"
@@ -93,18 +94,18 @@ func TestLifecycleEndToEndHappyPath(t *testing.T) {
 		t.Fatalf("reload index: %v", err)
 	}
 	for _, task := range finalIdx.Tasks {
-		if task.State != index.TaskStateDone {
+		if task.State != index.TaskStateMerged {
 			t.Fatalf("task %q role=%q state = %q, want %q; stdout=%q stderr=%q",
-				task.ID, task.Role, task.State, index.TaskStateDone, runStdout.String(), runStderr.String())
+				task.ID, task.Role, task.State, index.TaskStateMerged, runStdout.String(), runStderr.String())
 		}
-		markerLine := fmt.Sprintf("task_id=%s role=%s event=task.transition from=worked to=tested", task.ID, task.Role)
+		markerLine := fmt.Sprintf("task_id=%s role=%s event=task.transition from=implemented to=tested", task.ID, task.Role)
 		assertAuditContains(t, repoRoot, markerLine)
-		doneLine := fmt.Sprintf("task_id=%s role=%s event=task.transition from=tested to=done", task.ID, task.Role)
+		doneLine := fmt.Sprintf("task_id=%s role=%s event=task.transition from=tested to=reviewed", task.ID, task.Role)
 		assertAuditContains(t, repoRoot, doneLine)
 	}
 
-	assertAuditContains(t, repoRoot, "event=task.transition from=worked to=tested")
-	assertAuditContains(t, repoRoot, "event=task.transition from=tested to=done")
+	assertAuditContains(t, repoRoot, "event=task.transition from=implemented to=tested")
+	assertAuditContains(t, repoRoot, "event=task.transition from=tested to=reviewed")
 }
 
 func TestLifecycleEndToEndTimeoutResume(t *testing.T) {
@@ -208,8 +209,8 @@ func TestLifecycleEndToEndTimeoutResume(t *testing.T) {
 		t.Fatalf("load final index: %v", err)
 	}
 	for _, task := range finalIdx.Tasks {
-		if task.State != index.TaskStateDone {
-			t.Fatalf("task %q final state = %q, want %q (stdout=%q stderr=%q)", task.ID, task.State, index.TaskStateDone, resumeStdout.String(), resumeStderr.String())
+		if task.State != index.TaskStateMerged {
+			t.Fatalf("task %q final state = %q, want %q (stdout=%q stderr=%q)", task.ID, task.State, index.TaskStateMerged, resumeStdout.String(), resumeStderr.String())
 		}
 		if task.Attempts.Total != 2 {
 			t.Fatalf("task %q attempts = %d, want %d", task.ID, task.Attempts.Total, 2)
@@ -217,7 +218,7 @@ func TestLifecycleEndToEndTimeoutResume(t *testing.T) {
 	}
 
 	assertAuditContains(t, repoRoot, "event=worker.timeout")
-	assertAuditContains(t, repoRoot, "event=task.transition from=blocked to=open")
+	assertAuditContains(t, repoRoot, "event=task.transition from=blocked to=triaged")
 }
 
 func setupLifecycleRepo(t *testing.T, workerCommand []string, timeoutSeconds int) *testrepos.TempRepo {
@@ -244,6 +245,24 @@ func setupLifecycleRepo(t *testing.T, workerCommand []string, timeoutSeconds int
 	repo.RunGit(t, "add", filepath.Join("_governator", "roles", "reviewer.md"))
 	repo.RunGit(t, "commit", "-m", "Initialize lifecycle fixture")
 	repo.RunGit(t, "remote", "add", "origin", repo.Root)
+
+	stateStore := phase.NewStore(repo.Root)
+	state := phase.DefaultState()
+	state.Current = phase.PhaseExecution
+	state.LastCompleted = phase.PhaseTaskPlanning
+	for _, p := range []phase.Phase{
+		phase.PhaseArchitectureBaseline,
+		phase.PhaseGapAnalysis,
+		phase.PhaseProjectPlanning,
+		phase.PhaseTaskPlanning,
+	} {
+		record := state.RecordFor(p)
+		record.CompletedAt = time.Now().UTC()
+		state.SetRecord(p, record)
+	}
+	if err := stateStore.Save(state); err != nil {
+		t.Fatalf("save phase state: %v", err)
+	}
 
 	return repo
 }

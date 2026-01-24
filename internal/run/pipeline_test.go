@@ -12,9 +12,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/index"
+	"github.com/cmtonkinson/governator/internal/phase"
 	"github.com/cmtonkinson/governator/internal/roles"
 	"github.com/cmtonkinson/governator/internal/testrepos"
 	"github.com/cmtonkinson/governator/internal/worktree"
@@ -192,6 +194,24 @@ func setupPipelineRepo(t *testing.T, workerCommand []string) *testrepos.TempRepo
 	repo.RunGit(t, "commit", "-m", "Add worker role prompt")
 	writePipelineConfig(t, repo.Root, workerCommand)
 	repo.RunGit(t, "remote", "add", "origin", repo.Root)
+
+	stateStore := phase.NewStore(repo.Root)
+	state := phase.DefaultState()
+	state.Current = phase.PhaseExecution
+	state.LastCompleted = phase.PhaseTaskPlanning
+	for _, p := range []phase.Phase{
+		phase.PhaseArchitectureBaseline,
+		phase.PhaseGapAnalysis,
+		phase.PhaseProjectPlanning,
+		phase.PhaseTaskPlanning,
+	} {
+		record := state.RecordFor(p)
+		record.CompletedAt = time.Now().UTC()
+		state.SetRecord(p, record)
+	}
+	if err := stateStore.Save(state); err != nil {
+		t.Fatalf("save phase state: %v", err)
+	}
 	return repo
 }
 

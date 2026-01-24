@@ -135,6 +135,75 @@ func InitFullLayout(repoRoot string, opts InitOptions) error {
 		return fmt.Errorf("create templates: %w", err)
 	}
 
+	if err := ensureRolePrompts(repoRoot, opts); err != nil {
+		return fmt.Errorf("create role prompts: %w", err)
+	}
+
+	if err := ensurePlanningPrompts(repoRoot, opts); err != nil {
+		return fmt.Errorf("create planning prompts: %w", err)
+	}
+
+	if err := ensureWorkerContract(repoRoot, opts); err != nil {
+		return fmt.Errorf("create worker contract: %w", err)
+	}
+
+	return nil
+}
+
+func ensureRolePrompts(repoRoot string, opts InitOptions) error {
+	roles := []string{"architect", "generalist", "planner"}
+	rolesDir := filepath.Join(repoRoot, "_governator", "roles")
+	for _, role := range roles {
+		path := filepath.Join(rolesDir, role+".md")
+		if _, err := os.Stat(path); err == nil {
+			continue
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("stat role prompt %s: %w", path, err)
+		}
+		content := fmt.Sprintf("# Role: %s\n\nGuidance for the %s agent role.\n", role, role)
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			return fmt.Errorf("write role prompt %s: %w", path, err)
+		}
+		opts.logf("created role prompt %s", repoRelativePath(repoRoot, path))
+	}
+	return nil
+}
+
+func ensurePlanningPrompts(repoRoot string, opts InitOptions) error {
+	prompts := map[string]string{
+		"architecture-baseline.md": "Architecture baseline planning prompt placeholder.",
+		"gap-analysis.md":          "Gap analysis planning prompt placeholder.",
+		"roadmap.md":               "Roadmap planning prompt placeholder.",
+		"task-planning.md":         "Task planning prompt placeholder.",
+	}
+	promptsDir := filepath.Join(repoRoot, "_governator", "prompts")
+	for name, content := range prompts {
+		path := filepath.Join(promptsDir, name)
+		if _, err := os.Stat(path); err == nil {
+			continue
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("stat planning prompt %s: %w", path, err)
+		}
+		if err := os.WriteFile(path, []byte(content+"\n"), 0o644); err != nil {
+			return fmt.Errorf("write planning prompt %s: %w", path, err)
+		}
+		opts.logf("created planning prompt %s", repoRelativePath(repoRoot, path))
+	}
+	return nil
+}
+
+func ensureWorkerContract(repoRoot string, opts InitOptions) error {
+	path := filepath.Join(repoRoot, "_governator", "worker-contract.md")
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("stat worker contract %s: %w", path, err)
+	}
+	content := "# Worker Contract\n\nPlease obey the worker contract.\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("write worker contract %s: %w", path, err)
+	}
+	opts.logf("created worker contract %s", repoRelativePath(repoRoot, path))
 	return nil
 }
 

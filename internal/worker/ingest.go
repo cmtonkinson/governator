@@ -147,11 +147,11 @@ func checkForMarkerFile(markerPath string) (bool, error) {
 func stageToSuccessState(stage roles.Stage) index.TaskState {
 	switch stage {
 	case roles.StageWork:
-		return index.TaskStateWorked
+		return index.TaskStateImplemented
 	case roles.StageTest:
 		return index.TaskStateTested
 	case roles.StageReview:
-		return index.TaskStateDone
+		return index.TaskStateReviewed
 	case roles.StageResolve:
 		return index.TaskStateResolved
 	default:
