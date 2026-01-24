@@ -27,4 +27,5 @@ When modifying code:
   the root cause of the failure.
 - Remember: The goal is not that the tests pass, the goal is correct code which implements the provided scope, which
   _also_ has passing tests that exercise it to ensure resiliency in the face of future changes.
- 
+
+Read v2.md. This is a description of the new design/direction/architecture of the project.
