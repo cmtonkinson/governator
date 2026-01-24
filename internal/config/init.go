@@ -27,6 +27,7 @@ var v2DirectoryStructure = []string{
 	repoDurableStateDir + "/migrations",
 	repoLegacyConfigDir,
 	"_governator/docs",
+	"_governator/plan",
 	"_governator/docs/adr",
 	"_governator/roles",
 	"_governator/custom-prompts",
