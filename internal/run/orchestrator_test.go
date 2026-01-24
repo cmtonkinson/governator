@@ -383,7 +383,7 @@ func setupTestRepoWithConfig(t *testing.T) string {
 	if err := os.MkdirAll(rolesDir, 0o755); err != nil {
 		t.Fatalf("create roles dir: %v", err)
 	}
-	for _, role := range []string{"architect", "generalist", "planner"} {
+	for _, role := range []string{"architect", "default", "planner"} {
 		path := filepath.Join(rolesDir, fmt.Sprintf("%s.md", role))
 		content := fmt.Sprintf("# Role: %s\nRole prompt placeholder.\n", role)
 		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {

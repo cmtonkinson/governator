@@ -147,17 +147,24 @@ func InitFullLayout(repoRoot string, opts InitOptions) error {
 }
 
 func ensureRolePrompts(repoRoot string, opts InitOptions) error {
-	roles := []string{"architect", "generalist", "planner"}
+	roles := []string{"architect", "default", "planner"}
 	rolesDir := filepath.Join(repoRoot, "_governator", "roles")
+	if err := ensureDir(rolesDir, opts); err != nil {
+		return fmt.Errorf("ensure roles directory %s: %w", rolesDir, err)
+	}
 	for _, role := range roles {
-		path := filepath.Join(rolesDir, role+".md")
-		if _, err := os.Stat(path); err == nil {
+		path := filepath.Join(rolesDir, fmt.Sprintf("%s.md", role))
+		if exists, err := pathExists(path); err != nil {
+			return fmt.Errorf("check role prompt %s: %w", path, err)
+		} else if exists {
 			continue
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("stat role prompt %s: %w", path, err)
 		}
-		content := fmt.Sprintf("# Role: %s\n\nGuidance for the %s agent role.\n", role, role)
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		template := fmt.Sprintf("roles/%s.md", role)
+		data, err := templates.Read(template)
+		if err != nil {
+			return fmt.Errorf("read role template %s: %w", template, err)
+		}
+		if err := os.WriteFile(path, data, 0o644); err != nil {
 			return fmt.Errorf("write role prompt %s: %w", path, err)
 		}
 		opts.logf("created role prompt %s", repoRelativePath(repoRoot, path))
@@ -195,8 +202,11 @@ func ensureWorkerContract(repoRoot string, opts InitOptions) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("stat worker contract %s: %w", path, err)
 	}
-	content := "# Worker Contract\n\nPlease obey the worker contract.\n"
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	data, err := templates.Read("worker-contract.md")
+	if err != nil {
+		return fmt.Errorf("read worker contract template: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return fmt.Errorf("write worker contract %s: %w", path, err)
 	}
 	opts.logf("created worker contract %s", repoRelativePath(repoRoot, path))
@@ -219,6 +229,26 @@ func ensureCustomPrompts(repoRoot string, opts InitOptions) error {
 		return fmt.Errorf("write custom prompt %s: %w", path, err)
 	}
 	opts.logf("created custom prompt %s", repoRelativePath(repoRoot, path))
+
+	// Seed role-specific custom prompt placeholders.
+	roles := []string{"architect", "default", "planner"}
+	for _, role := range roles {
+		rolePath := filepath.Join(promptsDir, fmt.Sprintf("%s.md", role))
+		if exists, err := pathExists(rolePath); err != nil {
+			return fmt.Errorf("check custom prompt %s: %w", rolePath, err)
+		} else if exists {
+			continue
+		}
+		template := fmt.Sprintf("custom-prompts/%s.md", role)
+		data, err := templates.Read(template)
+		if err != nil {
+			return fmt.Errorf("read custom prompt template %s: %w", template, err)
+		}
+		if err := os.WriteFile(rolePath, data, 0o644); err != nil {
+			return fmt.Errorf("write custom prompt %s: %w", rolePath, err)
+		}
+		opts.logf("created custom prompt %s", repoRelativePath(repoRoot, rolePath))
+	}
 	return nil
 }
 

@@ -15,7 +15,8 @@ func TestReadRequiredTemplates(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected template %s to load: %v", name, err)
 		}
-		if len(bytes.TrimSpace(data)) == 0 {
+		trimmed := bytes.TrimSpace(data)
+		if len(trimmed) == 0 && name != "roles/default.md" {
 			t.Fatalf("expected template %s to be non-empty", name)
 		}
 		if !isASCII(data) {

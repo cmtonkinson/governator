@@ -39,7 +39,7 @@ func TestExecuteConflictResolutionAgent_Success(t *testing.T) {
 	if err := os.MkdirAll(rolesDir, 0755); err != nil {
 		t.Fatalf("failed to create roles dir: %v", err)
 	}
-	rolePath := filepath.Join(rolesDir, "generalist.md")
+	rolePath := filepath.Join(rolesDir, "default.md")
 	if err := os.WriteFile(rolePath, []byte("# Generalist Role\nGeneral purpose role"), 0644); err != nil {
 		t.Fatalf("failed to create role file: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestExecuteConflictResolutionAgent_Success(t *testing.T) {
 	task := index.Task{
 		ID:       "task-01",
 		State:    index.TaskStateConflict,
-		Role:     "generalist",
+		Role:     "default",
 		Title:    "Test Task 1",
 		Path:     "task-01.md",
 		Attempts: index.AttemptCounters{Total: 1},
@@ -57,7 +57,7 @@ func TestExecuteConflictResolutionAgent_Success(t *testing.T) {
 		Concurrency: config.ConcurrencyConfig{
 			Global:      10,
 			DefaultRole: 5,
-			Roles:       map[string]int{"generalist": 3},
+			Roles:       map[string]int{"default": 3},
 		},
 	}
 
@@ -110,7 +110,7 @@ func TestSelectRoleForConflictResolution_Success(t *testing.T) {
 		t.Fatalf("failed to create roles dir: %v", err)
 	}
 
-	roles := []string{"generalist", "architect", "reviewer"}
+	roles := []string{"default", "architect", "reviewer"}
 	for _, role := range roles {
 		rolePath := filepath.Join(rolesDir, role+".md")
 		if err := os.WriteFile(rolePath, []byte("# "+role+" Role\n"+role+" role description"), 0644); err != nil {
@@ -121,7 +121,7 @@ func TestSelectRoleForConflictResolution_Success(t *testing.T) {
 	task := index.Task{
 		ID:    "task-01",
 		State: index.TaskStateConflict,
-		Role:  "generalist",
+		Role:  "default",
 		Title: "Test Task 1",
 		Path:  "task-01.md",
 	}
@@ -130,7 +130,7 @@ func TestSelectRoleForConflictResolution_Success(t *testing.T) {
 		Concurrency: config.ConcurrencyConfig{
 			Global:      10,
 			DefaultRole: 5,
-			Roles:       map[string]int{"generalist": 3, "architect": 2},
+			Roles:       map[string]int{"default": 3, "architect": 2},
 		},
 	}
 
@@ -156,7 +156,7 @@ func TestSelectRoleForConflictResolution_Success(t *testing.T) {
 	}
 
 	// Verify the role is one of the available roles
-	validRoles := []index.Role{"generalist", "architect", "reviewer"}
+	validRoles := []index.Role{"default", "architect", "reviewer"}
 	found := false
 	for _, validRole := range validRoles {
 		if result.Role == validRole {
@@ -190,7 +190,7 @@ func TestSelectRoleForConflictResolution_LLMFallback(t *testing.T) {
 	if err := os.MkdirAll(rolesDir, 0755); err != nil {
 		t.Fatalf("failed to create roles dir: %v", err)
 	}
-	rolePath := filepath.Join(rolesDir, "generalist.md")
+	rolePath := filepath.Join(rolesDir, "default.md")
 	if err := os.WriteFile(rolePath, []byte("# Generalist Role\nGeneral purpose role"), 0644); err != nil {
 		t.Fatalf("failed to create role file: %v", err)
 	}
@@ -226,8 +226,8 @@ func TestSelectRoleForConflictResolution_LLMFallback(t *testing.T) {
 	if !result.Fallback {
 		t.Fatalf("expected fallback result, got %v", result)
 	}
-	if result.Role != "generalist" {
-		t.Fatalf("fallback role = %q, want %q", result.Role, "generalist")
+	if result.Role != "default" {
+		t.Fatalf("fallback role = %q, want %q", result.Role, "default")
 	}
 }
 
@@ -262,7 +262,7 @@ func TestSelectRoleForConflictResolution_ValidationErrors(t *testing.T) {
 				// Create roles directory with a test role
 				rolesDir := filepath.Join(tempDir, "_governator", "roles")
 				os.MkdirAll(rolesDir, 0755)
-				rolePath := filepath.Join(rolesDir, "generalist.md")
+				rolePath := filepath.Join(rolesDir, "default.md")
 				os.WriteFile(rolePath, []byte("# Generalist Role"), 0644)
 
 				task := index.Task{
@@ -306,7 +306,7 @@ func TestExecuteMergeStage_Success(t *testing.T) {
 			{
 				ID:       "task-01",
 				State:    index.TaskStateResolved,
-				Role:     "generalist",
+				Role:     "default",
 				Title:    "Test Task 1",
 				Attempts: index.AttemptCounters{Total: 1},
 			},
@@ -350,7 +350,7 @@ func TestUpdateTaskStateFromMerge_Success(t *testing.T) {
 			{
 				ID:    "task-01",
 				State: index.TaskStateMergeable,
-				Role:  "generalist",
+				Role:  "default",
 			},
 		},
 	}
@@ -394,7 +394,7 @@ func TestUpdateTaskStateFromMerge_Failure(t *testing.T) {
 			{
 				ID:    "task-01",
 				State: index.TaskStateMergeable,
-				Role:  "generalist",
+				Role:  "default",
 			},
 		},
 	}

@@ -24,7 +24,7 @@ func TestExecuteReviewMergeFlow_Success(t *testing.T) {
 	task := index.Task{
 		ID:    "T-MERGE-001",
 		Title: "Add merge flow coverage",
-		Role:  "generalist",
+		Role:  "default",
 		State: index.TaskStateTested,
 	}
 
@@ -130,7 +130,7 @@ func TestExecuteConflictResolutionMergeFlow_InvalidState(t *testing.T) {
 	task := index.Task{
 		ID:    "test-task-01",
 		Title: "Test Task",
-		Role:  "generalist",
+		Role:  "default",
 		State: index.TaskStateTested, // Wrong state - should be resolved
 	}
 

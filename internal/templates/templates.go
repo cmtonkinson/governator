@@ -11,12 +11,15 @@ import (
 )
 
 const (
-	bootstrapRoot = "bootstrap"
-	planningRoot  = "planning"
-	reasoningRoot = "reasoning"
+	bootstrapRoot      = "bootstrap"
+	planningRoot       = "planning"
+	reasoningRoot      = "reasoning"
+	rolesRoot          = "roles"
+	customPromptsRoot  = "custom-prompts"
+	workerContractName = "worker-contract.md"
 )
 
-//go:embed bootstrap/*.md planning/*.md reasoning/*.md
+//go:embed bootstrap/*.md planning/*.md reasoning/*.md roles/*.md custom-prompts/*.md worker-contract.md
 var embeddedFS embed.FS
 
 var requiredTemplates = []string{
@@ -31,6 +34,10 @@ var requiredTemplates = []string{
 	"planning/gap-analysis.md",
 	"planning/roadmap.md",
 	"planning/tasks.md",
+	"roles/architect.md",
+	"roles/default.md",
+	"roles/planner.md",
+	workerContractName,
 }
 
 // Required returns the template lookup keys required by bootstrap and planning.
@@ -75,9 +82,14 @@ func sanitizeName(name string) (string, error) {
 	}
 
 	cleaned := path.Clean(trimmed)
-	validRoot := strings.HasPrefix(cleaned, bootstrapRoot+"/") || strings.HasPrefix(cleaned, planningRoot+"/") || strings.HasPrefix(cleaned, reasoningRoot+"/")
+	validRoot := strings.HasPrefix(cleaned, bootstrapRoot+"/") ||
+		strings.HasPrefix(cleaned, planningRoot+"/") ||
+		strings.HasPrefix(cleaned, reasoningRoot+"/") ||
+		strings.HasPrefix(cleaned, rolesRoot+"/") ||
+		strings.HasPrefix(cleaned, customPromptsRoot+"/") ||
+		cleaned == workerContractName
 	if !validRoot {
-		return "", errors.New("template name must start with bootstrap/, planning/, or reasoning/")
+		return "", errors.New("template name must start with bootstrap/, planning/, reasoning/, roles/, custom-prompts/, or be " + workerContractName)
 	}
 	return cleaned, nil
 }

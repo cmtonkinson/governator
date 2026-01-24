@@ -237,7 +237,7 @@ var planningPhaseSpecs = map[phase.Phase]phaseSpec{
 	phase.PhaseGapAnalysis: {
 		phase:      phase.PhaseGapAnalysis,
 		promptPath: filepath.ToSlash(filepath.Join("_governator", "prompts", "gap-analysis.md")),
-		role:       index.Role("generalist"),
+		role:       index.Role("default"),
 	},
 	phase.PhaseProjectPlanning: {
 		phase:      phase.PhaseProjectPlanning,

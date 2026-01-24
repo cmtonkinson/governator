@@ -100,7 +100,7 @@ func TestExecuteTestStageNoWorkedTasks(t *testing.T) {
 			{
 				ID:    "T-001",
 				State: index.TaskStateOpen,
-				Role:  "generalist",
+				Role:  "default",
 			},
 		},
 	}
@@ -350,7 +350,7 @@ func TestExecuteReviewStageNoTestedTasks(t *testing.T) {
 			{
 				ID:    "T-001",
 				State: index.TaskStateWorked,
-				Role:  "generalist",
+				Role:  "default",
 			},
 		},
 	}
@@ -543,7 +543,7 @@ func TestExecuteConflictResolutionStage_NoResolvedTasks(t *testing.T) {
 		Concurrency: config.ConcurrencyConfig{
 			Global:      2,
 			DefaultRole: 2,
-			Roles:       map[string]int{"generalist": 2},
+			Roles:       map[string]int{"default": 2},
 		},
 	}
 	auditor := &mockTransitionAuditor{}
@@ -600,7 +600,7 @@ func TestExecuteConflictResolutionStage_WithConflictTasks(t *testing.T) {
 	if err := os.MkdirAll(rolesDir, 0755); err != nil {
 		t.Fatalf("failed to create roles dir: %v", err)
 	}
-	rolePath := filepath.Join(rolesDir, "generalist.md")
+	rolePath := filepath.Join(rolesDir, "default.md")
 	if err := os.WriteFile(rolePath, []byte("# Generalist Role\nGeneral purpose role"), 0644); err != nil {
 		t.Fatalf("failed to create role file: %v", err)
 	}
@@ -611,7 +611,7 @@ func TestExecuteConflictResolutionStage_WithConflictTasks(t *testing.T) {
 			{
 				ID:       "task-01",
 				State:    index.TaskStateConflict,
-				Role:     "generalist",
+				Role:     "default",
 				Title:    "Test Task 1",
 				Path:     "task-01.md",
 				Attempts: index.AttemptCounters{Total: 1},
@@ -619,7 +619,7 @@ func TestExecuteConflictResolutionStage_WithConflictTasks(t *testing.T) {
 			{
 				ID:       "task-02",
 				State:    index.TaskStateConflict,
-				Role:     "generalist",
+				Role:     "default",
 				Title:    "Test Task 2",
 				Path:     "task-02.md",
 				Attempts: index.AttemptCounters{Total: 1},
@@ -632,7 +632,7 @@ func TestExecuteConflictResolutionStage_WithConflictTasks(t *testing.T) {
 			Global:      2,
 			DefaultRole: 2,
 			Roles: map[string]int{
-				"generalist": 2,
+				"default": 2,
 			},
 		},
 	}
@@ -673,7 +673,7 @@ func TestUpdateTaskStateFromConflictResolution_Success(t *testing.T) {
 			{
 				ID:    "task-01",
 				State: index.TaskStateConflict,
-				Role:  "generalist",
+				Role:  "default",
 			},
 		},
 	}
@@ -720,7 +720,7 @@ func TestUpdateTaskStateFromConflictResolution_Failure(t *testing.T) {
 			{
 				ID:    "task-01",
 				State: index.TaskStateConflict,
-				Role:  "generalist",
+				Role:  "default",
 			},
 		},
 	}
@@ -790,7 +790,7 @@ func TestUpdateTaskStateFromConflictResolution_InvalidTransition(t *testing.T) {
 			{
 				ID:    "task-01",
 				State: index.TaskStateResolved, // Starting state where worked is invalid
-				Role:  "generalist",
+				Role:  "default",
 			},
 		},
 	}

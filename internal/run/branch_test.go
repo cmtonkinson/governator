@@ -57,7 +57,7 @@ func TestBranchLifecycleManager_CreateTaskBranch(t *testing.T) {
 	// Test task
 	task := index.Task{
 		ID:   "test-task-01",
-		Role: "generalist",
+		Role: "default",
 	}
 
 	t.Run("CreateTaskBranch_Success", func(t *testing.T) {
@@ -86,7 +86,7 @@ func TestBranchLifecycleManager_CreateTaskBranch(t *testing.T) {
 	})
 
 	t.Run("CreateTaskBranch_EmptyTaskID", func(t *testing.T) {
-		emptyTask := index.Task{ID: "", Role: "generalist"}
+		emptyTask := index.Task{ID: "", Role: "default"}
 		err := blm.CreateTaskBranch(emptyTask, "main")
 		if err == nil {
 			t.Error("Expected error for empty task ID")
@@ -109,7 +109,7 @@ func TestBranchLifecycleManager_CleanupTaskBranch(t *testing.T) {
 	// Test task
 	task := index.Task{
 		ID:   "test-task-02",
-		Role: "generalist",
+		Role: "default",
 	}
 
 	t.Run("CleanupTaskBranch_Success", func(t *testing.T) {
@@ -148,7 +148,7 @@ func TestBranchLifecycleManager_CleanupTaskBranch(t *testing.T) {
 	t.Run("CleanupTaskBranch_NonExistentBranch", func(t *testing.T) {
 		nonExistentTask := index.Task{
 			ID:   "non-existent-task",
-			Role: "generalist",
+			Role: "default",
 		}
 
 		// Try to clean up a branch that doesn't exist
@@ -174,7 +174,7 @@ func TestBranchLifecycleManager_EnsureTaskBranch(t *testing.T) {
 	// Test task
 	task := index.Task{
 		ID:   "test-task-03",
-		Role: "generalist",
+		Role: "default",
 	}
 
 	t.Run("EnsureTaskBranch_CreateNew", func(t *testing.T) {
