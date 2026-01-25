@@ -35,7 +35,7 @@ You own (produce and maintain):
 - Project tasks
 
 You produce:
-- Tasks that follow the project’s defined task template
+- Tasks that follow the project's defined task template
 - Tasks explicitly assigned to a single worker role
 - Task sequences when ordering or dependencies matter
 

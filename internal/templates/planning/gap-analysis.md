@@ -10,88 +10,110 @@ provide the necessary scaffolding for planning such that risks and unknowns are 
 early as possible.
 
 ## Inputs
-- `GOVERNATOR.md` (required)
-- Existing architectural artifacts in `_governator/architecture/` and `_governator/adr/` (expected)
-- Existing plans in `_governator/plan` (possible)
-- Existing project state: code and config (possible)
+You must examine:
+- `GOVERNATOR.md`
+- All architectural artifacts in `_governator/docs/arch-*.md` and `_governator/docs/adr/`
+- All plans in `_governator/docs/plan-*.md`
+- Existing project state: code and config
 
 ## Outputs
-- `_governator/docs/gap-analysis.md`
+1. `_governator/docs/gap-decision-ledger.md`
+2. `_governator/docs/gap-register.md`
+3. `_governator/docs/gap-planning-constraints.md`
 
+## Analysis Sections
+### Decision Ledger
+Write the Decision Ledger to `_governator/docs/gap-decision-ledger.md`.
 
+Enumerate what decisions are already locked-in (by spec, existing code, existing Power Six artifacts, or ADRs), what
+decisions are implied but not explicitly recorded, and what decisions must be made before planning can proceed safely.
+Your output must reduce uncertainty for planners and parallel implementers.
 
-## Output
-### 1. Milestones
-If a milestones file exists at `_governator/docs/milestones.md`, read and review
-it against the project `GOVERNATOR.md` file.
+Rules and posture:
+- Your job is not to propose a new architecture. You are normalizing "what is already decided" vs "what is not decided."
+- If an architecturally significant decision is present but not recorded in an ADR, you must flag it as "ADR missing"
+  and recommend emitting an ADR (do not write the ADR here).
+- Prefer grounded statements. If you cannot support a claim from inputs, mark it as "Unverified."
+- If there is conflict between implementation and GOVERNATOR.md, treat GOVERNATOR.md as the source of truth and record
+  the conflict as a decision, constraint, or gap as approptiate.
 
-If no milestones file exists, create it as per the template provided at
-(`_governator/templates/milestones.md`).
+Produce the Decision Ledger as a table-like list (markdown) where each entry includes:
+- Decision ID (stable, short, e.g. DL-001)
+- Decision statement (one sentence)
+- Status (Locked / Provisional / Unverified)
+- Source(s) (exact file paths; cite ADR IDs when applicable)
+- Rationale (brief; may quote intent from sources, but do not paste long excerpts)
+- Impacted areas (components, workflows, commands, data, interfaces)
+- Follow-ups (if Provisional/Unverified, what must be clarified; if "ADR missing," say so)
 
-In either case, ensure the milestones as defined in the file are aligned with
-the stated intent in the project `GOVERNATOR.md` file. Do not invent scope,
-requirements, constraints, or assumptions not stated in the `GOVERNATOR.md`
-file. If the current state of milestones is not aligned with the
-`GOVERNATOR.md`, you may choose to update existing milestones where appropriate,
-or create new ones.
+The Decision Ledger must be exhaustive with respect to architecturally significant constraints that will materially
+affect planning, especially:
+- language/runtime/tooling choices and constraints
+- repository/project layout conventions
+- task model, state machine, and persistence expectations
+- agent orchestration model (parallelism, isolation, permissions)
+- interfaces/contracts (CLI, config schema, templates, storage)
+- quality gates (tests, CI, lint, security posture)
 
-Milestones exist only to guide high-level planning and work sequencing.
+### Gap Register
+Write the Gap Register to `_governator/docs/gap-register.md`.
 
-Milestones represent the delivery phasese of the project. Each milestone should
-represent an articulable advancement of the project, demonstrating meaningful
-progress towards the stateg goals.
+Enumerate missing, ambiguous, conflicting, or risky information that prevents accurate milestone/task planning, then
+normalize it into actionable "gaps" with recommended closure strategy. Your output is the backlog of uncertainty, not
+implementation work.
 
-Milestones should be concise, operational, and used to drive definition of
-useful epics for subsequent task planning.
+Rules and posture:
+- Every gap must be phrased as a falsifiable deficiency ("We do not know X" / "X conflicts with Y" / "X is
+  underspecified such that multiple incompatible implementations exist").
+- Do not invent requirements. If you infer, label it explicitly as inference and record it as a gap unless it is
+  directly stated in sources.
+- Tie each gap to the planning harm it causes (what it blocks, what it could derail, what it risks).
+- If a gap should be resolved via ADR, say so. If it should be resolved via spec update, say so. If it should be
+  resolved via code discovery, say so.
 
-Small projects like one-off utilites, proofs-of-concept, or toy programs may
-only have a single ("Delivery") milestone, whereas larger, more complex, or
-production-grade projects may have many, depending on the scope and
-architecture.
+Produce the Gap Register as markdown entries where each gap includes:
+- Gap ID (GR-001, ...)
+- Category (Spec ambiguity / Architecture missing / ADR missing / Implementation drift / Dependency unknown /
+  Testability gap / Operational gap / Security/compliance gap / Performance/scalability gap)
+- Statement of gap (one to two sentences)
+- Evidence (what you looked at and what it said; cite file paths)
+- Impact on planning (what you cannot safely plan, or what would be high-risk)
+- Severity (High/Med/Low) and Confidence (High/Med/Low)
+- Closure recommendation (Decision task, ADR, spec edit, discovery spike, prototype, benchmark, etc.)
+- Suggested owner role (Architect / Planner / Implementer / Test / DevOps)
+- "Earliest point of resolution" (Before milestone planning / Before implementation / Before release / Continuous)
 
-Start milestone identifiers at 1 prefixed with a lowercase "m" (e.g. "m1"), and
-increment by 1 for each subsequent milestone.
+The Gap Register should prioritize gaps that would cause cascading rework in a parallel agent environment, including:
+unclear ownership boundaries, unclear public interfaces, unclear acceptance criteria, and unclear constraints that
+affect many tasks.
 
-### 2. Epics
-If an epics file exists at `_governator/docs/epics.md`, read and review it
-against the defined project milestones at `_governator/docs/milestones.md`.
+### Planning Constraints
+Write Planning Constraints to `_governator/docs/gap-planning-constraints.md`.
 
-If no epics file exists, create it as per the template provided at
-(`_governator/templates/epics.md`).
+Produce a normalized, enforceable set of rules that the planner must follow when generating milestones/epics/tasks and
+when scheduling parallel agents. This is the "compiler flags" for planning: constraints, invariants, and guardrails that
+help prevent plan hallucination, uncontrolled scope, merge conflicts, and unsafe parallelism.
 
-In either case, ensure the epics as defined in the file are aligned with the
-defined milestones. Do not invent scope, requirements, constraints, or
-assumptions not stated in the milestones. If the current state of epics is not
-aligned with defined milestones, you may choose to update existing epics where
-appropriate, or create new ones.
+Rules and posture:
+- Constraints must be actionable and testable. Avoid vague guidance.
+- Separate "hard constraints" (must not violate) from "soft constraints" (strong preference).
+- Constraints must explicitly address parallel agent execution and repository hygiene (ownership, boundaries, CI gates).
+- Do not propose new constraints that contradict locked decisions; if you believe a constraint is necessary but absent,
+  record it as a gap (and optionally list it under "Proposed constraints pending decision").
 
-Each epic:
-- exists to help bridge the scope/effort gap break milestone work into smaller,
-  more manageable tasks
-- must map to exactly one milestone
-- represent a clear, coherent user- or system-visible capability
-- must include epic-level in-scope and out-of-scope definitions
-- must include an epic-level definition of "done"
-- must not include tasks or implementation steps
+Produce Planning Constraints as markdown with three subsections:
+1. Hard constraints (must): Each item includes: PCH-### ID, rule statement, scope (planning / execution / codebase),
+   enforcement mechanism (lint/test/CI/human review), and source.
+2. Soft constraints (should): Same fields except: "PCS-### ID, clearly marked "should," plus rationale.
+3. Assumptions planners may rely on: Only assumptions that are explicitly supported by sources or by existing code
+   reality. Each includes: PCA-### ID, assumption, source, and "breaks if false" description.
 
-A milestone should usually contain about 3-7 epics.
-
-Start epic identifiers at 1 prefixed with a lowercase "e" (e.g. "e1"), and
-increment by 1 for each subsequent epic.
-
-### 3. Tasks
-Read and review existing tasks (except "done") for context. Where gaps were 
-identified, and now certain epics exist without all the necessary tasks required
-to implement them, create those new tasks in `_governator/task-backlog/` using
-the standard task template at `_governator/templates/task.md`. Be sure to
-include the correct milestone and epic numbers in the YAML frontmatter.
-
-Each task file:
-- must be part of the work required to implement a documented epic
-- must be marked with the correct YAML frontmatter milestone, epic, and task
-  identifiers (e.g. `milestone: m1`, `epic: e3`, `task: 024`)
-- must include only one logical work order; any task which would be estimated at
-  more than 8 fibonacci story points should be split into multiple tasks
-- must be named according to the strict format: `<id>-<kebab-case-title>-<role>.md`
-  (example: `001-exchange-adapter-generalist.md`)
-- must support closing a gap identified by the review
+Your Planning Constraints must cover, at minimum:
+- artifact locations and naming conventions planners must emit
+- interface-first planning rules (contracts/tests before implementations when appropriate)
+- task sizing constraints (max diff size, single-owner write-set, bounded scope)
+- dependency declaration rules (no task without explicit prerequisites)
+- parallel safety rules (file/directory ownership, merge conflict avoidance, serialization where necessary)
+- quality gates (tests required, CI required, formatting/lint/security checks)
+- decision hygiene (when an ADR is required; how to handle provisional decisions)
+- "spec vs code" precedence rules (what wins on conflict and how to record it)

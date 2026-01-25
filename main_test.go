@@ -146,20 +146,19 @@ func TestInitCommand(t *testing.T) {
 	}
 
 	// Check that directories were created
-	expectedDirs := []string{
-		"_governator/_durable-state",
-		"_governator/_durable-state/migrations",
-		"_governator/architecture",
-		"_governator/adr",
-		"_governator/plan",
-		"_governator/task",
-		"_governator/roles",
-		"_governator/custom-prompts",
-		"_governator/prompts",
-		"_governator/templates",
-		"_governator/reasoning",
-		"_governator/_local-state",
-	}
+		expectedDirs := []string{
+			"_governator/_durable-state",
+			"_governator/_durable-state/migrations",
+			"_governator/docs",
+			"_governator/docs/adr",
+			"_governator/task",
+			"_governator/roles",
+			"_governator/custom-prompts",
+			"_governator/prompts",
+			"_governator/templates",
+			"_governator/reasoning",
+			"_governator/_local-state",
+		}
 
 	for _, dir := range expectedDirs {
 		if _, err := os.Stat(dir); os.IsNotExist(err) {
