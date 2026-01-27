@@ -369,6 +369,9 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 						fmt.Fprintf(opts.Stderr, "Warning: failed to log worker timeout for %s: %v\n", task.ID, auditErr)
 					}
 				}
+				killWorkerProcess(task.PID, func(message string) {
+					fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+				})
 				if err := inFlight.Remove(task.ID); err == nil {
 					result.InFlightUpdated = true
 				}
@@ -384,15 +387,13 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 				BlockReason: fmt.Sprintf("worker process exited with code %d", exitStatus.ExitCode),
 			}
 		} else {
-			completion, err := worker.CheckStageCompletion(worktreePath, entry.WorkerStateDir, roles.StageWork)
+			ingestResult, err = finalizeStageSuccess(worktreePath, entry.WorkerStateDir, task, roles.StageWork)
 			if err != nil {
-				fmt.Fprintf(opts.Stderr, "Warning: failed to check work completion for task %s: %v\n", task.ID, err)
-				continue
-			}
-			ingestResult, err = worker.CompletionResultToIngest(task.ID, roles.StageWork, completion)
-			if err != nil {
-				fmt.Fprintf(opts.Stderr, "Warning: failed to build work result for task %s: %v\n", task.ID, err)
-				continue
+				ingestResult = worker.IngestResult{
+					Success:     false,
+					NewState:    index.TaskStateBlocked,
+					BlockReason: fmt.Sprintf("governator git finalize failed: %v", err),
+				}
 			}
 		}
 
@@ -604,19 +605,23 @@ func ExecuteWorkAgent(repoRoot, worktreePath string, task index.Task, cfg config
 		return worker.IngestResult{}, fmt.Errorf("execute work worker: %w", err)
 	}
 
-	ingestInput := worker.IngestInput{
-		TaskID:       task.ID,
-		WorktreePath: worktreePath,
-		Stage:        roles.StageWork,
-		ExecResult:   execResult,
-		Warn: func(msg string) {
-			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
-		},
-	}
-
-	ingestResult, err := worker.IngestWorkerResult(ingestInput)
-	if err != nil {
-		return worker.IngestResult{}, fmt.Errorf("ingest work result: %w", err)
+	var ingestResult worker.IngestResult
+	if execResult.Error != nil {
+		blockReason := fmt.Sprintf("worker execution failed: %s", execResult.Error.Error())
+		if execResult.TimedOut {
+			blockReason = fmt.Sprintf("worker execution timed out after %s", execResult.Duration)
+		}
+		ingestResult = worker.IngestResult{
+			Success:     false,
+			NewState:    index.TaskStateBlocked,
+			BlockReason: blockReason,
+			TimedOut:    execResult.TimedOut,
+		}
+	} else {
+		ingestResult, err = finalizeStageSuccess(worktreePath, stageResult.WorkerStateDir, task, roles.StageWork)
+		if err != nil {
+			return worker.IngestResult{}, fmt.Errorf("finalize work result: %w", err)
+		}
 	}
 
 	logAgentOutcome(auditor, task.ID, task.Role, roles.StageWork, statusFromIngestResult(ingestResult), exitCodeForOutcome(execResult.ExitCode, execResult.TimedOut), func(message string) {
@@ -709,6 +714,9 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 						fmt.Fprintf(opts.Stderr, "Warning: failed to log worker timeout for %s: %v\n", task.ID, auditErr)
 					}
 				}
+				killWorkerProcess(task.PID, func(message string) {
+					fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+				})
 				if err := inFlight.Remove(task.ID); err == nil {
 					result.InFlightUpdated = true
 				}
@@ -724,15 +732,13 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 				BlockReason: fmt.Sprintf("worker process exited with code %d", exitStatus.ExitCode),
 			}
 		} else {
-			completion, err := worker.CheckStageCompletion(worktreePath, entry.WorkerStateDir, roles.StageTest)
+			ingestResult, err = finalizeStageSuccess(worktreePath, entry.WorkerStateDir, task, roles.StageTest)
 			if err != nil {
-				fmt.Fprintf(opts.Stderr, "Warning: failed to check test completion for task %s: %v\n", task.ID, err)
-				continue
-			}
-			ingestResult, err = worker.CompletionResultToIngest(task.ID, roles.StageTest, completion)
-			if err != nil {
-				fmt.Fprintf(opts.Stderr, "Warning: failed to build test result for task %s: %v\n", task.ID, err)
-				continue
+				ingestResult = worker.IngestResult{
+					Success:     false,
+					NewState:    index.TaskStateBlocked,
+					BlockReason: fmt.Sprintf("governator git finalize failed: %v", err),
+				}
 			}
 		}
 
@@ -892,20 +898,23 @@ func ExecuteTestAgent(repoRoot, worktreePath string, task index.Task, cfg config
 		return worker.IngestResult{}, fmt.Errorf("execute test worker: %w", err)
 	}
 
-	// Ingest the worker result
-	ingestInput := worker.IngestInput{
-		TaskID:       task.ID,
-		WorktreePath: worktreePath,
-		Stage:        roles.StageTest,
-		ExecResult:   execResult,
-		Warn: func(msg string) {
-			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
-		},
-	}
-
-	ingestResult, err := worker.IngestWorkerResult(ingestInput)
-	if err != nil {
-		return worker.IngestResult{}, fmt.Errorf("ingest test result: %w", err)
+	var ingestResult worker.IngestResult
+	if execResult.Error != nil {
+		blockReason := fmt.Sprintf("worker execution failed: %s", execResult.Error.Error())
+		if execResult.TimedOut {
+			blockReason = fmt.Sprintf("worker execution timed out after %s", execResult.Duration)
+		}
+		ingestResult = worker.IngestResult{
+			Success:     false,
+			NewState:    index.TaskStateBlocked,
+			BlockReason: blockReason,
+			TimedOut:    execResult.TimedOut,
+		}
+	} else {
+		ingestResult, err = finalizeStageSuccess(worktreePath, stageResult.WorkerStateDir, task, roles.StageTest)
+		if err != nil {
+			return worker.IngestResult{}, fmt.Errorf("finalize test result: %w", err)
+		}
 	}
 
 	logAgentOutcome(auditor, task.ID, task.Role, roles.StageTest, statusFromIngestResult(ingestResult), exitCodeForOutcome(execResult.ExitCode, execResult.TimedOut), func(message string) {
@@ -1003,6 +1012,9 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 						fmt.Fprintf(opts.Stderr, "Warning: failed to log worker timeout for %s: %v\n", task.ID, auditErr)
 					}
 				}
+				killWorkerProcess(task.PID, func(message string) {
+					fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+				})
 				if err := inFlight.Remove(task.ID); err == nil {
 					result.InFlightUpdated = true
 				}
@@ -1018,15 +1030,13 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 				BlockReason: fmt.Sprintf("worker process exited with code %d", exitStatus.ExitCode),
 			}
 		} else {
-			completion, err := worker.CheckStageCompletion(worktreePath, entry.WorkerStateDir, roles.StageReview)
+			reviewResult, err = finalizeStageSuccess(worktreePath, entry.WorkerStateDir, task, roles.StageReview)
 			if err != nil {
-				fmt.Fprintf(opts.Stderr, "Warning: failed to check review completion for task %s: %v\n", task.ID, err)
-				continue
-			}
-			reviewResult, err = worker.CompletionResultToIngest(task.ID, roles.StageReview, completion)
-			if err != nil {
-				fmt.Fprintf(opts.Stderr, "Warning: failed to build review result for task %s: %v\n", task.ID, err)
-				continue
+				reviewResult = worker.IngestResult{
+					Success:     false,
+					NewState:    index.TaskStateTriaged,
+					BlockReason: fmt.Sprintf("governator git finalize failed: %v", err),
+				}
 			}
 		}
 
@@ -1225,20 +1235,23 @@ func ExecuteReviewAgent(repoRoot, worktreePath string, task index.Task, cfg conf
 		return worker.IngestResult{}, fmt.Errorf("execute review worker: %w", err)
 	}
 
-	// Ingest the worker result
-	ingestInput := worker.IngestInput{
-		TaskID:       task.ID,
-		WorktreePath: worktreePath,
-		Stage:        roles.StageReview,
-		ExecResult:   execResult,
-		Warn: func(msg string) {
-			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
-		},
-	}
-
-	ingestResult, err := worker.IngestWorkerResult(ingestInput)
-	if err != nil {
-		return worker.IngestResult{}, fmt.Errorf("ingest review result: %w", err)
+	var ingestResult worker.IngestResult
+	if execResult.Error != nil {
+		blockReason := fmt.Sprintf("worker execution failed: %s", execResult.Error.Error())
+		if execResult.TimedOut {
+			blockReason = fmt.Sprintf("worker execution timed out after %s", execResult.Duration)
+		}
+		ingestResult = worker.IngestResult{
+			Success:     false,
+			NewState:    index.TaskStateTriaged,
+			BlockReason: blockReason,
+			TimedOut:    execResult.TimedOut,
+		}
+	} else {
+		ingestResult, err = finalizeStageSuccess(worktreePath, stageResult.WorkerStateDir, task, roles.StageReview)
+		if err != nil {
+			return worker.IngestResult{}, fmt.Errorf("finalize review result: %w", err)
+		}
 	}
 
 	logAgentOutcome(auditor, task.ID, task.Role, roles.StageReview, statusFromIngestResult(ingestResult), exitCodeForOutcome(execResult.ExitCode, execResult.TimedOut), func(message string) {
@@ -1336,6 +1349,9 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 						fmt.Fprintf(opts.Stderr, "Warning: failed to log worker timeout for %s: %v\n", task.ID, auditErr)
 					}
 				}
+				killWorkerProcess(task.PID, func(message string) {
+					fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
+				})
 				if err := inFlight.Remove(task.ID); err == nil {
 					result.InFlightUpdated = true
 				}
@@ -1351,15 +1367,13 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 				BlockReason: fmt.Sprintf("worker process exited with code %d", exitStatus.ExitCode),
 			}
 		} else {
-			completion, err := worker.CheckStageCompletion(worktreePath, entry.WorkerStateDir, roles.StageResolve)
+			ingestResult, err = finalizeStageSuccess(worktreePath, entry.WorkerStateDir, task, roles.StageResolve)
 			if err != nil {
-				fmt.Fprintf(opts.Stderr, "Warning: failed to check resolve completion for task %s: %v\n", task.ID, err)
-				continue
-			}
-			ingestResult, err = worker.CompletionResultToIngest(task.ID, roles.StageResolve, completion)
-			if err != nil {
-				fmt.Fprintf(opts.Stderr, "Warning: failed to build resolve result for task %s: %v\n", task.ID, err)
-				continue
+				ingestResult = worker.IngestResult{
+					Success:     false,
+					NewState:    index.TaskStateBlocked,
+					BlockReason: fmt.Sprintf("governator git finalize failed: %v", err),
+				}
 			}
 		}
 
@@ -1545,20 +1559,23 @@ func ExecuteConflictResolutionAgent(repoRoot, worktreePath string, task index.Ta
 		return worker.IngestResult{}, roleResult, fmt.Errorf("execute conflict resolution worker: %w", err)
 	}
 
-	// Ingest the worker result
-	ingestInput := worker.IngestInput{
-		TaskID:       task.ID,
-		WorktreePath: worktreePath,
-		Stage:        roles.StageResolve,
-		ExecResult:   execResult,
-		Warn: func(msg string) {
-			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
-		},
-	}
-
-	ingestResult, err := worker.IngestWorkerResult(ingestInput)
-	if err != nil {
-		return worker.IngestResult{}, roleResult, fmt.Errorf("ingest conflict resolution result: %w", err)
+	var ingestResult worker.IngestResult
+	if execResult.Error != nil {
+		blockReason := fmt.Sprintf("worker execution failed: %s", execResult.Error.Error())
+		if execResult.TimedOut {
+			blockReason = fmt.Sprintf("worker execution timed out after %s", execResult.Duration)
+		}
+		ingestResult = worker.IngestResult{
+			Success:     false,
+			NewState:    index.TaskStateBlocked,
+			BlockReason: blockReason,
+			TimedOut:    execResult.TimedOut,
+		}
+	} else {
+		ingestResult, err = finalizeStageSuccess(worktreePath, stageResult.WorkerStateDir, task, roles.StageResolve)
+		if err != nil {
+			return worker.IngestResult{}, roleResult, fmt.Errorf("finalize conflict resolution result: %w", err)
+		}
 	}
 
 	logAgentOutcome(auditor, task.ID, roleResult.Role, roles.StageResolve, statusFromIngestResult(ingestResult), exitCodeForOutcome(execResult.ExitCode, execResult.TimedOut), func(message string) {

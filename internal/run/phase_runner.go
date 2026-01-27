@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -74,6 +75,9 @@ func (runner *phaseRunner) EnsurePlanningPhases(state *phase.State) (bool, error
 			if runner.isProcessAlive(record.Agent.PID) {
 				runner.emitPhaseRunning(state.Current, record.Agent.PID)
 				return true, nil
+			}
+			if err := runner.collectPhaseCompletion(spec); err != nil {
+				return false, err
 			}
 			record.Agent.FinishedAt = runner.now()
 			state.SetRecord(state.Current, record)
@@ -209,6 +213,84 @@ func (runner *phaseRunner) ensurePhasePrereqs(target phase.Phase) error {
 			fmt.Fprintf(runner.stderr, "phase gate: %s (%s)\n", validation.Name, validation.Message)
 		}
 		return fmt.Errorf("phase %d (%s) blocked by missing artifacts", target.Number(), target)
+	}
+	return nil
+}
+
+// collectPhaseCompletion finalizes the phase worktree and merges it into the base branch.
+func (runner *phaseRunner) collectPhaseCompletion(spec phaseSpec) error {
+	taskID := fmt.Sprintf("phase-%s", spec.phase.String())
+	branchName := fmt.Sprintf("phase-%s", spec.phase.String())
+	baseBranch := strings.TrimSpace(runner.cfg.Branches.Base)
+	if baseBranch == "" {
+		baseBranch = config.Defaults().Branches.Base
+	}
+
+	worktreePath, err := runner.worktreeManager.WorktreePath(taskID)
+	if err != nil {
+		return fmt.Errorf("resolve worktree for phase %s: %w", spec.phase.String(), err)
+	}
+	workerStateDir := workerStateDirPath(worktreePath, 1, roles.StageWork, spec.role)
+	exitStatus, finished, err := worker.ReadExitStatus(workerStateDir, taskID, roles.StageWork)
+	if err != nil {
+		return fmt.Errorf("read phase exit status: %w", err)
+	}
+	if !finished {
+		return fmt.Errorf("phase %d (%s) agent exited without exit.json", spec.phase.Number(), spec.phase)
+	}
+	if exitStatus.ExitCode != 0 {
+		return fmt.Errorf("phase %d (%s) agent failed with exit code %d", spec.phase.Number(), spec.phase, exitStatus.ExitCode)
+	}
+
+	phaseTask := index.Task{
+		ID:    taskID,
+		Title: fmt.Sprintf("Phase %d %s", spec.phase.Number(), spec.phase.String()),
+		Path:  spec.promptPath,
+		Role:  spec.role,
+	}
+	if _, err := finalizeStageSuccess(worktreePath, workerStateDir, phaseTask, roles.StageWork); err != nil {
+		return fmt.Errorf("finalize phase %s: %w", spec.phase.String(), err)
+	}
+	if err := runner.mergePlanningBranch(baseBranch, branchName); err != nil {
+		return err
+	}
+	return nil
+}
+
+// mergePlanningBranch fast-forwards the base branch with the phase branch after validating cleanliness.
+func (runner *phaseRunner) mergePlanningBranch(baseBranch string, phaseBranch string) error {
+	if err := ensureCleanRepoRoot(runner.repoRoot); err != nil {
+		return err
+	}
+	if err := runGitInRepo(runner.repoRoot, "checkout", baseBranch); err != nil {
+		return fmt.Errorf("checkout base branch %s: %w", baseBranch, err)
+	}
+	if err := runGitInRepo(runner.repoRoot, "merge", "--ff-only", phaseBranch); err != nil {
+		return fmt.Errorf("merge phase branch %s: %w", phaseBranch, err)
+	}
+	return nil
+}
+
+// ensureCleanRepoRoot verifies the repository root has no uncommitted changes (ignoring local-state).
+func ensureCleanRepoRoot(repoRoot string) error {
+	if strings.TrimSpace(repoRoot) == "" {
+		return fmt.Errorf("repo root is required")
+	}
+	cmd := exec.Command("git", "status", "--porcelain")
+	cmd.Dir = repoRoot
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("check repo status: %w", err)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		if line == "" {
+			continue
+		}
+		path := strings.TrimSpace(line[3:])
+		if strings.HasPrefix(path, "_governator/_local-state") {
+			continue
+		}
+		return fmt.Errorf("repository has uncommitted changes: %s", line)
 	}
 	return nil
 }

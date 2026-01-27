@@ -62,38 +62,26 @@ func IngestWorkerResult(input IngestInput) (IngestResult, error) {
 		}, nil
 	}
 
-	// Check for commit on task branch
 	hasCommit, err := checkForCommit(input.WorktreePath)
 	if err != nil {
 		return IngestResult{}, fmt.Errorf("check for commit: %w", err)
 	}
 
-	// Check for stage marker file
 	markerPath := filepath.Join(input.WorktreePath, localStateDirName, markerFileName(input.Stage))
 	hasMarker, err := checkForMarkerFile(markerPath)
 	if err != nil {
 		return IngestResult{}, fmt.Errorf("check for marker file: %w", err)
 	}
 
-	result := IngestResult{
+	// Completion now hinges on process exit success; commit/marker are recorded for observability.
+	return IngestResult{
+		Success:      true,
+		NewState:     stageToSuccessState(input.Stage),
 		HasCommit:    hasCommit,
 		HasMarker:    hasMarker,
 		MarkerPath:   repoRelativePath(input.WorktreePath, markerPath),
 		MarkerExists: hasMarker,
-	}
-
-	// Determine success based on both commit and marker presence
-	if hasCommit && hasMarker {
-		result.Success = true
-		result.NewState = stageToSuccessState(input.Stage)
-	} else {
-		result.Success = false
-		result.NewState = index.TaskStateBlocked
-		result.BlockReason = buildBlockReason(hasCommit, hasMarker, input.Stage)
-		emitWarning(input.Warn, fmt.Sprintf("task %s blocked: %s", input.TaskID, result.BlockReason))
-	}
-
-	return result, nil
+	}, nil
 }
 
 // checkForCommit verifies that there is at least one commit on the current branch.
@@ -106,7 +94,7 @@ func checkForCommit(worktreePath string) (bool, error) {
 	info, err := os.Stat(worktreePath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return false, nil
+			return false, fmt.Errorf("worktree path %s does not exist", worktreePath)
 		}
 		return false, fmt.Errorf("stat worktree path %s: %w", worktreePath, err)
 	}

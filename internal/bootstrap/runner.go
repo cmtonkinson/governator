@@ -38,12 +38,11 @@ type Result struct {
 	Skipped []string
 }
 
-// Artifacts returns the required and optional Power Six artifacts in stable order.
+// Artifacts returns the required and optional architecture artifacts in stable order.
 func Artifacts() []Artifact {
 	return []Artifact{
-		{Name: "asr.md", Template: "bootstrap/asr.md", Required: true},
-		{Name: "arc42.md", Template: "bootstrap/arc42.md", Required: true},
-		{Name: "adr.md", Template: "bootstrap/adr.md", Required: true},
+		{Name: "arch-asr.md", Template: "bootstrap/asr.md", Required: true},
+		{Name: "arch-arc42.md", Template: "bootstrap/arc42.md", Required: true},
 		{Name: "personas.md", Template: "bootstrap/personas.md", Required: false},
 		{Name: "wardley.md", Template: "bootstrap/wardley.md", Required: false},
 		{Name: "c4.md", Template: "bootstrap/c4.md", Required: false},

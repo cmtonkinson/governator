@@ -105,7 +105,7 @@ func TestRunUsesLocalTemplateOverride(t *testing.T) {
 		t.Fatalf("Run error: %v", err)
 	}
 
-	path := filepath.Join(root, docsDirName, "asr.md")
+	path := filepath.Join(root, docsDirName, "arch-asr.md")
 	got := string(readFile(t, path))
 	if got != override {
 		t.Fatalf("override content = %q, want %q", got, override)
