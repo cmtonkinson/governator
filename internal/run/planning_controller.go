@@ -79,7 +79,7 @@ func (controller *planningController) Collect(step workstreamStep) (workstreamCo
 	return result, nil
 }
 
-// Advance advances the phase state after a completed step when configured.
+// Advance finalizes a completed planning step and refreshes the task index.
 func (controller *planningController) Advance(step workstreamStep, collect workstreamCollectResult) (bool, error) {
 	if !collect.Completed {
 		return false, nil

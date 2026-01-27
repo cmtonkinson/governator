@@ -8,34 +8,6 @@ import (
 	"github.com/cmtonkinson/governator/internal/bootstrap"
 )
 
-func TestStoreStatePersistence(t *testing.T) {
-	t.Parallel()
-
-	repoRoot := t.TempDir()
-	store := NewStore(repoRoot)
-
-	state, err := store.Load()
-	if err != nil {
-		t.Fatalf("load default state: %v", err)
-	}
-	if state.Current != PhaseArchitectureBaseline {
-		t.Fatalf("expected current phase architecture baseline, got %v", state.Current)
-	}
-
-	state.Current = PhaseTaskPlanning
-	if err := store.Save(state); err != nil {
-		t.Fatalf("save state: %v", err)
-	}
-
-	loaded, err := store.Load()
-	if err != nil {
-		t.Fatalf("load saved state: %v", err)
-	}
-	if loaded.Current != state.Current {
-		t.Fatalf("current phase mismatch: got %v want %v", loaded.Current, state.Current)
-	}
-}
-
 func TestValidateArchitectureArtifacts(t *testing.T) {
 	t.Parallel()
 
