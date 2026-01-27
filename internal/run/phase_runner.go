@@ -74,61 +74,9 @@ func (runner *phaseRunner) EnsurePlanningPhases(state *phase.State) (bool, error
 	if runner.inFlight == nil {
 		runner.inFlight = inflight.Set{}
 	}
-	for state.Current < phase.PhaseExecution {
-		step, ok := runner.planning.stepForPhase(state.Current)
-		if !ok {
-			return false, fmt.Errorf("unsupported phase %s", state.Current)
-		}
-		taskID := step.workstreamID()
-		record := state.RecordFor(state.Current)
-		entry, hasEntry := runner.inFlight.Entry(taskID)
-
-		if hasEntry || (record.Agent.PID != 0 && record.Agent.FinishedAt.IsZero()) {
-			worktreePath, workerStateDir, err := runner.resolvePlanningPaths(step, entry)
-			if err != nil {
-				return false, err
-			}
-			if runningPID := runner.runningPlanningPID(record, workerStateDir, taskID, roles.StageWork); runningPID != 0 {
-				runner.emitPhaseRunning(state.Current, runningPID)
-				return true, nil
-			}
-			if err := runner.collectPhaseCompletion(step, worktreePath, workerStateDir); err != nil {
-				return false, err
-			}
-			if hasEntry {
-				if err := runner.inFlight.Remove(taskID); err != nil {
-					return false, fmt.Errorf("clear planning in-flight: %w", err)
-				}
-				if err := runner.persistInFlight(); err != nil {
-					return false, err
-				}
-			}
-			record.Agent.FinishedAt = runner.now()
-			state.SetRecord(state.Current, record)
-			if err := runner.store.Save(*state); err != nil {
-				return false, fmt.Errorf("save phase state: %w", err)
-			}
-			runner.emitPhaseAgentComplete(state.Current, record.Agent.PID)
-		}
-
-		if record.Agent.PID != 0 && !record.Agent.FinishedAt.IsZero() {
-			if err := runner.completePhase(state); err != nil {
-				return false, err
-			}
-			continue
-		}
-
-		if err := runner.ensureStepGate(step.gates.beforeDispatch, state.Current); err != nil {
-			return false, err
-		}
-
-		if err := runner.dispatchPhase(state, step); err != nil {
-			return false, err
-		}
-		return true, nil
-	}
-
-	return false, nil
+	controller := newPlanningController(runner, state)
+	worker := newWorkstreamRunner()
+	return worker.Run(controller)
 }
 
 // resolvePlanningPaths derives the worktree and worker state paths for a planning step.
