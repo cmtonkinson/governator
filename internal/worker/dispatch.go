@@ -42,6 +42,20 @@ type DispatchResult struct {
 	WorkerStateDir string
 }
 
+// dispatchMetadata captures dispatch-time details for observability and debugging.
+type dispatchMetadata struct {
+	TaskID      string    `json:"task_id"`
+	Stage       string    `json:"stage"`
+	WorkDir     string    `json:"work_dir"`
+	WrapperPath string    `json:"wrapper_path"`
+	WrapperPID  int       `json:"wrapper_pid"`
+	StartedAt   time.Time `json:"started_at"`
+	Command     []string  `json:"command"`
+	AgentName   string    `json:"agent_name,omitempty"`
+	PIDFiles    []string  `json:"pid_files"`
+	StartError  string    `json:"start_error,omitempty"`
+}
+
 // ExitStatus records the terminal status of a worker process.
 type ExitStatus struct {
 	ExitCode   int       `json:"exit_code"`
@@ -81,7 +95,9 @@ func DispatchWorker(input DispatchInput) (DispatchResult, error) {
 	if err != nil {
 		return DispatchResult{}, err
 	}
-	wrapperPath, err := writeDispatchWrapper(input.WorkerStateDir, input.TaskID, input.Stage, input.Command, exitPath)
+	agentName := detectAgentName(input.Command)
+	pidPaths := agentPIDPaths(input.WorkerStateDir, agentName)
+	wrapperPath, err := writeDispatchWrapper(input.WorkerStateDir, input.TaskID, input.Stage, input.Command, exitPath, pidPaths)
 	if err != nil {
 		return DispatchResult{}, err
 	}
@@ -99,10 +115,27 @@ func DispatchWorker(input DispatchInput) (DispatchResult, error) {
 	}
 
 	startedAt := time.Now().UTC()
+	meta := dispatchMetadata{
+		TaskID:      input.TaskID,
+		Stage:       string(input.Stage),
+		WorkDir:     input.WorkDir,
+		WrapperPath: wrapperPath,
+		WrapperPID:  0,
+		StartedAt:   startedAt,
+		Command:     cloneStrings(input.Command),
+		AgentName:   agentName,
+		PIDFiles:    pidPaths,
+	}
+	writeDispatchMetadata(input.WorkerStateDir, meta, input.Warn)
 	if err := cmd.Start(); err != nil {
+		meta.StartError = err.Error()
+		writeDispatchMetadata(input.WorkerStateDir, meta, input.Warn)
 		return DispatchResult{}, fmt.Errorf("start worker process: %w", err)
 	}
 	pid := cmd.Process.Pid
+	meta.WrapperPID = pid
+	meta.StartError = ""
+	writeDispatchMetadata(input.WorkerStateDir, meta, input.Warn)
 	if err := cmd.Process.Release(); err != nil {
 		emitWarning(input.Warn, fmt.Sprintf("failed to detach worker process: %v", err))
 	}
@@ -178,8 +211,8 @@ func ReadExitStatus(workerStateDir string, taskID string, stage roles.Stage) (Ex
 	return status, true, nil
 }
 
-// writeDispatchWrapper writes a wrapper script that captures exit status after execution.
-func writeDispatchWrapper(workerStateDir string, taskID string, stage roles.Stage, command []string, exitPath string) (string, error) {
+// writeDispatchWrapper writes a wrapper script that captures exit status and persists the agent pid.
+func writeDispatchWrapper(workerStateDir string, taskID string, stage roles.Stage, command []string, exitPath string, pidPaths []string) (string, error) {
 	if strings.TrimSpace(taskID) == "" {
 		return "", errors.New("task id is required")
 	}
@@ -192,6 +225,9 @@ func writeDispatchWrapper(workerStateDir string, taskID string, stage roles.Stag
 	if strings.TrimSpace(exitPath) == "" {
 		return "", errors.New("exit path is required")
 	}
+	if len(pidPaths) == 0 {
+		return "", errors.New("pid paths are required")
+	}
 
 	if strings.TrimSpace(workerStateDir) == "" {
 		return "", errors.New("worker state dir is required")
@@ -199,11 +235,13 @@ func writeDispatchWrapper(workerStateDir string, taskID string, stage roles.Stag
 	wrapperPath := filepath.Join(workerStateDir, "dispatch.sh")
 	commandLine := shellCommandLine(command)
 	exitPathEscaped := shellEscapeArg(exitPath)
+	pidWriteLines := buildPIDWriteLines(pidPaths)
 	content := strings.Join([]string{
 		"#!/bin/sh",
 		"set +e",
 		commandLine + " &",
 		"pid=$!",
+		pidWriteLines,
 		"wait $pid",
 		"code=$?",
 		"finished_at=$(date -u +\"%Y-%m-%dT%H:%M:%SZ\")",
@@ -215,6 +253,54 @@ func writeDispatchWrapper(workerStateDir string, taskID string, stage roles.Stag
 		return "", fmt.Errorf("write dispatch wrapper %s: %w", wrapperPath, err)
 	}
 	return wrapperPath, nil
+}
+
+// detectAgentName derives a friendly agent label from the command executable when possible.
+func detectAgentName(command []string) string {
+	if len(command) == 0 {
+		return ""
+	}
+	name := strings.ToLower(strings.TrimSpace(filepath.Base(command[0])))
+	switch {
+	case strings.Contains(name, "codex"):
+		return "codex"
+	case strings.Contains(name, "claude"):
+		return "claude"
+	case strings.Contains(name, "gemini"):
+		return "gemini"
+	default:
+		return ""
+	}
+}
+
+// agentPIDPaths returns pid files written by the dispatch wrapper.
+func agentPIDPaths(workerStateDir string, agentName string) []string {
+	return []string{filepath.Join(workerStateDir, agentPIDFileName)}
+}
+
+// buildPIDWriteLines emits shell lines that persist the launched agent pid for observability.
+func buildPIDWriteLines(pidPaths []string) string {
+	lines := make([]string, 0, len(pidPaths))
+	for _, path := range pidPaths {
+		if strings.TrimSpace(path) == "" {
+			continue
+		}
+		lines = append(lines, "printf '%s\\n' \"$pid\" > "+shellEscapeArg(path))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// writeDispatchMetadata persists dispatch-time metadata without failing the dispatch on error.
+func writeDispatchMetadata(workerStateDir string, meta dispatchMetadata, warn func(string)) {
+	path := filepath.Join(workerStateDir, "dispatch.json")
+	data, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		emitWarning(warn, fmt.Sprintf("failed to encode dispatch metadata: %v", err))
+		return
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+		emitWarning(warn, fmt.Sprintf("failed to write dispatch metadata: %v", err))
+	}
 }
 
 // shellCommandLine builds a shell-safe command string from arguments.

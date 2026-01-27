@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -27,6 +26,7 @@ type phaseRunner struct {
 	store               *phase.Store
 	worktreeManager     worktree.Manager
 	worktreeManagerInit bool
+	planning            phaseWorkstream
 }
 
 func newPhaseRunner(repoRoot string, cfg config.Config, opts Options, store *phase.Store) *phaseRunner {
@@ -44,6 +44,7 @@ func newPhaseRunner(repoRoot string, cfg config.Config, opts Options, store *pha
 		stdout:   stdout,
 		stderr:   stderr,
 		store:    store,
+		planning: newPlanningTask(),
 	}
 }
 
@@ -65,7 +66,7 @@ func (runner *phaseRunner) EnsurePlanningPhases(state *phase.State) (bool, error
 		return false, fmt.Errorf("create worktree manager: %w", err)
 	}
 	for state.Current < phase.PhaseExecution {
-		spec, ok := planningPhaseSpecs[state.Current]
+		step, ok := runner.planning.stepForPhase(state.Current)
 		if !ok {
 			return false, fmt.Errorf("unsupported phase %s", state.Current)
 		}
@@ -76,7 +77,7 @@ func (runner *phaseRunner) EnsurePlanningPhases(state *phase.State) (bool, error
 				runner.emitPhaseRunning(state.Current, record.Agent.PID)
 				return true, nil
 			}
-			if err := runner.collectPhaseCompletion(spec); err != nil {
+			if err := runner.collectPhaseCompletion(step); err != nil {
 				return false, err
 			}
 			record.Agent.FinishedAt = runner.now()
@@ -94,11 +95,11 @@ func (runner *phaseRunner) EnsurePlanningPhases(state *phase.State) (bool, error
 			continue
 		}
 
-		if err := runner.ensurePhasePrereqs(state.Current); err != nil {
+		if err := runner.ensureStepGate(step.gates.beforeDispatch, state.Current); err != nil {
 			return false, err
 		}
 
-		if err := runner.dispatchPhase(state, spec); err != nil {
+		if err := runner.dispatchPhase(state, step); err != nil {
 			return false, err
 		}
 		return true, nil
@@ -107,15 +108,15 @@ func (runner *phaseRunner) EnsurePlanningPhases(state *phase.State) (bool, error
 	return false, nil
 }
 
-func (runner *phaseRunner) dispatchPhase(state *phase.State, spec phaseSpec) error {
-	taskID := fmt.Sprintf("phase-%s", spec.phase.String())
+func (runner *phaseRunner) dispatchPhase(state *phase.State, step workstreamStep) error {
+	taskID := step.workstreamID()
 	task := index.Task{
 		ID:   taskID,
-		Path: spec.promptPath,
-		Role: spec.role,
+		Path: step.promptPath,
+		Role: step.role,
 	}
 
-	branchName := fmt.Sprintf("phase-%s", spec.phase.String())
+	branchName := step.branchName()
 	baseBranch := strings.TrimSpace(runner.cfg.Branches.Base)
 	if baseBranch == "" {
 		baseBranch = config.Defaults().Branches.Base
@@ -126,7 +127,7 @@ func (runner *phaseRunner) dispatchPhase(state *phase.State, spec phaseSpec) err
 		BaseBranch:   baseBranch,
 	})
 	if err != nil {
-		return fmt.Errorf("ensure worktree for phase %s: %w", spec.phase.String(), err)
+		return fmt.Errorf("ensure worktree for phase %s: %w", step.phase.String(), err)
 	}
 
 	stageInput := newWorkerStageInput(
@@ -134,7 +135,7 @@ func (runner *phaseRunner) dispatchPhase(state *phase.State, spec phaseSpec) err
 		worktreeResult.Path,
 		task,
 		roles.StageWork,
-		spec.role,
+		step.role,
 		1,
 		runner.cfg,
 		func(msg string) {
@@ -157,22 +158,22 @@ func (runner *phaseRunner) dispatchPhase(state *phase.State, spec phaseSpec) err
 		fmt.Fprintf(runner.stderr, "Warning: %s\n", msg)
 	})
 	if err != nil {
-		return fmt.Errorf("dispatch phase %s agent: %w", spec.phase.String(), err)
+		return fmt.Errorf("dispatch phase %s agent: %w", step.phase.String(), err)
 	}
 
-	record := state.RecordFor(spec.phase)
+	record := state.RecordFor(step.phase)
 	record.Agent = phase.AgentMetadata{
 		PID:       dispatchResult.PID,
 		StartedAt: dispatchResult.StartedAt,
 	}
-	state.SetRecord(spec.phase, record)
-	state.Notes = fmt.Sprintf("phase %d dispatched", spec.phase.Number())
+	state.SetRecord(step.phase, record)
+	state.Notes = fmt.Sprintf("phase %d dispatched", step.phase.Number())
 
 	if err := runner.store.Save(*state); err != nil {
 		return fmt.Errorf("save phase state: %w", err)
 	}
 
-	runner.emitPhaseDispatched(spec.phase, dispatchResult.PID)
+	runner.emitPhaseDispatched(step.phase, dispatchResult.PID)
 	return nil
 }
 
@@ -181,16 +182,29 @@ func (runner *phaseRunner) completePhase(state *phase.State) error {
 	if state.LastCompleted >= current {
 		return nil
 	}
+	advancePhase := true
+	step, ok := runner.planning.stepForPhase(current)
+	if ok {
+		advancePhase = step.actions.advancePhase
+	}
 	next := current.Next()
-	if err := runner.ensurePhasePrereqs(next); err != nil {
-		return err
+	if advancePhase {
+		gateTarget := next
+		if ok && step.gates.beforeAdvance.enabled {
+			gateTarget = step.gates.beforeAdvance.phase
+		}
+		if err := runner.ensurePhasePrereqs(gateTarget); err != nil {
+			return err
+		}
 	}
 
 	record := state.RecordFor(current)
 	record.CompletedAt = runner.now()
 	state.SetRecord(current, record)
 	state.LastCompleted = current
-	state.Current = next
+	if advancePhase {
+		state.Current = next
+	}
 	state.Notes = fmt.Sprintf("phase %d completed", state.LastCompleted.Number())
 
 	if err := runner.store.Save(*state); err != nil {
@@ -217,10 +231,18 @@ func (runner *phaseRunner) ensurePhasePrereqs(target phase.Phase) error {
 	return nil
 }
 
+// ensureStepGate evaluates the configured gate target, defaulting when none is specified.
+func (runner *phaseRunner) ensureStepGate(target workstreamGateTarget, defaultPhase phase.Phase) error {
+	if target.enabled {
+		return runner.ensurePhasePrereqs(target.phase)
+	}
+	return runner.ensurePhasePrereqs(defaultPhase)
+}
+
 // collectPhaseCompletion finalizes the phase worktree and merges it into the base branch.
-func (runner *phaseRunner) collectPhaseCompletion(spec phaseSpec) error {
-	taskID := fmt.Sprintf("phase-%s", spec.phase.String())
-	branchName := fmt.Sprintf("phase-%s", spec.phase.String())
+func (runner *phaseRunner) collectPhaseCompletion(step workstreamStep) error {
+	taskID := step.workstreamID()
+	branchName := step.branchName()
 	baseBranch := strings.TrimSpace(runner.cfg.Branches.Base)
 	if baseBranch == "" {
 		baseBranch = config.Defaults().Branches.Base
@@ -228,31 +250,33 @@ func (runner *phaseRunner) collectPhaseCompletion(spec phaseSpec) error {
 
 	worktreePath, err := runner.worktreeManager.WorktreePath(taskID)
 	if err != nil {
-		return fmt.Errorf("resolve worktree for phase %s: %w", spec.phase.String(), err)
+		return fmt.Errorf("resolve worktree for phase %s: %w", step.phase.String(), err)
 	}
-	workerStateDir := workerStateDirPath(worktreePath, 1, roles.StageWork, spec.role)
+	workerStateDir := workerStateDirPath(worktreePath, 1, roles.StageWork, step.role)
 	exitStatus, finished, err := worker.ReadExitStatus(workerStateDir, taskID, roles.StageWork)
 	if err != nil {
 		return fmt.Errorf("read phase exit status: %w", err)
 	}
 	if !finished {
-		return fmt.Errorf("phase %d (%s) agent exited without exit.json", spec.phase.Number(), spec.phase)
+		return fmt.Errorf("phase %d (%s) agent exited without exit.json", step.phase.Number(), step.phase)
 	}
 	if exitStatus.ExitCode != 0 {
-		return fmt.Errorf("phase %d (%s) agent failed with exit code %d", spec.phase.Number(), spec.phase, exitStatus.ExitCode)
+		return fmt.Errorf("phase %d (%s) agent failed with exit code %d", step.phase.Number(), step.phase, exitStatus.ExitCode)
 	}
 
 	phaseTask := index.Task{
 		ID:    taskID,
-		Title: fmt.Sprintf("Phase %d %s", spec.phase.Number(), spec.phase.String()),
-		Path:  spec.promptPath,
-		Role:  spec.role,
+		Title: step.title(),
+		Path:  step.promptPath,
+		Role:  step.role,
 	}
 	if _, err := finalizeStageSuccess(worktreePath, workerStateDir, phaseTask, roles.StageWork); err != nil {
-		return fmt.Errorf("finalize phase %s: %w", spec.phase.String(), err)
+		return fmt.Errorf("finalize phase %s: %w", step.phase.String(), err)
 	}
-	if err := runner.mergePlanningBranch(baseBranch, branchName); err != nil {
-		return err
+	if step.actions.mergeToBase {
+		if err := runner.mergePlanningBranch(baseBranch, branchName); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -337,33 +361,4 @@ func collectFailedValidations(validations []phase.ArtifactValidation) []phase.Ar
 		}
 	}
 	return failed
-}
-
-type phaseSpec struct {
-	phase      phase.Phase
-	promptPath string
-	role       index.Role
-}
-
-var planningPhaseSpecs = map[phase.Phase]phaseSpec{
-	phase.PhaseArchitectureBaseline: {
-		phase:      phase.PhaseArchitectureBaseline,
-		promptPath: filepath.ToSlash(filepath.Join("_governator", "prompts", "architecture-baseline.md")),
-		role:       index.Role("architect"),
-	},
-	phase.PhaseGapAnalysis: {
-		phase:      phase.PhaseGapAnalysis,
-		promptPath: filepath.ToSlash(filepath.Join("_governator", "prompts", "gap-analysis.md")),
-		role:       index.Role("default"),
-	},
-	phase.PhaseProjectPlanning: {
-		phase:      phase.PhaseProjectPlanning,
-		promptPath: filepath.ToSlash(filepath.Join("_governator", "prompts", "roadmap.md")),
-		role:       index.Role("planner"),
-	},
-	phase.PhaseTaskPlanning: {
-		phase:      phase.PhaseTaskPlanning,
-		promptPath: filepath.ToSlash(filepath.Join("_governator", "prompts", "task-planning.md")),
-		role:       index.Role("planner"),
-	},
 }

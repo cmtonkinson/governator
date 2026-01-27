@@ -369,7 +369,7 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 						fmt.Fprintf(opts.Stderr, "Warning: failed to log worker timeout for %s: %v\n", task.ID, auditErr)
 					}
 				}
-				killWorkerProcess(task.PID, func(message string) {
+				killWorkerProcess(task.PID, entry.WorkerStateDir, func(message string) {
 					fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
 				})
 				if err := inFlight.Remove(task.ID); err == nil {
@@ -714,7 +714,7 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 						fmt.Fprintf(opts.Stderr, "Warning: failed to log worker timeout for %s: %v\n", task.ID, auditErr)
 					}
 				}
-				killWorkerProcess(task.PID, func(message string) {
+				killWorkerProcess(task.PID, entry.WorkerStateDir, func(message string) {
 					fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
 				})
 				if err := inFlight.Remove(task.ID); err == nil {
@@ -1012,7 +1012,7 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 						fmt.Fprintf(opts.Stderr, "Warning: failed to log worker timeout for %s: %v\n", task.ID, auditErr)
 					}
 				}
-				killWorkerProcess(task.PID, func(message string) {
+				killWorkerProcess(task.PID, entry.WorkerStateDir, func(message string) {
 					fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
 				})
 				if err := inFlight.Remove(task.ID); err == nil {
@@ -1349,7 +1349,7 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 						fmt.Fprintf(opts.Stderr, "Warning: failed to log worker timeout for %s: %v\n", task.ID, auditErr)
 					}
 				}
-				killWorkerProcess(task.PID, func(message string) {
+				killWorkerProcess(task.PID, entry.WorkerStateDir, func(message string) {
 					fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
 				})
 				if err := inFlight.Remove(task.ID); err == nil {
