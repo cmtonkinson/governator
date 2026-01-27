@@ -159,43 +159,19 @@ func Run(repoRoot string, opts Options) (Result, error) {
 		fmt.Fprintf(opts.Stdout, "Task %s blocked: exceeded retry limit (%d attempts)\n", candidate.Task.ID, maxAttempts)
 	}
 
-	// Execute work stage for open tasks
+	// Execute task stages via the workstream runner.
 	resumeWorktrees := resumeWorktreeMap(resumeResult.Resumed)
-	workResult, err := ExecuteWorkStage(repoRoot, &idx, cfg, caps, inFlight, resumeWorktrees, auditor, auditor, opts)
-	if err != nil {
-		return Result{}, fmt.Errorf("execute work stage: %w", err)
+	executionController := newExecutionController(repoRoot, &idx, cfg, caps, inFlight, resumeWorktrees, auditor, auditor, opts, baseBranch)
+	executionRunner := newWorkstreamRunner()
+	if _, err := executionRunner.Run(executionController); err != nil {
+		return Result{}, fmt.Errorf("execute execution stages: %w", err)
 	}
-	worktreeOverrides := mergeWorktreeOverrides(resumeWorktrees, workResult.WorktreePaths)
-
-	// Execute test stage for worked tasks
-	testResult, err := ExecuteTestStage(repoRoot, &idx, cfg, caps, inFlight, worktreeOverrides, auditor, auditor, opts)
-	if err != nil {
-		return Result{}, fmt.Errorf("execute test stage: %w", err)
-	}
-
-	// Execute review stage for tested tasks
-	reviewResult, err := ExecuteReviewStage(repoRoot, &idx, cfg, caps, inFlight, worktreeOverrides, auditor, auditor, opts)
-	if err != nil {
-		return Result{}, fmt.Errorf("execute review stage: %w", err)
-	}
-
-	// Execute conflict resolution stage for conflict tasks
-	conflictResult, err := ExecuteConflictResolutionStage(repoRoot, &idx, cfg, caps, inFlight, worktreeOverrides, auditor, auditor, opts)
-	if err != nil {
-		return Result{}, fmt.Errorf("execute conflict resolution stage: %w", err)
-	}
-
-	// Execute merge stage for resolved tasks
-	mergeResult, err := ExecuteMergeStage(repoRoot, &idx, cfg, caps, worktreeOverrides, auditor, auditor, opts)
-	if err != nil {
-		return Result{}, fmt.Errorf("execute merge stage: %w", err)
-	}
-
-	// Ensure branches exist for open tasks
-	branchResult, err := EnsureBranchesForOpenTasks(repoRoot, &idx, auditor, opts, baseBranch)
-	if err != nil {
-		return Result{}, fmt.Errorf("ensure branches for open tasks: %w", err)
-	}
+	workResult := executionController.workResult
+	testResult := executionController.testResult
+	reviewResult := executionController.reviewResult
+	conflictResult := executionController.conflictResult
+	mergeResult := executionController.mergeResult
+	branchResult := executionController.branchResult
 
 	// Save updated index
 	if len(resumedTasks) > 0 || len(blockedTasks) > 0 || workResult.TasksWorked > 0 || workResult.TasksBlocked > 0 || testResult.TasksTested > 0 || testResult.TasksBlocked > 0 || reviewResult.TasksReviewed > 0 || reviewResult.TasksBlocked > 0 || conflictResult.TasksResolved > 0 || conflictResult.TasksBlocked > 0 || mergeResult.TasksProcessed > 0 || branchResult.BranchesCreated > 0 {
@@ -203,7 +179,7 @@ func Run(repoRoot string, opts Options) (Result, error) {
 			return Result{}, fmt.Errorf("save task index: %w", err)
 		}
 	}
-	if workResult.InFlightUpdated || testResult.InFlightUpdated || reviewResult.InFlightUpdated || conflictResult.InFlightUpdated {
+	if executionController.inFlightWasUpdated {
 		if err := inFlightStore.Save(inFlight); err != nil {
 			return Result{}, fmt.Errorf("save in-flight tasks: %w", err)
 		}

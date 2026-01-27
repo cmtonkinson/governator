@@ -101,15 +101,12 @@ func (runner *phaseRunner) resolvePlanningPaths(step workstreamStep, entry infli
 }
 
 // runningPlanningPID returns a live pid for the step when one can be observed.
-func (runner *phaseRunner) runningPlanningPID(record phase.PhaseRecord, workerStateDir string, taskID string, stage roles.Stage) int {
+func (runner *phaseRunner) runningPlanningPID(workerStateDir string, taskID string, stage roles.Stage) int {
 	if _, finished, err := worker.ReadExitStatus(workerStateDir, taskID, stage); err == nil && finished {
 		return 0
 	}
 	if pid, found, err := worker.ReadAgentPID(workerStateDir); err == nil && found && runner.isProcessAlive(pid) {
 		return pid
-	}
-	if record.Agent.PID != 0 && runner.isProcessAlive(record.Agent.PID) {
-		return record.Agent.PID
 	}
 	return 0
 }
@@ -125,7 +122,7 @@ func (runner *phaseRunner) persistInFlight() error {
 	return nil
 }
 
-func (runner *phaseRunner) dispatchPhase(state *phase.State, step workstreamStep) error {
+func (runner *phaseRunner) dispatchPhase(step workstreamStep) error {
 	taskID := step.workstreamID()
 	task := index.Task{
 		ID:   taskID,
@@ -179,18 +176,6 @@ func (runner *phaseRunner) dispatchPhase(state *phase.State, step workstreamStep
 		return fmt.Errorf("dispatch phase %s agent: %w", step.phase.String(), err)
 	}
 
-	record := state.RecordFor(step.phase)
-	record.Agent = phase.AgentMetadata{
-		PID:       dispatchResult.PID,
-		StartedAt: dispatchResult.StartedAt,
-	}
-	state.SetRecord(step.phase, record)
-	state.Notes = fmt.Sprintf("phase %d dispatched", step.phase.Number())
-
-	if err := runner.store.Save(*state); err != nil {
-		return fmt.Errorf("save phase state: %w", err)
-	}
-
 	if err := runner.inFlight.AddWithStartAndPath(taskID, dispatchResult.StartedAt, worktreeResult.Path, dispatchResult.WorkerStateDir, string(roles.StageWork), string(step.role)); err != nil {
 		return fmt.Errorf("record planning in-flight: %w", err)
 	}
@@ -204,9 +189,6 @@ func (runner *phaseRunner) dispatchPhase(state *phase.State, step workstreamStep
 
 func (runner *phaseRunner) completePhase(state *phase.State) error {
 	current := state.Current
-	if state.LastCompleted >= current {
-		return nil
-	}
 	advancePhase := true
 	step, ok := runner.planning.stepForPhase(current)
 	if ok {
@@ -223,20 +205,15 @@ func (runner *phaseRunner) completePhase(state *phase.State) error {
 		}
 	}
 
-	record := state.RecordFor(current)
-	record.CompletedAt = runner.now()
-	state.SetRecord(current, record)
-	state.LastCompleted = current
 	if advancePhase {
 		state.Current = next
 	}
-	state.Notes = fmt.Sprintf("phase %d completed", state.LastCompleted.Number())
 
 	if err := runner.store.Save(*state); err != nil {
 		return fmt.Errorf("save phase state: %w", err)
 	}
 
-	runner.emitPhaseComplete(state.LastCompleted)
+	runner.emitPhaseComplete(current)
 	return nil
 }
 

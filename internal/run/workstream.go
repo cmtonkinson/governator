@@ -26,7 +26,7 @@ type workstreamStepGates struct {
 	beforeAdvance  workstreamGateTarget
 }
 
-// workstreamStep is the minimal unit required to drive a phase-aware workstream.
+// workstreamStep is the minimal unit required to drive a workstream step.
 type workstreamStep struct {
 	phase      phase.Phase
 	name       string

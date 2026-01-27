@@ -1,28 +1,31 @@
 // Package run provides workstream execution orchestration.
 package run
 
-import (
-	"errors"
-
-	"github.com/cmtonkinson/governator/internal/inflight"
-	"github.com/cmtonkinson/governator/internal/phase"
-)
+import "errors"
 
 // workstreamController defines the adapter hooks required by the workstream runner.
 type workstreamController interface {
 	CurrentStep() (workstreamStep, bool)
-	StepRecord(step workstreamStep) phase.PhaseRecord
-	InFlightEntry(step workstreamStep) (inflight.Entry, bool)
-	ResolvePaths(step workstreamStep, entry inflight.Entry) (string, string, error)
-	RunningPID(step workstreamStep, record phase.PhaseRecord, workerStateDir string) int
-	Collect(step workstreamStep, worktreePath string, workerStateDir string) error
-	ClearInFlight(step workstreamStep) error
-	MarkFinished(step workstreamStep, record phase.PhaseRecord) error
-	Advance(step workstreamStep) (bool, error)
+	Collect(step workstreamStep) (workstreamCollectResult, error)
+	Advance(step workstreamStep, collect workstreamCollectResult) (bool, error)
 	GateBeforeDispatch(step workstreamStep) error
-	Dispatch(step workstreamStep) error
-	EmitRunning(step workstreamStep, pid int)
-	EmitAgentComplete(step workstreamStep, pid int)
+	Dispatch(step workstreamStep) (workstreamDispatchResult, error)
+	EmitRunning(step workstreamStep, pids []int)
+	EmitAgentComplete(step workstreamStep, collect workstreamCollectResult)
+}
+
+// workstreamCollectResult captures the outcome of a collect pass for a step.
+type workstreamCollectResult struct {
+	RunningPIDs []int
+	CompletedPID int
+	Completed   bool
+	Handled     bool
+}
+
+// workstreamDispatchResult captures the outcome of a dispatch pass for a step.
+type workstreamDispatchResult struct {
+	Handled  bool
+	Continue bool
 }
 
 // workstreamRunner executes a single workstream using a controller adapter.
@@ -45,51 +48,44 @@ func (runner *workstreamRunner) Run(controller workstreamController) (bool, erro
 		if !ok {
 			return handled, nil
 		}
-		record := controller.StepRecord(step)
-		entry, hasEntry := controller.InFlightEntry(step)
 
-		if hasEntry || (record.Agent.PID != 0 && record.Agent.FinishedAt.IsZero()) {
-			worktreePath, workerStateDir, err := controller.ResolvePaths(step, entry)
-			if err != nil {
-				return handled, err
-			}
-			if runningPID := controller.RunningPID(step, record, workerStateDir); runningPID != 0 {
-				controller.EmitRunning(step, runningPID)
-				return true, nil
-			}
-			if err := controller.Collect(step, worktreePath, workerStateDir); err != nil {
-				return handled, err
-			}
-			if hasEntry {
-				if err := controller.ClearInFlight(step); err != nil {
-					return handled, err
-				}
-			}
-			if err := controller.MarkFinished(step, record); err != nil {
-				return handled, err
-			}
-			record = controller.StepRecord(step)
-			controller.EmitAgentComplete(step, record.Agent.PID)
+		collectResult, err := controller.Collect(step)
+		if err != nil {
+			return handled, err
+		}
+		if collectResult.Handled {
 			handled = true
 		}
+		if len(collectResult.RunningPIDs) > 0 {
+			controller.EmitRunning(step, collectResult.RunningPIDs)
+			return true, nil
+		}
+		if collectResult.Completed {
+			controller.EmitAgentComplete(step, collectResult)
+		}
 
-		if record.Agent.PID != 0 && !record.Agent.FinishedAt.IsZero() {
-			advanced, err := controller.Advance(step)
-			if err != nil {
-				return handled, err
-			}
-			if advanced {
-				handled = true
-				continue
-			}
+		advanced, err := controller.Advance(step, collectResult)
+		if err != nil {
+			return handled, err
+		}
+		if advanced {
+			handled = true
+			continue
 		}
 
 		if err := controller.GateBeforeDispatch(step); err != nil {
 			return handled, err
 		}
-		if err := controller.Dispatch(step); err != nil {
+		dispatchResult, err := controller.Dispatch(step)
+		if err != nil {
 			return handled, err
 		}
-		return true, nil
+		if dispatchResult.Handled {
+			handled = true
+		}
+		if dispatchResult.Continue {
+			continue
+		}
+		return handled, nil
 	}
 }

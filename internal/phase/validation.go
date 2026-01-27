@@ -20,6 +20,14 @@ const (
 	gapReportNote = "gap report"
 )
 
+// ArtifactValidation holds the result from validating a runnable phase gate.
+type ArtifactValidation struct {
+	Name      string    `json:"name"`
+	Valid     bool      `json:"valid"`
+	Message   string    `json:"message,omitempty"`
+	CheckedAt time.Time `json:"checked_at"`
+}
+
 type phaseValidator func(repoRoot string) ([]ArtifactValidation, error)
 
 var phaseValidators = map[Phase][]phaseValidator{

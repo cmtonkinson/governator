@@ -51,7 +51,6 @@ func TestPhaseRunnerCompletePhaseAdvancesState(t *testing.T) {
 	}
 	state := phase.DefaultState()
 	state.Current = phase.PhaseArchitectureBaseline
-	state.LastCompleted = phase.PhaseNew
 	stderr := &bytes.Buffer{}
 	runner := newPhaseRunner(repoRoot, config.Defaults(), Options{Stdout: io.Discard, Stderr: stderr}, store, inFlightStore, inflight.Set{})
 
@@ -59,9 +58,6 @@ func TestPhaseRunnerCompletePhaseAdvancesState(t *testing.T) {
 		t.Fatalf("complete phase: %v", err)
 	}
 
-	if state.LastCompleted != phase.PhaseArchitectureBaseline {
-		t.Fatalf("last completed = %v, want %v", state.LastCompleted, phase.PhaseArchitectureBaseline)
-	}
 	if state.Current != phase.PhaseGapAnalysis {
 		t.Fatalf("current phase = %v, want %v", state.Current, phase.PhaseGapAnalysis)
 	}
@@ -75,9 +71,6 @@ func TestPhaseRunnerCompletePhaseAdvancesState(t *testing.T) {
 	}
 	if loaded.Current != state.Current {
 		t.Fatalf("stored current = %v, want %v", loaded.Current, state.Current)
-	}
-	if loaded.LastCompleted != state.LastCompleted {
-		t.Fatalf("stored last completed = %v, want %v", loaded.LastCompleted, state.LastCompleted)
 	}
 }
 

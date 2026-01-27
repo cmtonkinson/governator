@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/cmtonkinson/governator/internal/digests"
 	"github.com/cmtonkinson/governator/internal/index"
@@ -420,17 +419,6 @@ func setupTestRepoWithConfig(t *testing.T) string {
 	stateStore := phase.NewStore(repoRoot)
 	state := phase.DefaultState()
 	state.Current = phase.PhaseExecution
-	state.LastCompleted = phase.PhaseTaskPlanning
-	for _, p := range []phase.Phase{
-		phase.PhaseArchitectureBaseline,
-		phase.PhaseGapAnalysis,
-		phase.PhaseProjectPlanning,
-		phase.PhaseTaskPlanning,
-	} {
-		record := state.RecordFor(p)
-		record.CompletedAt = time.Now().UTC()
-		state.SetRecord(p, record)
-	}
 	if err := stateStore.Save(state); err != nil {
 		t.Fatalf("save phase state: %v", err)
 	}

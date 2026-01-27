@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/index"
@@ -202,17 +201,6 @@ func setupPipelineRepo(t *testing.T, workerCommand []string) *testrepos.TempRepo
 	stateStore := phase.NewStore(repo.Root)
 	state := phase.DefaultState()
 	state.Current = phase.PhaseExecution
-	state.LastCompleted = phase.PhaseTaskPlanning
-	for _, p := range []phase.Phase{
-		phase.PhaseArchitectureBaseline,
-		phase.PhaseGapAnalysis,
-		phase.PhaseProjectPlanning,
-		phase.PhaseTaskPlanning,
-	} {
-		record := state.RecordFor(p)
-		record.CompletedAt = time.Now().UTC()
-		state.SetRecord(p, record)
-	}
 	if err := stateStore.Save(state); err != nil {
 		t.Fatalf("save phase state: %v", err)
 	}

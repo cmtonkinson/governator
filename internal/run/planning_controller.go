@@ -4,9 +4,9 @@ package run
 import (
 	"fmt"
 
-	"github.com/cmtonkinson/governator/internal/inflight"
 	"github.com/cmtonkinson/governator/internal/phase"
 	"github.com/cmtonkinson/governator/internal/roles"
+	"github.com/cmtonkinson/governator/internal/worker"
 )
 
 // planningController adapts phase state to the generic workstream runner.
@@ -35,51 +35,54 @@ func (controller *planningController) CurrentStep() (workstreamStep, bool) {
 	return step, true
 }
 
-// StepRecord returns the phase record for the step phase.
-func (controller *planningController) StepRecord(step workstreamStep) phase.PhaseRecord {
-	return controller.state.RecordFor(step.phase)
-}
-
-// InFlightEntry returns the in-flight entry for the planning step when present.
-func (controller *planningController) InFlightEntry(step workstreamStep) (inflight.Entry, bool) {
-	return controller.runner.inFlight.Entry(step.workstreamID())
-}
-
-// ResolvePaths resolves the worktree and worker state paths for the step.
-func (controller *planningController) ResolvePaths(step workstreamStep, entry inflight.Entry) (string, string, error) {
-	return controller.runner.resolvePlanningPaths(step, entry)
-}
-
-// RunningPID returns a live pid when available for the step.
-func (controller *planningController) RunningPID(step workstreamStep, record phase.PhaseRecord, workerStateDir string) int {
-	return controller.runner.runningPlanningPID(record, workerStateDir, step.workstreamID(), roles.StageWork)
-}
-
-// Collect finalizes the planning worktree after exit.json is present.
-func (controller *planningController) Collect(step workstreamStep, worktreePath string, workerStateDir string) error {
-	return controller.runner.collectPhaseCompletion(step, worktreePath, workerStateDir)
-}
-
-// ClearInFlight removes the planning step from the in-flight store.
-func (controller *planningController) ClearInFlight(step workstreamStep) error {
-	if err := controller.runner.inFlight.Remove(step.workstreamID()); err != nil {
-		return fmt.Errorf("clear planning in-flight: %w", err)
+// Collect finalizes the planning step when the worker is no longer running.
+func (controller *planningController) Collect(step workstreamStep) (workstreamCollectResult, error) {
+	result := workstreamCollectResult{}
+	taskID := step.workstreamID()
+	inFlight := controller.runner.inFlight.Contains(taskID)
+	if !inFlight {
+		return result, nil
 	}
-	return controller.runner.persistInFlight()
-}
 
-// MarkFinished updates the phase record after collection.
-func (controller *planningController) MarkFinished(step workstreamStep, record phase.PhaseRecord) error {
-	record.Agent.FinishedAt = controller.runner.now()
-	controller.state.SetRecord(step.phase, record)
-	if err := controller.runner.store.Save(*controller.state); err != nil {
-		return fmt.Errorf("save phase state: %w", err)
+	entry, _ := controller.runner.inFlight.Entry(taskID)
+	worktreePath, workerStateDir, err := controller.runner.resolvePlanningPaths(step, entry)
+	if err != nil {
+		return result, err
 	}
-	return nil
+
+	runningPID := controller.runner.runningPlanningPID(workerStateDir, taskID, roles.StageWork)
+	if runningPID != 0 {
+		result.RunningPIDs = []int{runningPID}
+		return result, nil
+	}
+
+	if err := controller.runner.collectPhaseCompletion(step, worktreePath, workerStateDir); err != nil {
+		return result, err
+	}
+
+	if pid, found, err := worker.ReadAgentPID(workerStateDir); err == nil && found {
+		result.CompletedPID = pid
+	}
+
+	if controller.runner.inFlight.Contains(taskID) {
+		if err := controller.runner.inFlight.Remove(taskID); err != nil {
+			return result, fmt.Errorf("clear planning in-flight: %w", err)
+		}
+		if err := controller.runner.persistInFlight(); err != nil {
+			return result, err
+		}
+	}
+
+	result.Completed = true
+	result.Handled = true
+	return result, nil
 }
 
 // Advance advances the phase state after a completed step when configured.
-func (controller *planningController) Advance(step workstreamStep) (bool, error) {
+func (controller *planningController) Advance(step workstreamStep, collect workstreamCollectResult) (bool, error) {
+	if !collect.Completed {
+		return false, nil
+	}
 	before := controller.state.Current
 	if err := controller.runner.completePhase(controller.state); err != nil {
 		return false, err
@@ -93,16 +96,22 @@ func (controller *planningController) GateBeforeDispatch(step workstreamStep) er
 }
 
 // Dispatch starts the worker for the planning step.
-func (controller *planningController) Dispatch(step workstreamStep) error {
-	return controller.runner.dispatchPhase(controller.state, step)
+func (controller *planningController) Dispatch(step workstreamStep) (workstreamDispatchResult, error) {
+	if err := controller.runner.dispatchPhase(step); err != nil {
+		return workstreamDispatchResult{}, err
+	}
+	return workstreamDispatchResult{Handled: true}, nil
 }
 
 // EmitRunning logs that the phase worker is still running.
-func (controller *planningController) EmitRunning(step workstreamStep, pid int) {
-	controller.runner.emitPhaseRunning(step.phase, pid)
+func (controller *planningController) EmitRunning(step workstreamStep, pids []int) {
+	if len(pids) == 0 {
+		return
+	}
+	controller.runner.emitPhaseRunning(step.phase, pids[0])
 }
 
 // EmitAgentComplete logs that the phase worker has exited.
-func (controller *planningController) EmitAgentComplete(step workstreamStep, pid int) {
-	controller.runner.emitPhaseAgentComplete(step.phase, pid)
+func (controller *planningController) EmitAgentComplete(step workstreamStep, collect workstreamCollectResult) {
+	controller.runner.emitPhaseAgentComplete(step.phase, collect.CompletedPID)
 }

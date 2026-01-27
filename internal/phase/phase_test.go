@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/cmtonkinson/governator/internal/bootstrap"
 )
@@ -24,13 +23,6 @@ func TestStoreStatePersistence(t *testing.T) {
 	}
 
 	state.Current = PhaseTaskPlanning
-	state.LastCompleted = PhaseProjectPlanning
-	state.Notes = "test complete"
-	state.ArtifactValidations = []ArtifactValidation{{
-		Name:      "dummy",
-		Valid:     true,
-		CheckedAt: time.Now(),
-	}}
 	if err := store.Save(state); err != nil {
 		t.Fatalf("save state: %v", err)
 	}
@@ -41,12 +33,6 @@ func TestStoreStatePersistence(t *testing.T) {
 	}
 	if loaded.Current != state.Current {
 		t.Fatalf("current phase mismatch: got %v want %v", loaded.Current, state.Current)
-	}
-	if loaded.LastCompleted != state.LastCompleted {
-		t.Fatalf("last completed mismatch: got %v want %v", loaded.LastCompleted, state.LastCompleted)
-	}
-	if loaded.Notes != state.Notes {
-		t.Fatalf("notes mismatch: got %q want %q", loaded.Notes, state.Notes)
 	}
 }
 

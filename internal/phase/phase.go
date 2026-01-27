@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 )
 
 const (
@@ -73,87 +72,16 @@ func (p Phase) Next() Phase {
 	}
 }
 
-// AgentMetadata captures the PID and timestamps for the agent that ran the phase.
-type AgentMetadata struct {
-	PID        int       `json:"pid,omitempty"`
-	StartedAt  time.Time `json:"started_at,omitempty"`
-	FinishedAt time.Time `json:"finished_at,omitempty"`
-}
-
-// PhaseRecord stores durable metadata for a specific phase.
-type PhaseRecord struct {
-	Agent       AgentMetadata `json:"agent,omitempty"`
-	CompletedAt time.Time     `json:"completed_at,omitempty"`
-}
-
-// ArtifactValidation holds the result from validating a runnable phase gate.
-type ArtifactValidation struct {
-	Name      string    `json:"name"`
-	Valid     bool      `json:"valid"`
-	Message   string    `json:"message,omitempty"`
-	CheckedAt time.Time `json:"checked_at"`
-}
-
 // State models the persisted phase tracker entry.
 type State struct {
-	Current             Phase                  `json:"current"`
-	LastCompleted       Phase                  `json:"last_completed"`
-	Records             map[string]PhaseRecord `json:"records"`
-	ArtifactValidations []ArtifactValidation   `json:"artifact_validations,omitempty"`
-	Notes               string                 `json:"notes,omitempty"`
+	Current Phase `json:"current"`
 }
 
 // DefaultState returns the initial state written when no state file exists.
 func DefaultState() State {
 	return State{
-		Current:       PhaseArchitectureBaseline,
-		LastCompleted: PhaseNew,
-		Records:       newPhaseRecords(),
+		Current: PhaseArchitectureBaseline,
 	}
-}
-
-func newPhaseRecords() map[string]PhaseRecord {
-	records := make(map[string]PhaseRecord, len(phaseNames))
-	for _, name := range phaseNames {
-		records[name] = PhaseRecord{}
-	}
-	return records
-}
-
-func mergePhaseRecords(current map[string]PhaseRecord) map[string]PhaseRecord {
-	if len(current) == 0 {
-		return newPhaseRecords()
-	}
-	records := make(map[string]PhaseRecord, len(phaseNames))
-	for _, name := range phaseNames {
-		if entry, ok := current[name]; ok {
-			records[name] = entry
-			continue
-		}
-		records[name] = PhaseRecord{}
-	}
-	return records
-}
-
-// RecordFor returns the stored phase record for p.
-func (s *State) RecordFor(p Phase) PhaseRecord {
-	if s.Records == nil {
-		s.Records = newPhaseRecords()
-	}
-	record, ok := s.Records[p.String()]
-	if !ok {
-		record = PhaseRecord{}
-		s.Records[p.String()] = record
-	}
-	return record
-}
-
-// SetRecord overwrites the stored phase record for p.
-func (s *State) SetRecord(p Phase, record PhaseRecord) {
-	if s.Records == nil {
-		s.Records = newPhaseRecords()
-	}
-	s.Records[p.String()] = record
 }
 
 // Store provides durable persistence for phase metadata.
@@ -188,14 +116,6 @@ func (s *Store) Load() (State, error) {
 	}
 	if state.Current < PhaseNew || state.Current > PhaseComplete {
 		state.Current = PhaseArchitectureBaseline
-	}
-	if state.LastCompleted < PhaseNew || state.LastCompleted > PhaseComplete {
-		state.LastCompleted = PhaseNew
-	}
-	if state.Records == nil {
-		state.Records = newPhaseRecords()
-	} else {
-		state.Records = mergePhaseRecords(state.Records)
 	}
 	return state, nil
 }
