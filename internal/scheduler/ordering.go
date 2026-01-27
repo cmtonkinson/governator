@@ -30,6 +30,9 @@ func OrderedEligibleTasks(idx index.Index, inFlight map[string]struct{}) ([]inde
 
 	eligible := make([]index.Task, 0, len(idx.Tasks))
 	for _, task := range idx.Tasks {
+		if task.Kind != index.TaskKindExecution {
+			continue
+		}
 		if isInFlight(task.ID, inFlight) {
 			continue
 		}

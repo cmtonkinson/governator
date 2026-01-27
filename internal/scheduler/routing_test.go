@@ -11,13 +11,13 @@ import (
 func TestRouteEligibleTasksStageBias(t *testing.T) {
 	idx := index.Index{
 		Tasks: []index.Task{
-			{ID: "review-1", State: index.TaskStateTested, Role: "reviewer", Order: 10},
-			{ID: "review-2", State: index.TaskStateTested, Role: "reviewer", Order: 20},
-			{ID: "review-3", State: index.TaskStateTested, Role: "reviewer", Order: 30},
-			{ID: "test-1", State: index.TaskStateWorked, Role: "tester", Order: 10},
-			{ID: "test-2", State: index.TaskStateWorked, Role: "tester", Order: 20},
-			{ID: "test-3", State: index.TaskStateWorked, Role: "tester", Order: 30},
-			{ID: "open-1", State: index.TaskStateOpen, Role: "worker", Order: 10},
+			{ID: "review-1", Kind: index.TaskKindExecution, State: index.TaskStateTested, Role: "reviewer", Order: 10},
+			{ID: "review-2", Kind: index.TaskKindExecution, State: index.TaskStateTested, Role: "reviewer", Order: 20},
+			{ID: "review-3", Kind: index.TaskKindExecution, State: index.TaskStateTested, Role: "reviewer", Order: 30},
+			{ID: "test-1", Kind: index.TaskKindExecution, State: index.TaskStateWorked, Role: "tester", Order: 10},
+			{ID: "test-2", Kind: index.TaskKindExecution, State: index.TaskStateWorked, Role: "tester", Order: 20},
+			{ID: "test-3", Kind: index.TaskKindExecution, State: index.TaskStateWorked, Role: "tester", Order: 30},
+			{ID: "open-1", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Role: "worker", Order: 10},
 		},
 	}
 	caps := RoleCaps{
@@ -55,9 +55,9 @@ func TestRouteEligibleTasksStageBias(t *testing.T) {
 func TestRouteEligibleTasksOpenFallback(t *testing.T) {
 	idx := index.Index{
 		Tasks: []index.Task{
-			{ID: "open-1", State: index.TaskStateOpen, Role: "worker", Order: 10},
-			{ID: "open-2", State: index.TaskStateOpen, Role: "worker", Order: 20},
-			{ID: "open-3", State: index.TaskStateOpen, Role: "worker", Order: 30},
+			{ID: "open-1", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Role: "worker", Order: 10},
+			{ID: "open-2", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Role: "worker", Order: 20},
+			{ID: "open-3", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Role: "worker", Order: 30},
 		},
 	}
 	caps := RoleCaps{
@@ -95,8 +95,8 @@ func TestRouteEligibleTasksOpenFallback(t *testing.T) {
 func TestRouteEligibleTasksOverlapAllowsParallel(t *testing.T) {
 	idx := index.Index{
 		Tasks: []index.Task{
-			{ID: "task-a", State: index.TaskStateOpen, Role: "worker", Order: 10, Overlap: []string{"db"}},
-			{ID: "task-b", State: index.TaskStateOpen, Role: "worker", Order: 20, Overlap: []string{"api"}},
+			{ID: "task-a", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Role: "worker", Order: 10, Overlap: []string{"db"}},
+			{ID: "task-b", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Role: "worker", Order: 20, Overlap: []string{"api"}},
 		},
 	}
 	caps := RoleCaps{
@@ -125,9 +125,9 @@ func TestRouteEligibleTasksOverlapAllowsParallel(t *testing.T) {
 func TestRouteEligibleTasksOverlapSerializes(t *testing.T) {
 	idx := index.Index{
 		Tasks: []index.Task{
-			{ID: "task-a", State: index.TaskStateOpen, Role: "worker", Order: 10, Overlap: []string{"db"}},
-			{ID: "task-b", State: index.TaskStateOpen, Role: "worker", Order: 20, Overlap: []string{"db"}},
-			{ID: "task-c", State: index.TaskStateOpen, Role: "worker", Order: 30, Overlap: []string{"api"}},
+			{ID: "task-a", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Role: "worker", Order: 10, Overlap: []string{"db"}},
+			{ID: "task-b", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Role: "worker", Order: 20, Overlap: []string{"db"}},
+			{ID: "task-c", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Role: "worker", Order: 30, Overlap: []string{"api"}},
 		},
 	}
 	caps := RoleCaps{
@@ -172,9 +172,9 @@ func TestRouteEligibleTasksOverlapSerializes(t *testing.T) {
 func TestRouteEligibleTasksOverlapAcrossStages(t *testing.T) {
 	idx := index.Index{
 		Tasks: []index.Task{
-			{ID: "review-1", State: index.TaskStateTested, Role: "reviewer", Order: 10, Overlap: []string{"db"}},
-			{ID: "open-1", State: index.TaskStateOpen, Role: "worker", Order: 10, Overlap: []string{"db"}},
-			{ID: "open-2", State: index.TaskStateOpen, Role: "worker", Order: 20, Overlap: []string{"api"}},
+			{ID: "review-1", Kind: index.TaskKindExecution, State: index.TaskStateTested, Role: "reviewer", Order: 10, Overlap: []string{"db"}},
+			{ID: "open-1", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Role: "worker", Order: 10, Overlap: []string{"db"}},
+			{ID: "open-2", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Role: "worker", Order: 20, Overlap: []string{"api"}},
 		},
 	}
 	caps := RoleCaps{
@@ -203,9 +203,9 @@ func TestRouteEligibleTasksOverlapAcrossStages(t *testing.T) {
 func TestRouteEligibleTasksReasonRoleCapReached(t *testing.T) {
 	idx := index.Index{
 		Tasks: []index.Task{
-			{ID: "task-1", State: index.TaskStateOpen, Role: "worker"},
-			{ID: "task-2", State: index.TaskStateOpen, Role: "worker"},
-			{ID: "task-3", State: index.TaskStateOpen, Role: "worker"},
+			{ID: "task-1", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Role: "worker"},
+			{ID: "task-2", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Role: "worker"},
+			{ID: "task-3", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Role: "worker"},
 		},
 	}
 	caps := RoleCaps{
@@ -244,8 +244,8 @@ func TestRouteEligibleTasksReasonRoleCapReached(t *testing.T) {
 func TestRouteEligibleTasksReasonRoleCapDisabled(t *testing.T) {
 	idx := index.Index{
 		Tasks: []index.Task{
-			{ID: "disabled-1", State: index.TaskStateOpen, Role: "disabled"},
-			{ID: "enabled-1", State: index.TaskStateOpen, Role: "enabled"},
+			{ID: "disabled-1", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Role: "disabled"},
+			{ID: "enabled-1", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Role: "enabled"},
 		},
 	}
 	caps := RoleCaps{

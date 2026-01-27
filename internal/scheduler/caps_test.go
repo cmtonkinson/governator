@@ -11,13 +11,13 @@ import (
 // TestApplyRoleCapsExample verifies the routing example from the policy doc.
 func TestApplyRoleCapsExample(t *testing.T) {
 	ordered := []index.Task{
-		{ID: "T-01", Role: "resolver"},
-		{ID: "T-02", Role: "worker"},
-		{ID: "T-03", Role: "worker"},
-		{ID: "T-04", Role: "worker"},
-		{ID: "T-05", Role: "worker"},
-		{ID: "T-06", Role: "tester"},
-		{ID: "T-07", Role: "tester"},
+		{ID: "T-01", Kind: index.TaskKindExecution, Role: "resolver"},
+		{ID: "T-02", Kind: index.TaskKindExecution, Role: "worker"},
+		{ID: "T-03", Kind: index.TaskKindExecution, Role: "worker"},
+		{ID: "T-04", Kind: index.TaskKindExecution, Role: "worker"},
+		{ID: "T-05", Kind: index.TaskKindExecution, Role: "worker"},
+		{ID: "T-06", Kind: index.TaskKindExecution, Role: "tester"},
+		{ID: "T-07", Kind: index.TaskKindExecution, Role: "tester"},
 	}
 	caps := RoleCaps{
 		Global:      5,
@@ -44,9 +44,9 @@ func TestApplyRoleCapsExample(t *testing.T) {
 // TestApplyRoleCapsUsesDefaultRoleCap ensures missing per-role caps use the default.
 func TestApplyRoleCapsUsesDefaultRoleCap(t *testing.T) {
 	ordered := []index.Task{
-		{ID: "T-01", Role: "planner"},
-		{ID: "T-02", Role: "planner"},
-		{ID: "T-03", Role: "planner"},
+		{ID: "T-01", Kind: index.TaskKindExecution, Role: "planner"},
+		{ID: "T-02", Kind: index.TaskKindExecution, Role: "planner"},
+		{ID: "T-03", Kind: index.TaskKindExecution, Role: "planner"},
 	}
 	caps := RoleCaps{
 		Global:      10,
@@ -64,12 +64,12 @@ func TestApplyRoleCapsUsesDefaultRoleCap(t *testing.T) {
 // TestApplyRoleCapsPerRoleOverridesDefault ensures explicit role caps override default caps.
 func TestApplyRoleCapsPerRoleOverridesDefault(t *testing.T) {
 	ordered := []index.Task{
-		{ID: "T-01", Role: "writer"},
-		{ID: "T-02", Role: "writer"},
-		{ID: "T-03", Role: "reviewer"},
-		{ID: "T-04", Role: "reviewer"},
-		{ID: "T-05", Role: "reviewer"},
-		{ID: "T-06", Role: "qa"},
+		{ID: "T-01", Kind: index.TaskKindExecution, Role: "writer"},
+		{ID: "T-02", Kind: index.TaskKindExecution, Role: "writer"},
+		{ID: "T-03", Kind: index.TaskKindExecution, Role: "reviewer"},
+		{ID: "T-04", Kind: index.TaskKindExecution, Role: "reviewer"},
+		{ID: "T-05", Kind: index.TaskKindExecution, Role: "reviewer"},
+		{ID: "T-06", Kind: index.TaskKindExecution, Role: "qa"},
 	}
 	caps := RoleCaps{
 		Global:      4,
@@ -97,10 +97,10 @@ func TestApplyRoleCapsPerRoleOverridesDefault(t *testing.T) {
 // TestApplyRoleCapsGlobalLimit ensures global caps limit concurrency below role caps.
 func TestApplyRoleCapsGlobalLimit(t *testing.T) {
 	ordered := []index.Task{
-		{ID: "T-01", Role: "worker"},
-		{ID: "T-02", Role: "worker"},
-		{ID: "T-03", Role: "tester"},
-		{ID: "T-04", Role: "tester"},
+		{ID: "T-01", Kind: index.TaskKindExecution, Role: "worker"},
+		{ID: "T-02", Kind: index.TaskKindExecution, Role: "worker"},
+		{ID: "T-03", Kind: index.TaskKindExecution, Role: "tester"},
+		{ID: "T-04", Kind: index.TaskKindExecution, Role: "tester"},
 	}
 	caps := RoleCaps{
 		Global:      2,

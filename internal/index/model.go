@@ -21,6 +21,7 @@ type Task struct {
 	ID            string          `json:"id"`
 	Title         string          `json:"title,omitempty"`
 	Path          string          `json:"path"`
+	Kind          TaskKind        `json:"kind"`
 	State         TaskState       `json:"state"`
 	Role          Role            `json:"role"`
 	AssignedRole  string          `json:"assigned_role,omitempty"`
@@ -66,6 +67,16 @@ const (
 
 // Role names the worker role assigned to a task.
 type Role string
+
+// TaskKind distinguishes planning work from execution work.
+type TaskKind string
+
+const (
+	// TaskKindPlanning identifies a planning step in the planning workstream.
+	TaskKindPlanning TaskKind = "planning"
+	// TaskKindExecution identifies implementation work run during execution.
+	TaskKindExecution TaskKind = "execution"
+)
 
 // RetryPolicy defines the retry limits for a task.
 type RetryPolicy struct {

@@ -63,6 +63,10 @@ func runInit(verbose bool) {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
+	if err := run.SeedPlanningIndex(repoRoot); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
 	if err := commitInit(repoRoot); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)

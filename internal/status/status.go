@@ -87,6 +87,9 @@ func GetSummary(repoRoot string) (Summary, error) {
 	summary := Summary{Total: len(idx.Tasks)}
 
 	for _, task := range idx.Tasks {
+		if task.Kind != index.TaskKindExecution {
+			continue
+		}
 		switch task.State {
 		case index.TaskStateBacklog:
 			summary.Backlog++

@@ -46,6 +46,7 @@ func TestExecuteConflictResolutionAgent_Success(t *testing.T) {
 
 	task := index.Task{
 		ID:       "task-01",
+		Kind:     index.TaskKindExecution,
 		State:    index.TaskStateConflict,
 		Role:     "default",
 		Title:    "Test Task 1",
@@ -120,6 +121,7 @@ func TestSelectRoleForConflictResolution_Success(t *testing.T) {
 
 	task := index.Task{
 		ID:    "task-01",
+		Kind:  index.TaskKindExecution,
 		State: index.TaskStateConflict,
 		Role:  "default",
 		Title: "Test Task 1",
@@ -197,6 +199,7 @@ func TestSelectRoleForConflictResolution_LLMFallback(t *testing.T) {
 
 	task := index.Task{
 		ID:   "task-01",
+		Kind: index.TaskKindExecution,
 		Path: "task-01.md",
 	}
 
@@ -243,6 +246,7 @@ func TestSelectRoleForConflictResolution_ValidationErrors(t *testing.T) {
 				// Don't create the role assignment prompt
 				task := index.Task{
 					ID:   "task-01",
+					Kind: index.TaskKindExecution,
 					Path: "task-01.md",
 				}
 				cfg := config.Config{}
@@ -267,6 +271,7 @@ func TestSelectRoleForConflictResolution_ValidationErrors(t *testing.T) {
 
 				task := index.Task{
 					ID:   "task-01",
+					Kind: index.TaskKindExecution,
 					Path: "nonexistent.md",
 				}
 				cfg := config.Config{}
@@ -305,6 +310,7 @@ func TestExecuteMergeStage_Success(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:       "task-01",
+				Kind:     index.TaskKindExecution,
 				State:    index.TaskStateResolved,
 				Role:     "default",
 				Title:    "Test Task 1",
@@ -349,6 +355,7 @@ func TestUpdateTaskStateFromMerge_Success(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "task-01",
+				Kind:  index.TaskKindExecution,
 				State: index.TaskStateMergeable,
 				Role:  "default",
 			},
@@ -393,6 +400,7 @@ func TestUpdateTaskStateFromMerge_Failure(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "task-01",
+				Kind:  index.TaskKindExecution,
 				State: index.TaskStateMergeable,
 				Role:  "default",
 			},

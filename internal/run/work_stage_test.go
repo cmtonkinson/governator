@@ -60,9 +60,10 @@ func TestExecuteWorkStageHappyPath(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "T-001",
+				Path:  "_governator/tasks/T-001-work.md",
+				Kind:  index.TaskKindExecution,
 				State: index.TaskStateOpen,
 				Role:  "worker",
-				Path:  "_governator/tasks/T-001-work.md",
 			},
 		},
 	}

@@ -113,6 +113,7 @@ func (runner *phaseRunner) dispatchPhase(state *phase.State, step workstreamStep
 	task := index.Task{
 		ID:   taskID,
 		Path: step.promptPath,
+		Kind: index.TaskKindPlanning,
 		Role: step.role,
 	}
 
@@ -268,10 +269,14 @@ func (runner *phaseRunner) collectPhaseCompletion(step workstreamStep) error {
 		ID:    taskID,
 		Title: step.title(),
 		Path:  step.promptPath,
+		Kind:  index.TaskKindPlanning,
 		Role:  step.role,
 	}
 	if _, err := finalizeStageSuccess(worktreePath, workerStateDir, phaseTask, roles.StageWork); err != nil {
 		return fmt.Errorf("finalize phase %s: %w", step.phase.String(), err)
+	}
+	if err := UpdatePlanningIndex(worktreePath, step); err != nil {
+		return fmt.Errorf("update planning index: %w", err)
 	}
 	if step.actions.mergeToBase {
 		if err := runner.mergePlanningBranch(baseBranch, branchName); err != nil {

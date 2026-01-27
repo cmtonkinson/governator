@@ -2014,6 +2014,9 @@ func EnsureBranchesForOpenTasks(repoRoot string, idx *index.Index, auditor *audi
 	// Find tasks in open state
 	var openTasks []index.Task
 	for _, task := range idx.Tasks {
+		if task.Kind != index.TaskKindExecution {
+			continue
+		}
 		if task.State == index.TaskStateTriaged {
 			openTasks = append(openTasks, task)
 		}

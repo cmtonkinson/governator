@@ -34,6 +34,7 @@ func TestRunHappyPathWithResume(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "T-001",
+				Kind:  index.TaskKindExecution,
 				State: index.TaskStateBlocked,
 				Attempts: index.AttemptCounters{
 					Total:  1,
@@ -122,6 +123,7 @@ func TestRunBlocksTasksExceedingRetryLimit(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "T-001",
+				Kind:  index.TaskKindExecution,
 				State: index.TaskStateBlocked,
 				Attempts: index.AttemptCounters{
 					Total:  3,
@@ -196,6 +198,7 @@ func TestRunNoResumeCandidates(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "T-001",
+				Kind:  index.TaskKindExecution,
 				State: index.TaskStateOpen,
 			},
 		},

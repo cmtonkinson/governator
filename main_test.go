@@ -286,17 +286,17 @@ func TestStatusCommand(t *testing.T) {
 		// Create a populated task index
 		indexPath := filepath.Join(tempDir, "_governator", "task-index.json")
 		populatedIndex := `{
-			"schema_version": 1,
-			"tasks": [
-				{"id": "T-001", "state": "done"},
-				{"id": "T-002", "state": "done"},
-				{"id": "T-003", "state": "open"},
-				{"id": "T-004", "state": "open"},
-				{"id": "T-005", "state": "blocked"},
-				{"id": "T-006", "state": "worked"},
-				{"id": "T-007", "state": "conflict"}
-			]
-		}`
+				"schema_version": 1,
+				"tasks": [
+					{"id": "T-001", "kind": "execution", "state": "done"},
+					{"id": "T-002", "kind": "execution", "state": "done"},
+					{"id": "T-003", "kind": "execution", "state": "open"},
+					{"id": "T-004", "kind": "execution", "state": "open"},
+					{"id": "T-005", "kind": "execution", "state": "blocked"},
+					{"id": "T-006", "kind": "execution", "state": "worked"},
+					{"id": "T-007", "kind": "execution", "state": "conflict"}
+				]
+			}`
 		if err := os.WriteFile(indexPath, []byte(populatedIndex), 0644); err != nil {
 			t.Fatalf("Failed to write populated index: %v", err)
 		}

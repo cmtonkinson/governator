@@ -59,6 +59,7 @@ func newTestTask(id, title, role, path string, order int) index.Task {
 		ID:           id,
 		Title:        title,
 		Path:         path,
+		Kind:         index.TaskKindExecution,
 		State:        index.TaskStateOpen,
 		Role:         index.Role(role),
 		Dependencies: []string{},

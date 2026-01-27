@@ -18,6 +18,7 @@ const exampleIndexJSON = `{
       "id": "task-01",
       "title": "Initialize repo",
       "path": "_governator/tasks/task-01-initialize.md",
+      "kind": "execution",
       "state": "open",
       "role": "planner",
       "dependencies": [],
@@ -68,6 +69,7 @@ func TestIndexMissingFieldsZeroValues(t *testing.T) {
     {
       "id": "task-01",
       "path": "_governator/tasks/task-01.md",
+      "kind": "execution",
       "state": "open",
       "role": "planner"
     }

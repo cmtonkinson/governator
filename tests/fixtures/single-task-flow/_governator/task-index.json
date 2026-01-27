@@ -11,6 +11,7 @@
       "id": "T-001",
       "title": "Single task flow",
       "path": "_governator/tasks/T-001-single-task.md",
+      "kind": "execution",
       "state": "open",
       "role": "worker",
       "dependencies": [],

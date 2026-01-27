@@ -12,14 +12,14 @@ import (
 func TestOrderedEligibleTasksSimpleDAG(t *testing.T) {
 	idx := index.Index{
 		Tasks: []index.Task{
-			{ID: "task-done", State: index.TaskStateDone, Order: 0},
-			{ID: "task-tested-a", State: index.TaskStateTested, Order: 2, Dependencies: []string{"task-done"}},
-			{ID: "task-tested-b", State: index.TaskStateTested, Order: 2, Dependencies: []string{"task-done"}},
-			{ID: "task-worked", State: index.TaskStateWorked, Order: 1, Dependencies: []string{"task-done"}},
-			{ID: "task-open-early", State: index.TaskStateOpen, Order: 1, Dependencies: []string{"task-done"}},
-			{ID: "task-open-late", State: index.TaskStateOpen, Order: 3, Dependencies: []string{"task-done"}},
-			{ID: "task-blocked", State: index.TaskStateBlocked, Order: 1, Dependencies: []string{"task-done"}},
-			{ID: "task-open-needs-open", State: index.TaskStateOpen, Order: 4, Dependencies: []string{"task-open-early"}},
+			{ID: "task-done", Kind: index.TaskKindExecution, State: index.TaskStateDone, Order: 0},
+			{ID: "task-tested-a", Kind: index.TaskKindExecution, State: index.TaskStateTested, Order: 2, Dependencies: []string{"task-done"}},
+			{ID: "task-tested-b", Kind: index.TaskKindExecution, State: index.TaskStateTested, Order: 2, Dependencies: []string{"task-done"}},
+			{ID: "task-worked", Kind: index.TaskKindExecution, State: index.TaskStateWorked, Order: 1, Dependencies: []string{"task-done"}},
+			{ID: "task-open-early", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Order: 1, Dependencies: []string{"task-done"}},
+			{ID: "task-open-late", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Order: 3, Dependencies: []string{"task-done"}},
+			{ID: "task-blocked", Kind: index.TaskKindExecution, State: index.TaskStateBlocked, Order: 1, Dependencies: []string{"task-done"}},
+			{ID: "task-open-needs-open", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Order: 4, Dependencies: []string{"task-open-early"}},
 		},
 	}
 
@@ -50,9 +50,9 @@ func TestOrderedEligibleTasksSimpleDAG(t *testing.T) {
 func TestOrderedEligibleTasksDetectsCycles(t *testing.T) {
 	idx := index.Index{
 		Tasks: []index.Task{
-			{ID: "task-a", State: index.TaskStateOpen, Dependencies: []string{"task-b"}},
-			{ID: "task-b", State: index.TaskStateOpen, Dependencies: []string{"task-c"}},
-			{ID: "task-c", State: index.TaskStateOpen, Dependencies: []string{"task-a"}},
+			{ID: "task-a", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Dependencies: []string{"task-b"}},
+			{ID: "task-b", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Dependencies: []string{"task-c"}},
+			{ID: "task-c", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Dependencies: []string{"task-a"}},
 		},
 	}
 
@@ -69,12 +69,12 @@ func TestOrderedEligibleTasksDetectsCycles(t *testing.T) {
 func TestOrderedEligibleTasksConflictPriority(t *testing.T) {
 	idx := index.Index{
 		Tasks: []index.Task{
-			{ID: "task-done", State: index.TaskStateDone},
-			{ID: "task-conflict", State: index.TaskStateConflict, Order: 2, Dependencies: []string{"task-done"}},
-			{ID: "task-resolved", State: index.TaskStateResolved, Order: 1, Dependencies: []string{"task-done"}},
-			{ID: "task-tested", State: index.TaskStateTested, Order: 0, Dependencies: []string{"task-done"}},
-			{ID: "task-worked", State: index.TaskStateWorked, Order: 0, Dependencies: []string{"task-done"}},
-			{ID: "task-open", State: index.TaskStateOpen, Order: 0, Dependencies: []string{"task-done"}},
+			{ID: "task-done", Kind: index.TaskKindExecution, State: index.TaskStateDone},
+			{ID: "task-conflict", Kind: index.TaskKindExecution, State: index.TaskStateConflict, Order: 2, Dependencies: []string{"task-done"}},
+			{ID: "task-resolved", Kind: index.TaskKindExecution, State: index.TaskStateResolved, Order: 1, Dependencies: []string{"task-done"}},
+			{ID: "task-tested", Kind: index.TaskKindExecution, State: index.TaskStateTested, Order: 0, Dependencies: []string{"task-done"}},
+			{ID: "task-worked", Kind: index.TaskKindExecution, State: index.TaskStateWorked, Order: 0, Dependencies: []string{"task-done"}},
+			{ID: "task-open", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Order: 0, Dependencies: []string{"task-done"}},
 		},
 	}
 
@@ -105,8 +105,8 @@ func TestOrderedEligibleTasksConflictPriority(t *testing.T) {
 func TestOrderedEligibleTasksSkipsInFlight(t *testing.T) {
 	idx := index.Index{
 		Tasks: []index.Task{
-			{ID: "task-a", State: index.TaskStateOpen, Order: 1},
-			{ID: "task-b", State: index.TaskStateOpen, Order: 2},
+			{ID: "task-a", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Order: 1},
+			{ID: "task-b", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Order: 2},
 		},
 	}
 
@@ -128,10 +128,10 @@ func TestOrderedEligibleTasksSkipsInFlight(t *testing.T) {
 func TestOrderedEligibleTasksRespectsDependencies(t *testing.T) {
 	idx := index.Index{
 		Tasks: []index.Task{
-			{ID: "task-base", State: index.TaskStateDone},
-			{ID: "task-ready", State: index.TaskStateOpen, Order: 2, Dependencies: []string{"task-base"}},
-			{ID: "task-no-deps", State: index.TaskStateOpen, Order: 1},
-			{ID: "task-blocked", State: index.TaskStateOpen, Order: 3, Dependencies: []string{"task-missing"}},
+			{ID: "task-base", Kind: index.TaskKindExecution, State: index.TaskStateDone},
+			{ID: "task-ready", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Order: 2, Dependencies: []string{"task-base"}},
+			{ID: "task-no-deps", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Order: 1},
+			{ID: "task-blocked", Kind: index.TaskKindExecution, State: index.TaskStateOpen, Order: 3, Dependencies: []string{"task-missing"}},
 		},
 	}
 

@@ -34,6 +34,7 @@ func TestExecuteTestStageHappyPath(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "T-001",
+				Kind:  index.TaskKindExecution,
 				State: index.TaskStateWorked,
 				Role:  "test_engineer",
 				Path:  "task-001.md",
@@ -99,6 +100,7 @@ func TestExecuteTestStageNoWorkedTasks(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "T-001",
+				Kind:  index.TaskKindExecution,
 				State: index.TaskStateOpen,
 				Role:  "default",
 			},
@@ -151,6 +153,7 @@ func TestRunWithTestStage(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "T-001",
+				Kind:  index.TaskKindExecution,
 				State: index.TaskStateWorked,
 				Role:  "test_engineer",
 				Path:  "task-001.md",
@@ -284,6 +287,7 @@ func TestExecuteReviewStageHappyPath(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "T-001",
+				Kind:  index.TaskKindExecution,
 				State: index.TaskStateTested,
 				Role:  "reviewer",
 				Path:  "task-001.md",
@@ -349,6 +353,7 @@ func TestExecuteReviewStageNoTestedTasks(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "T-001",
+				Kind:  index.TaskKindExecution,
 				State: index.TaskStateWorked,
 				Role:  "default",
 			},
@@ -402,6 +407,7 @@ func TestRunWithReviewStage(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "T-001",
+				Kind:  index.TaskKindExecution,
 				State: index.TaskStateTested,
 				Role:  "reviewer",
 				Path:  "task-001.md",
@@ -445,6 +451,7 @@ func TestUpdateTaskStateFromReviewResult(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "T-001",
+				Kind:  index.TaskKindExecution,
 				State: index.TaskStateTested,
 				Role:  "reviewer",
 			},
@@ -491,6 +498,7 @@ func TestUpdateTaskStateFromReviewResultFailure(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "T-001",
+				Kind:  index.TaskKindExecution,
 				State: index.TaskStateTested,
 				Role:  "reviewer",
 			},
@@ -532,10 +540,10 @@ func TestExecuteConflictResolutionStage_NoResolvedTasks(t *testing.T) {
 	// Create test index with no resolved tasks
 	idx := &index.Index{
 		Tasks: []index.Task{
-			{ID: "task-01", State: index.TaskStateOpen},
-			{ID: "task-02", State: index.TaskStateWorked},
-			{ID: "task-03", State: index.TaskStateTested},
-			{ID: "task-04", State: index.TaskStateDone},
+			{ID: "task-01", Kind: index.TaskKindExecution, State: index.TaskStateOpen},
+			{ID: "task-02", Kind: index.TaskKindExecution, State: index.TaskStateWorked},
+			{ID: "task-03", Kind: index.TaskKindExecution, State: index.TaskStateTested},
+			{ID: "task-04", Kind: index.TaskKindExecution, State: index.TaskStateDone},
 		},
 	}
 
@@ -610,6 +618,7 @@ func TestExecuteConflictResolutionStage_WithConflictTasks(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:       "task-01",
+				Kind:     index.TaskKindExecution,
 				State:    index.TaskStateConflict,
 				Role:     "default",
 				Title:    "Test Task 1",
@@ -618,6 +627,7 @@ func TestExecuteConflictResolutionStage_WithConflictTasks(t *testing.T) {
 			},
 			{
 				ID:       "task-02",
+				Kind:     index.TaskKindExecution,
 				State:    index.TaskStateConflict,
 				Role:     "default",
 				Title:    "Test Task 2",
@@ -672,6 +682,7 @@ func TestUpdateTaskStateFromConflictResolution_Success(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "task-01",
+				Kind:  index.TaskKindExecution,
 				State: index.TaskStateConflict,
 				Role:  "default",
 			},
@@ -719,6 +730,7 @@ func TestUpdateTaskStateFromConflictResolution_Failure(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "task-01",
+				Kind:  index.TaskKindExecution,
 				State: index.TaskStateConflict,
 				Role:  "default",
 			},
@@ -762,7 +774,7 @@ func TestUpdateTaskStateFromConflictResolution_TaskNotFound(t *testing.T) {
 	// Create test index without the target task
 	idx := &index.Index{
 		Tasks: []index.Task{
-			{ID: "other-task", State: index.TaskStateOpen},
+			{ID: "other-task", Kind: index.TaskKindExecution, State: index.TaskStateOpen},
 		},
 	}
 
@@ -789,6 +801,7 @@ func TestUpdateTaskStateFromConflictResolution_InvalidTransition(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "task-01",
+				Kind:  index.TaskKindExecution,
 				State: index.TaskStateResolved, // Starting state where worked is invalid
 				Role:  "default",
 			},

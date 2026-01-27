@@ -48,16 +48,16 @@ func TestGetSummary(t *testing.T) {
 	testIndex := index.Index{
 		SchemaVersion: 1,
 		Tasks: []index.Task{
-			{ID: "T-backlog", State: index.TaskStateBacklog},
-			{ID: "T-triaged", State: index.TaskStateTriaged, Role: "dev", AssignedRole: "dev"},
-			{ID: "T-implemented", State: index.TaskStateImplemented, Role: "dev"},
-			{ID: "T-tested", State: index.TaskStateTested, Role: "dev"},
-			{ID: "T-reviewed", State: index.TaskStateReviewed, Role: "dev"},
-			{ID: "T-mergeable", State: index.TaskStateMergeable, Role: "dev"},
-			{ID: "T-merged", State: index.TaskStateMerged, Role: "dev"},
-			{ID: "T-blocked", State: index.TaskStateBlocked, Role: "dev", BlockedReason: "blocked"},
-			{ID: "T-conflict", State: index.TaskStateConflict, Role: "dev", MergeConflict: true},
-			{ID: "T-resolved", State: index.TaskStateResolved, Role: "dev", Title: longTitle},
+			{ID: "T-backlog", Kind: index.TaskKindExecution, State: index.TaskStateBacklog},
+			{ID: "T-triaged", Kind: index.TaskKindExecution, State: index.TaskStateTriaged, Role: "dev", AssignedRole: "dev"},
+			{ID: "T-implemented", Kind: index.TaskKindExecution, State: index.TaskStateImplemented, Role: "dev"},
+			{ID: "T-tested", Kind: index.TaskKindExecution, State: index.TaskStateTested, Role: "dev"},
+			{ID: "T-reviewed", Kind: index.TaskKindExecution, State: index.TaskStateReviewed, Role: "dev"},
+			{ID: "T-mergeable", Kind: index.TaskKindExecution, State: index.TaskStateMergeable, Role: "dev"},
+			{ID: "T-merged", Kind: index.TaskKindExecution, State: index.TaskStateMerged, Role: "dev"},
+			{ID: "T-blocked", Kind: index.TaskKindExecution, State: index.TaskStateBlocked, Role: "dev", BlockedReason: "blocked"},
+			{ID: "T-conflict", Kind: index.TaskKindExecution, State: index.TaskStateConflict, Role: "dev", MergeConflict: true},
+			{ID: "T-resolved", Kind: index.TaskKindExecution, State: index.TaskStateResolved, Role: "dev", Title: longTitle},
 		},
 	}
 
