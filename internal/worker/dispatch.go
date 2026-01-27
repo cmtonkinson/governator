@@ -46,6 +46,7 @@ type DispatchResult struct {
 type ExitStatus struct {
 	ExitCode   int       `json:"exit_code"`
 	FinishedAt time.Time `json:"finished_at"`
+	PID        int       `json:"pid,omitempty"`
 }
 
 // DispatchWorker launches a worker process in the background using nohup.
@@ -102,9 +103,6 @@ func DispatchWorker(input DispatchInput) (DispatchResult, error) {
 		return DispatchResult{}, fmt.Errorf("start worker process: %w", err)
 	}
 	pid := cmd.Process.Pid
-	if err := logFiles.renameWithPID(pid); err != nil {
-		return DispatchResult{}, fmt.Errorf("rename log files: %w", err)
-	}
 	if err := cmd.Process.Release(); err != nil {
 		emitWarning(input.Warn, fmt.Sprintf("failed to detach worker process: %v", err))
 	}
@@ -125,6 +123,7 @@ func DispatchWorkerFromConfig(cfg config.Config, task index.Task, stageResult St
 	if err != nil {
 		return DispatchResult{}, fmt.Errorf("resolve worker command: %w", err)
 	}
+	command = applyCodexReasoningFlag(command, stageResult.ReasoningEffort)
 
 	input := DispatchInput{
 		Command:        command,
@@ -203,10 +202,12 @@ func writeDispatchWrapper(workerStateDir string, taskID string, stage roles.Stag
 	content := strings.Join([]string{
 		"#!/bin/sh",
 		"set +e",
-		commandLine,
+		commandLine + " &",
+		"pid=$!",
+		"wait $pid",
 		"code=$?",
 		"finished_at=$(date -u +\"%Y-%m-%dT%H:%M:%SZ\")",
-		"printf '{\"exit_code\":%d,\"finished_at\":\"%s\"}\\n' \"$code\" \"$finished_at\" > " + exitPathEscaped,
+		"printf '{\"exit_code\":%d,\"finished_at\":\"%s\",\"pid\":%d}\\n' \"$code\" \"$finished_at\" \"$pid\" > " + exitPathEscaped,
 		"exit $code",
 		"",
 	}, "\n")

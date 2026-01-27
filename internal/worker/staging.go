@@ -30,18 +30,20 @@ type StageInput struct {
 	Stage           roles.Stage
 	Role            index.Role
 	ReasoningEffort string
+	AgentUsesCodex  bool
 	Warn            func(string)
 	WorkerStateDir  string
 }
 
 // StageResult captures staged prompt and environment artifacts.
 type StageResult struct {
-	PromptPath     string
-	PromptFiles    []string
-	PromptListPath string
-	EnvPath        string
-	Env            map[string]string
-	WorkerStateDir string
+	PromptPath      string
+	PromptFiles     []string
+	PromptListPath  string
+	EnvPath         string
+	Env             map[string]string
+	WorkerStateDir  string
+	ReasoningEffort string
 }
 
 // StageEnvAndPrompts prepares worker prompt and environment staging artifacts.
@@ -86,8 +88,9 @@ func StageEnvAndPrompts(input StageInput) (StageResult, error) {
 	if err != nil {
 		return StageResult{}, fmt.Errorf("load role registry: %w", err)
 	}
-	reasoningLevel := strings.TrimSpace(input.ReasoningEffort)
-	promptFiles, err := orderedPromptFiles(absRepoRoot, registry, role, reasoningLevel, taskPath)
+	reasoningLevel := normalizeReasoningLevel(input.ReasoningEffort)
+	includeReasoning := shouldIncludeReasoningPrompt(reasoningLevel, input.AgentUsesCodex)
+	promptFiles, err := orderedPromptFiles(absRepoRoot, registry, role, reasoningLevel, taskPath, includeReasoning)
 	if err != nil {
 		return StageResult{}, err
 	}
@@ -121,12 +124,13 @@ func StageEnvAndPrompts(input StageInput) (StageResult, error) {
 	}
 
 	return StageResult{
-		PromptPath:     promptPath,
-		PromptFiles:    promptFiles,
-		PromptListPath: promptListPath,
-		EnvPath:        envPath,
-		Env:            env,
-		WorkerStateDir: stageDir,
+		PromptPath:      promptPath,
+		PromptFiles:     promptFiles,
+		PromptListPath:  promptListPath,
+		EnvPath:         envPath,
+		Env:             env,
+		WorkerStateDir:  stageDir,
+		ReasoningEffort: reasoningLevel,
 	}, nil
 }
 
@@ -138,7 +142,7 @@ func StageEnvAndPrompts(input StageInput) (StageResult, error) {
 //  4. _governator/custom-prompts/_global.md (optional)
 //  5. _governator/custom-prompts/<role>.md (optional)
 //  6. <task path>
-func orderedPromptFiles(repoRoot string, registry roles.Registry, role index.Role, reasoningLevel string, taskPath string) ([]string, error) {
+func orderedPromptFiles(repoRoot string, registry roles.Registry, role index.Role, reasoningLevel string, taskPath string, includeReasoning bool) ([]string, error) {
 	rolePrompt, ok := registry.RolePromptPath(role)
 	if !ok {
 		return nil, fmt.Errorf("missing role prompt for %q", role)
@@ -149,7 +153,7 @@ func orderedPromptFiles(repoRoot string, registry roles.Registry, role index.Rol
 	}
 
 	promptFiles := make([]string, 0, len(rolePrompts)+3)
-	if reasoningLevel != "" {
+	if includeReasoning {
 		promptFiles = append(promptFiles, reasoningPromptPath(reasoningLevel))
 	}
 	promptFiles = append(promptFiles, workerContractPath)

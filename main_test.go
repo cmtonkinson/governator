@@ -146,19 +146,19 @@ func TestInitCommand(t *testing.T) {
 	}
 
 	// Check that directories were created
-		expectedDirs := []string{
-			"_governator/_durable-state",
-			"_governator/_durable-state/migrations",
-			"_governator/docs",
-			"_governator/docs/adr",
-			"_governator/task",
-			"_governator/roles",
-			"_governator/custom-prompts",
-			"_governator/prompts",
-			"_governator/templates",
-			"_governator/reasoning",
-			"_governator/_local-state",
-		}
+	expectedDirs := []string{
+		"_governator/_durable-state",
+		"_governator/_durable-state/migrations",
+		"_governator/docs",
+		"_governator/docs/adr",
+		"_governator/task",
+		"_governator/roles",
+		"_governator/custom-prompts",
+		"_governator/prompts",
+		"_governator/templates",
+		"_governator/reasoning",
+		"_governator/_local-state",
+	}
 
 	for _, dir := range expectedDirs {
 		if _, err := os.Stat(dir); os.IsNotExist(err) {
@@ -180,6 +180,15 @@ func TestInitCommand(t *testing.T) {
 	customPromptPath := filepath.Join("_governator", "custom-prompts", "_global.md")
 	if _, err := os.Stat(customPromptPath); os.IsNotExist(err) {
 		t.Error("Expected custom prompt _global.md was not created")
+	}
+
+	gitLogCmd := exec.Command("git", "-C", tempDir, "log", "-1", "--pretty=%B")
+	logOut, err := gitLogCmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git log failed: %v, output: %s", err, logOut)
+	}
+	if strings.TrimSpace(string(logOut)) != "Governator initialized" {
+		t.Errorf("expected commit message %q, got %q", "Governator initialized", strings.TrimSpace(string(logOut)))
 	}
 }
 

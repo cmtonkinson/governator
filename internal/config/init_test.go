@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -50,6 +51,29 @@ func TestInitRepoConfig(t *testing.T) {
 		}
 		if cfg.Concurrency.Global != expected.Concurrency.Global {
 			t.Errorf("Global concurrency mismatch: got %d, want %d", cfg.Concurrency.Global, expected.Concurrency.Global)
+		}
+	})
+
+	t.Run("seeds planning prompts from embedded templates", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		if err := InitFullLayout(tempDir, InitOptions{}); err != nil {
+			t.Fatalf("InitFullLayout failed: %v", err)
+		}
+
+		for _, prompt := range planningPromptTemplates {
+			path := filepath.Join(tempDir, "_governator", "prompts", prompt.name)
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read planning prompt %s: %v", prompt.name, err)
+			}
+			expected, err := templates.Read(prompt.template)
+			if err != nil {
+				t.Fatalf("read embedded template %s: %v", prompt.template, err)
+			}
+			if !bytes.Equal(bytes.TrimSpace(data), bytes.TrimSpace(expected)) {
+				t.Fatalf("planning prompt %s mismatch", prompt.name)
+			}
 		}
 	})
 

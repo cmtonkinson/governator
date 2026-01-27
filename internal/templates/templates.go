@@ -33,7 +33,7 @@ var requiredTemplates = []string{
 	"planning/architecture-baseline.md",
 	"planning/gap-analysis.md",
 	"planning/roadmap.md",
-	"planning/tasks.md",
+	"planning/plan-tasks.md",
 	"roles/architect.md",
 	"roles/default.md",
 	"roles/planner.md",

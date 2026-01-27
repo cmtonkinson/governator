@@ -54,7 +54,6 @@ type ExecResult struct {
 // workerLogFiles groups log paths and file handles for a worker execution.
 type workerLogFiles struct {
 	dir        string
-	timestamp  string
 	stdoutPath string
 	stderrPath string
 	stdoutFile *os.File
@@ -108,10 +107,6 @@ func ExecuteWorker(input ExecInput) (ExecResult, error) {
 	start := time.Now()
 	if err = cmd.Start(); err != nil {
 		return ExecResult{}, fmt.Errorf("start worker process: %w", err)
-	}
-	pid := cmd.Process.Pid
-	if err := logFiles.renameWithPID(pid); err != nil {
-		return ExecResult{}, fmt.Errorf("rename log files: %w", err)
 	}
 	if err = cmd.Wait(); err != nil {
 		// keep err for downstream handling
@@ -167,6 +162,7 @@ func ExecuteWorkerFromConfigWithAudit(cfg config.Config, task index.Task, stageR
 	if err != nil {
 		return ExecResult{}, fmt.Errorf("resolve worker command: %w", err)
 	}
+	command = applyCodexReasoningFlag(command, stageResult.ReasoningEffort)
 
 	input := ExecInput{
 		Command:        command,
@@ -201,9 +197,8 @@ func createWorkerLogFiles(workDir string, workerStateDir string, taskID string) 
 		return workerLogFiles{}, fmt.Errorf("create worker state dir %s: %w", workerStateDir, err)
 	}
 
-	timestamp := time.Now().Format("20060102-150405")
-	stdoutPath := filepath.Join(workerStateDir, fmt.Sprintf("%s-stdout.log", timestamp))
-	stderrPath := filepath.Join(workerStateDir, fmt.Sprintf("%s-stderr.log", timestamp))
+	stdoutPath := filepath.Join(workerStateDir, "stdout.log")
+	stderrPath := filepath.Join(workerStateDir, "stderr.log")
 
 	stdoutFile, err := os.Create(stdoutPath)
 	if err != nil {
@@ -218,28 +213,9 @@ func createWorkerLogFiles(workDir string, workerStateDir string, taskID string) 
 
 	return workerLogFiles{
 		dir:        workerStateDir,
-		timestamp:  timestamp,
 		stdoutPath: stdoutPath,
 		stderrPath: stderrPath,
 		stdoutFile: stdoutFile,
 		stderrFile: stderrFile,
 	}, nil
-}
-
-func (logs *workerLogFiles) renameWithPID(pid int) error {
-	if pid <= 0 {
-		return errors.New("pid is required")
-	}
-	stdoutNew := filepath.Join(logs.dir, fmt.Sprintf("%s-%d-stdout.log", logs.timestamp, pid))
-	stderrNew := filepath.Join(logs.dir, fmt.Sprintf("%s-%d-stderr.log", logs.timestamp, pid))
-	if err := os.Rename(logs.stdoutPath, stdoutNew); err != nil {
-		return fmt.Errorf("rename stdout log %s -> %s: %w", logs.stdoutPath, stdoutNew, err)
-	}
-	if err := os.Rename(logs.stderrPath, stderrNew); err != nil {
-		_ = os.Rename(stdoutNew, logs.stdoutPath)
-		return fmt.Errorf("rename stderr log %s -> %s: %w", logs.stderrPath, stderrNew, err)
-	}
-	logs.stdoutPath = stdoutNew
-	logs.stderrPath = stderrNew
-	return nil
 }

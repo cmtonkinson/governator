@@ -2,8 +2,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
+	"strings"
 
 	"github.com/cmtonkinson/governator/internal/buildinfo"
 	"github.com/cmtonkinson/governator/internal/config"
@@ -60,7 +63,41 @@ func runInit(verbose bool) {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
+	if err := commitInit(repoRoot); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
 	fmt.Println("init ok")
+}
+
+func commitInit(repoRoot string) error {
+	addCmd := exec.Command("git", "add", "--", "_governator")
+	addCmd.Dir = repoRoot
+	if out, err := addCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git add _governator failed: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+
+	diffCmd := exec.Command("git", "diff", "--cached", "--quiet", "--", "_governator")
+	diffCmd.Dir = repoRoot
+	if err := diffCmd.Run(); err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			commitCmd := exec.Command("git", "commit", "-m", "Governator initialized")
+			commitCmd.Dir = repoRoot
+			commitCmd.Env = append(os.Environ(),
+				"GIT_AUTHOR_NAME=Governator CLI",
+				"GIT_AUTHOR_EMAIL=governator@localhost",
+				"GIT_COMMITTER_NAME=Governator CLI",
+				"GIT_COMMITTER_EMAIL=governator@localhost",
+			)
+			if out, err := commitCmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("git commit failed: %s: %w", strings.TrimSpace(string(out)), err)
+			}
+			return nil
+		}
+		return fmt.Errorf("git diff --cached failed: %w", err)
+	}
+	return nil
 }
 
 func runRun() {

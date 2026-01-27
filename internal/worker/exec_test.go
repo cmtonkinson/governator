@@ -4,7 +4,6 @@ package worker
 import (
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -598,25 +597,12 @@ func TestExecuteWorkerLogFileNaming(t *testing.T) {
 		t.Fatalf("ExecuteWorker failed: %v", err)
 	}
 
-	if !strings.HasSuffix(result.StdoutPath, "-stdout.log") {
-		t.Fatalf("stdout path = %q, want -stdout.log suffix", result.StdoutPath)
+	if filepath.Base(result.StdoutPath) != "stdout.log" {
+		t.Fatalf("stdout path = %q, want stdout.log suffix", result.StdoutPath)
 	}
-	if !strings.HasSuffix(result.StderrPath, "-stderr.log") {
-		t.Fatalf("stderr path = %q, want -stderr.log suffix", result.StderrPath)
+	if filepath.Base(result.StderrPath) != "stderr.log" {
+		t.Fatalf("stderr path = %q, want stderr.log suffix", result.StderrPath)
 	}
-	validateWorkerLogName := func(path string) {
-		base := filepath.Base(path)
-		segments := strings.Split(strings.TrimSuffix(base, ".log"), "-")
-		if len(segments) < 4 {
-			t.Fatalf("log name %q does not contain timestamp/pid segments", base)
-		}
-		pidSegment := segments[len(segments)-2]
-		if _, err := strconv.Atoi(pidSegment); err != nil {
-			t.Fatalf("expected pid segment in %q, got %q", base, pidSegment)
-		}
-	}
-	validateWorkerLogName(result.StdoutPath)
-	validateWorkerLogName(result.StderrPath)
 }
 
 // TestExecuteWorkerWithStubCommandSuccess confirms a stub worker completes and logs output.

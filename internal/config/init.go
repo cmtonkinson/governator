@@ -170,22 +170,33 @@ func ensureRolePrompts(repoRoot string, opts InitOptions) error {
 	return nil
 }
 
+var planningPromptTemplates = []struct {
+	name     string
+	template string
+}{
+	{name: "architecture-baseline.md", template: "planning/architecture-baseline.md"},
+	{name: "gap-analysis.md", template: "planning/gap-analysis.md"},
+	{name: "roadmap.md", template: "planning/roadmap.md"},
+	{name: "task-planning.md", template: "planning/plan-tasks.md"},
+}
+
 func ensurePlanningPrompts(repoRoot string, opts InitOptions) error {
-	prompts := map[string]string{
-		"architecture-baseline.md": "Architecture baseline planning prompt placeholder.",
-		"gap-analysis.md":          "Gap analysis planning prompt placeholder.",
-		"roadmap.md":               "Roadmap planning prompt placeholder.",
-		"task-planning.md":         "Task planning prompt placeholder.",
-	}
 	promptsDir := filepath.Join(repoRoot, "_governator", "prompts")
-	for name, content := range prompts {
-		path := filepath.Join(promptsDir, name)
+	if err := ensureDir(promptsDir, opts); err != nil {
+		return fmt.Errorf("create planning prompts directory %s: %w", promptsDir, err)
+	}
+	for _, prompt := range planningPromptTemplates {
+		path := filepath.Join(promptsDir, prompt.name)
 		if _, err := os.Stat(path); err == nil {
 			continue
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("stat planning prompt %s: %w", path, err)
 		}
-		if err := os.WriteFile(path, []byte(content+"\n"), 0o644); err != nil {
+		data, err := templates.Read(prompt.template)
+		if err != nil {
+			return fmt.Errorf("read planning template %s: %w", prompt.template, err)
+		}
+		if err := os.WriteFile(path, data, 0o644); err != nil {
 			return fmt.Errorf("write planning prompt %s: %w", path, err)
 		}
 		opts.logf("created planning prompt %s", repoRelativePath(repoRoot, path))

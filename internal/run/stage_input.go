@@ -1,6 +1,7 @@
 package run
 
 import (
+	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -14,6 +15,14 @@ import (
 const localStateDirName = "_governator/_local-state"
 
 func newWorkerStageInput(repoRoot, worktreeRoot string, task index.Task, stage roles.Stage, role index.Role, attempt int, cfg config.Config, warn func(string)) worker.StageInput {
+	agentUsesCodex := false
+	if usesCodex, err := worker.IsCodexCommand(cfg, role); err != nil {
+		if warn != nil {
+			warn(fmt.Sprintf("failed to detect Codex command for role %q: %v", role, err))
+		}
+	} else {
+		agentUsesCodex = usesCodex
+	}
 	return worker.StageInput{
 		RepoRoot:        repoRoot,
 		WorktreeRoot:    worktreeRoot,
@@ -21,6 +30,7 @@ func newWorkerStageInput(repoRoot, worktreeRoot string, task index.Task, stage r
 		Stage:           stage,
 		Role:            role,
 		ReasoningEffort: cfg.ReasoningEffort.LevelForRole(string(role)),
+		AgentUsesCodex:  agentUsesCodex,
 		Warn:            warn,
 		WorkerStateDir:  workerStateDirPath(worktreeRoot, attempt, stage, role),
 	}

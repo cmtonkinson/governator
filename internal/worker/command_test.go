@@ -106,3 +106,52 @@ func stringSlicesEqual(left []string, right []string) bool {
 	}
 	return true
 }
+
+// TestIsCodexCommand ensures codex detection works against templates.
+func TestIsCodexCommand(t *testing.T) {
+	t.Parallel()
+	cfg := config.Config{
+		Workers: config.WorkersConfig{
+			Commands: config.WorkerCommands{
+				Default: []string{"codex", "exec", "{prompt_path}"},
+			},
+		},
+	}
+	got, err := IsCodexCommand(cfg, index.Role("worker"))
+	if err != nil {
+		t.Fatalf("IsCodexCommand returned error: %v", err)
+	}
+	if !got {
+		t.Fatal("expected codex to be detected")
+	}
+
+	cfg.Workers.Commands.Default = []string{"python", "runner.py", "{prompt_path}"}
+	got, err = IsCodexCommand(cfg, index.Role("worker"))
+	if err != nil {
+		t.Fatalf("IsCodexCommand returned error: %v", err)
+	}
+	if got {
+		t.Fatal("expected non-codex to be ignored")
+	}
+}
+
+// TestApplyCodexReasoningFlag verifies the reasoning config flag is added only for codex/high|low.
+func TestApplyCodexReasoningFlag(t *testing.T) {
+	t.Parallel()
+	command := []string{"codex", "exec", "--sandbox=danger-full-access", "{prompt_path}"}
+	got := applyCodexReasoningFlag(command, "high")
+	want := []string{"codex", "--config", "model_reasoning_effort=\"high\"", "exec", "--sandbox=danger-full-access", "{prompt_path}"}
+	if !stringSlicesEqual(got, want) {
+		t.Fatalf("applyCodexReasoningFlag high = %v, want %v", got, want)
+	}
+
+	got = applyCodexReasoningFlag(command, "medium")
+	if !stringSlicesEqual(got, command) {
+		t.Fatalf("applyCodexReasoningFlag medium = %v, want original", got)
+	}
+
+	got = applyCodexReasoningFlag([]string{"python", "run"}, "high")
+	if !stringSlicesEqual(got, []string{"python", "run"}) {
+		t.Fatalf("applyCodexReasoningFlag non-codex = %v, want original", got)
+	}
+}

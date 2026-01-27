@@ -20,7 +20,7 @@ func TestStageEnvAndPromptsHappyPath(t *testing.T) {
 	writeFile(t, filepath.Join(root, "_governator", "custom-prompts", "_global.md"), "global prompt")
 	writeFile(t, filepath.Join(root, "_governator", "custom-prompts", "worker.md"), "custom prompt")
 	writeFile(t, filepath.Join(root, "_governator", "worker-contract.md"), "worker contract")
-	writeFile(t, filepath.Join(root, "_governator", "reasoning", "medium.md"), "reasoning prompt")
+	writeFile(t, filepath.Join(root, "_governator", "reasoning", "low.md"), "reasoning prompt")
 	taskPath := filepath.Join(root, "_governator", "tasks", "T-001.md")
 	writeFile(t, taskPath, "task content")
 
@@ -34,7 +34,7 @@ func TestStageEnvAndPromptsHappyPath(t *testing.T) {
 		WorktreeRoot:    root,
 		Task:            task,
 		Stage:           roles.StageWork,
-		ReasoningEffort: "medium",
+		ReasoningEffort: "low",
 		WorkerStateDir:  workerStateDirPath(root),
 	})
 	if err != nil {
@@ -47,7 +47,7 @@ func TestStageEnvAndPromptsHappyPath(t *testing.T) {
 	}
 	gotList := strings.Split(strings.TrimSpace(string(promptListBytes)), "\n")
 	wantList := []string{
-		"_governator/reasoning/medium.md",
+		"_governator/reasoning/low.md",
 		"_governator/worker-contract.md",
 		"_governator/roles/worker.md",
 		"_governator/custom-prompts/_global.md",
@@ -131,6 +131,9 @@ func TestStageEnvAndPromptsUsesRepoRoot(t *testing.T) {
 	if !strings.Contains(prompt, "global prompt") {
 		t.Fatalf("prompt missing global content: %q", prompt)
 	}
+	if !strings.Contains(prompt, "reasoning prompt") {
+		t.Fatalf("prompt missing reasoning content: %q", prompt)
+	}
 }
 
 // TestStageEnvAndPromptsMissingFile ensures missing prompt files block staging.
@@ -139,7 +142,7 @@ func TestStageEnvAndPromptsMissingFile(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "_governator", "roles", "worker.md"), "role prompt")
 	writeFile(t, filepath.Join(root, "_governator", "worker-contract.md"), "worker contract")
-	writeFile(t, filepath.Join(root, "_governator", "reasoning", "medium.md"), "reasoning prompt")
+	writeFile(t, filepath.Join(root, "_governator", "reasoning", "low.md"), "reasoning prompt")
 	task := index.Task{
 		ID:   "T-002",
 		Path: "_governator/tasks/T-002.md",
@@ -161,6 +164,73 @@ func TestStageEnvAndPromptsMissingFile(t *testing.T) {
 	}
 }
 
+// TestStageEnvAndPromptsSkipsReasoningPromptForMedium ensures the default level avoids reasoning prompts.
+func TestStageEnvAndPromptsSkipsReasoningPromptForMedium(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "_governator", "roles", "worker.md"), "role prompt")
+	writeFile(t, filepath.Join(root, "_governator", "worker-contract.md"), "worker contract")
+	writeFile(t, filepath.Join(root, "_governator", "tasks", "T-006.md"), "task content")
+
+	task := index.Task{
+		ID:   "T-006",
+		Path: "_governator/tasks/T-006.md",
+		Role: "worker",
+	}
+	result, err := StageEnvAndPrompts(StageInput{
+		RepoRoot:        root,
+		WorktreeRoot:    root,
+		Task:            task,
+		Stage:           roles.StageWork,
+		ReasoningEffort: "medium",
+		WorkerStateDir:  workerStateDirPath(root),
+	})
+	if err != nil {
+		t.Fatalf("stage env and prompts: %v", err)
+	}
+	promptBytes, err := os.ReadFile(result.PromptPath)
+	if err != nil {
+		t.Fatalf("read prompt file: %v", err)
+	}
+	if strings.Contains(string(promptBytes), "reasoning prompt") {
+		t.Fatalf("unexpected reasoning prompt for medium effort: %s", string(promptBytes))
+	}
+}
+
+// TestStageEnvAndPromptsSkipsReasoningPromptForCodex ensures codex agents omit reasoning prompts even when requested.
+func TestStageEnvAndPromptsSkipsReasoningPromptForCodex(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "_governator", "roles", "worker.md"), "role prompt")
+	writeFile(t, filepath.Join(root, "_governator", "worker-contract.md"), "worker contract")
+	writeFile(t, filepath.Join(root, "_governator", "tasks", "T-007.md"), "task content")
+
+	task := index.Task{
+		ID:   "T-007",
+		Path: "_governator/tasks/T-007.md",
+		Role: "worker",
+	}
+	result, err := StageEnvAndPrompts(StageInput{
+		RepoRoot:        root,
+		WorktreeRoot:    root,
+		Task:            task,
+		Stage:           roles.StageWork,
+		ReasoningEffort: "low",
+		AgentUsesCodex:  true,
+		WorkerStateDir:  workerStateDirPath(root),
+	})
+	if err != nil {
+		t.Fatalf("stage env and prompts: %v", err)
+	}
+	promptBytes, err := os.ReadFile(result.PromptPath)
+	if err != nil {
+		t.Fatalf("read prompt file: %v", err)
+	}
+	if strings.Contains(string(promptBytes), "reasoning prompt") {
+		t.Fatalf("unexpected reasoning prompt for codex agent: %s", string(promptBytes))
+	}
+}
+
 // TestStageEnvAndPromptsFailsWhenReasoningPromptMissing ensures missing reasoning prompts error fast.
 func TestStageEnvAndPromptsFailsWhenReasoningPromptMissing(t *testing.T) {
 	t.Parallel()
@@ -179,13 +249,13 @@ func TestStageEnvAndPromptsFailsWhenReasoningPromptMissing(t *testing.T) {
 		WorktreeRoot:    root,
 		Task:            task,
 		Stage:           roles.StageWork,
-		ReasoningEffort: "heavy",
+		ReasoningEffort: "high",
 		WorkerStateDir:  workerStateDirPath(root),
 	})
 	if err == nil {
 		t.Fatal("expected error for missing reasoning prompt file")
 	}
-	if !strings.Contains(err.Error(), "_governator/reasoning/heavy.md") {
+	if !strings.Contains(err.Error(), "_governator/reasoning/high.md") {
 		t.Fatalf("error = %q, want missing reasoning path", err.Error())
 	}
 }
@@ -195,7 +265,10 @@ func TestStageEnvAndPromptsFailsWhenWorkerContractMissing(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "_governator", "roles", "worker.md"), "role prompt")
-	writeFile(t, filepath.Join(root, "_governator", "reasoning", "medium.md"), "reasoning prompt")
+	writeFile(t, filepath.Join(root, "_governator", "reasoning", "low.md"), "reasoning prompt")
+	if _, err := os.Stat(filepath.Join(root, "_governator", "reasoning", "low.md")); err != nil {
+		t.Fatalf("reasoning prompt missing: %v", err)
+	}
 	writeFile(t, filepath.Join(root, "_governator", "tasks", "T-004.md"), "task content")
 
 	task := index.Task{
@@ -406,9 +479,6 @@ func TestStageEnvAndPromptsAllStages(t *testing.T) {
 				t.Fatalf("read prompt file: %v", err)
 			}
 			prompt := string(promptBytes)
-			if !strings.Contains(prompt, "reasoning prompt") {
-				t.Fatalf("prompt missing reasoning content: %q", prompt)
-			}
 			if !strings.Contains(prompt, "role prompt") {
 				t.Fatalf("prompt missing role content: %q", prompt)
 			}
