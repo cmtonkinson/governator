@@ -38,7 +38,7 @@ type workstreamStep struct {
 
 // workstreamID returns the stable workstream identifier for the step.
 func (step workstreamStep) workstreamID() string {
-	return fmt.Sprintf("phase-%s", step.phase.String())
+	return planningTaskID(step)
 }
 
 // branchName returns the branch name associated with the step workstream.

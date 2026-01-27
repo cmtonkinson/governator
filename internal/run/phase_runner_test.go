@@ -11,6 +11,7 @@ import (
 
 	"github.com/cmtonkinson/governator/internal/bootstrap"
 	"github.com/cmtonkinson/governator/internal/config"
+	"github.com/cmtonkinson/governator/internal/inflight"
 	"github.com/cmtonkinson/governator/internal/phase"
 )
 
@@ -19,10 +20,14 @@ func TestPhaseRunnerEnsurePhasePrereqsBlocksMissingArtifacts(t *testing.T) {
 
 	repoRoot := t.TempDir()
 	store := phase.NewStore(repoRoot)
+	inFlightStore, err := inflight.NewStore(repoRoot)
+	if err != nil {
+		t.Fatalf("new in-flight store: %v", err)
+	}
 	stderr := &bytes.Buffer{}
-	runner := newPhaseRunner(repoRoot, config.Defaults(), Options{Stdout: io.Discard, Stderr: stderr}, store)
+	runner := newPhaseRunner(repoRoot, config.Defaults(), Options{Stdout: io.Discard, Stderr: stderr}, store, inFlightStore, inflight.Set{})
 
-	err := runner.ensurePhasePrereqs(phase.PhaseGapAnalysis)
+	err = runner.ensurePhasePrereqs(phase.PhaseGapAnalysis)
 	if err == nil {
 		t.Fatalf("expected gating error")
 	}
@@ -40,11 +45,15 @@ func TestPhaseRunnerCompletePhaseAdvancesState(t *testing.T) {
 	repoRoot := t.TempDir()
 	writeRequiredDocs(t, repoRoot)
 	store := phase.NewStore(repoRoot)
+	inFlightStore, err := inflight.NewStore(repoRoot)
+	if err != nil {
+		t.Fatalf("new in-flight store: %v", err)
+	}
 	state := phase.DefaultState()
 	state.Current = phase.PhaseArchitectureBaseline
 	state.LastCompleted = phase.PhaseNew
 	stderr := &bytes.Buffer{}
-	runner := newPhaseRunner(repoRoot, config.Defaults(), Options{Stdout: io.Discard, Stderr: stderr}, store)
+	runner := newPhaseRunner(repoRoot, config.Defaults(), Options{Stdout: io.Discard, Stderr: stderr}, store, inFlightStore, inflight.Set{})
 
 	if err := runner.completePhase(&state); err != nil {
 		t.Fatalf("complete phase: %v", err)

@@ -60,7 +60,19 @@ func Run(repoRoot string, opts Options) (Result, error) {
 		return Result{}, fmt.Errorf("load phase state: %w", err)
 	}
 
-	phaseRunner := newPhaseRunner(repoRoot, cfg, opts, stateStore)
+	inFlightStore, err := inflight.NewStore(repoRoot)
+	if err != nil {
+		return Result{}, fmt.Errorf("create in-flight store: %w", err)
+	}
+	inFlight, err := inFlightStore.Load()
+	if err != nil {
+		return Result{}, fmt.Errorf("load in-flight tasks: %w", err)
+	}
+	if inFlight == nil {
+		inFlight = inflight.Set{}
+	}
+
+	phaseRunner := newPhaseRunner(repoRoot, cfg, opts, stateStore, inFlightStore, inFlight)
 	handled, err := phaseRunner.EnsurePlanningPhases(&state)
 	if err != nil {
 		return Result{}, fmt.Errorf("run phases: %w", err)
@@ -81,19 +93,6 @@ func Run(repoRoot string, opts Options) (Result, error) {
 	idx, err := index.Load(indexPath)
 	if err != nil {
 		return Result{}, fmt.Errorf("load task index: %w", err)
-	}
-
-	// Load in-flight task tracking
-	inFlightStore, err := inflight.NewStore(repoRoot)
-	if err != nil {
-		return Result{}, fmt.Errorf("create in-flight store: %w", err)
-	}
-	inFlight, err := inFlightStore.Load()
-	if err != nil {
-		return Result{}, fmt.Errorf("load in-flight tasks: %w", err)
-	}
-	if inFlight == nil {
-		inFlight = inflight.Set{}
 	}
 
 	// Check for planning drift

@@ -108,9 +108,9 @@ func planningTasks(task planningTask) []index.Task {
 	return tasks
 }
 
-// planningTaskID builds the stable task id for a planning step.
+// planningTaskID builds the stable, worktree-safe task id for a planning step.
 func planningTaskID(step workstreamStep) string {
-	return fmt.Sprintf("planning/%s", step.name)
+	return fmt.Sprintf("planning-%s", step.name)
 }
 
 // commitPlanningIndex records index updates on the planning branch when needed.

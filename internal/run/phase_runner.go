@@ -6,12 +6,14 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/index"
+	"github.com/cmtonkinson/governator/internal/inflight"
 	"github.com/cmtonkinson/governator/internal/phase"
 	"github.com/cmtonkinson/governator/internal/roles"
 	"github.com/cmtonkinson/governator/internal/worker"
@@ -27,9 +29,11 @@ type phaseRunner struct {
 	worktreeManager     worktree.Manager
 	worktreeManagerInit bool
 	planning            phaseWorkstream
+	inFlightStore       inflight.Store
+	inFlight            inflight.Set
 }
 
-func newPhaseRunner(repoRoot string, cfg config.Config, opts Options, store *phase.Store) *phaseRunner {
+func newPhaseRunner(repoRoot string, cfg config.Config, opts Options, store *phase.Store, inFlightStore inflight.Store, inFlight inflight.Set) *phaseRunner {
 	stdout := opts.Stdout
 	if stdout == nil {
 		stdout = io.Discard
@@ -39,12 +43,14 @@ func newPhaseRunner(repoRoot string, cfg config.Config, opts Options, store *pha
 		stderr = io.Discard
 	}
 	return &phaseRunner{
-		repoRoot: repoRoot,
-		cfg:      cfg,
-		stdout:   stdout,
-		stderr:   stderr,
-		store:    store,
-		planning: newPlanningTask(),
+		repoRoot:      repoRoot,
+		cfg:           cfg,
+		stdout:        stdout,
+		stderr:        stderr,
+		store:         store,
+		planning:      newPlanningTask(),
+		inFlight:      inFlight,
+		inFlightStore: inFlightStore,
 	}
 }
 
@@ -65,20 +71,37 @@ func (runner *phaseRunner) EnsurePlanningPhases(state *phase.State) (bool, error
 	if err := runner.ensureWorktreeManager(); err != nil {
 		return false, fmt.Errorf("create worktree manager: %w", err)
 	}
+	if runner.inFlight == nil {
+		runner.inFlight = inflight.Set{}
+	}
 	for state.Current < phase.PhaseExecution {
 		step, ok := runner.planning.stepForPhase(state.Current)
 		if !ok {
 			return false, fmt.Errorf("unsupported phase %s", state.Current)
 		}
+		taskID := step.workstreamID()
 		record := state.RecordFor(state.Current)
+		entry, hasEntry := runner.inFlight.Entry(taskID)
 
-		if record.Agent.PID != 0 && record.Agent.FinishedAt.IsZero() {
-			if runner.isProcessAlive(record.Agent.PID) {
-				runner.emitPhaseRunning(state.Current, record.Agent.PID)
+		if hasEntry || (record.Agent.PID != 0 && record.Agent.FinishedAt.IsZero()) {
+			worktreePath, workerStateDir, err := runner.resolvePlanningPaths(step, entry)
+			if err != nil {
+				return false, err
+			}
+			if runningPID := runner.runningPlanningPID(record, workerStateDir, taskID, roles.StageWork); runningPID != 0 {
+				runner.emitPhaseRunning(state.Current, runningPID)
 				return true, nil
 			}
-			if err := runner.collectPhaseCompletion(step); err != nil {
+			if err := runner.collectPhaseCompletion(step, worktreePath, workerStateDir); err != nil {
 				return false, err
+			}
+			if hasEntry {
+				if err := runner.inFlight.Remove(taskID); err != nil {
+					return false, fmt.Errorf("clear planning in-flight: %w", err)
+				}
+				if err := runner.persistInFlight(); err != nil {
+					return false, err
+				}
 			}
 			record.Agent.FinishedAt = runner.now()
 			state.SetRecord(state.Current, record)
@@ -106,6 +129,52 @@ func (runner *phaseRunner) EnsurePlanningPhases(state *phase.State) (bool, error
 	}
 
 	return false, nil
+}
+
+// resolvePlanningPaths derives the worktree and worker state paths for a planning step.
+func (runner *phaseRunner) resolvePlanningPaths(step workstreamStep, entry inflight.Entry) (string, string, error) {
+	taskID := step.workstreamID()
+	worktreePath := strings.TrimSpace(entry.Worktree)
+	if worktreePath == "" {
+		resolved, ok, err := runner.worktreeManager.ExistingWorktreePath(taskID)
+		if err != nil {
+			return "", "", fmt.Errorf("resolve worktree for phase %s: %w", step.phase.String(), err)
+		}
+		if !ok {
+			return "", "", fmt.Errorf("resolve worktree for phase %s: missing worktree", step.phase.String())
+		}
+		worktreePath = resolved
+	}
+	workerStateDir := strings.TrimSpace(entry.WorkerStateDir)
+	if workerStateDir == "" {
+		workerStateDir = workerStateDirPath(worktreePath, 1, roles.StageWork, step.role)
+	}
+	return worktreePath, workerStateDir, nil
+}
+
+// runningPlanningPID returns a live pid for the step when one can be observed.
+func (runner *phaseRunner) runningPlanningPID(record phase.PhaseRecord, workerStateDir string, taskID string, stage roles.Stage) int {
+	if _, finished, err := worker.ReadExitStatus(workerStateDir, taskID, stage); err == nil && finished {
+		return 0
+	}
+	if pid, found, err := worker.ReadAgentPID(workerStateDir); err == nil && found && runner.isProcessAlive(pid) {
+		return pid
+	}
+	if record.Agent.PID != 0 && runner.isProcessAlive(record.Agent.PID) {
+		return record.Agent.PID
+	}
+	return 0
+}
+
+// persistInFlight writes the in-flight set to durable local state.
+func (runner *phaseRunner) persistInFlight() error {
+	if runner.inFlight == nil {
+		return nil
+	}
+	if err := runner.inFlightStore.Save(runner.inFlight); err != nil {
+		return fmt.Errorf("save in-flight tasks: %w", err)
+	}
+	return nil
 }
 
 func (runner *phaseRunner) dispatchPhase(state *phase.State, step workstreamStep) error {
@@ -172,6 +241,13 @@ func (runner *phaseRunner) dispatchPhase(state *phase.State, step workstreamStep
 
 	if err := runner.store.Save(*state); err != nil {
 		return fmt.Errorf("save phase state: %w", err)
+	}
+
+	if err := runner.inFlight.AddWithStartAndPath(taskID, dispatchResult.StartedAt, worktreeResult.Path, dispatchResult.WorkerStateDir, string(roles.StageWork), string(step.role)); err != nil {
+		return fmt.Errorf("record planning in-flight: %w", err)
+	}
+	if err := runner.persistInFlight(); err != nil {
+		return err
 	}
 
 	runner.emitPhaseDispatched(step.phase, dispatchResult.PID)
@@ -241,19 +317,13 @@ func (runner *phaseRunner) ensureStepGate(target workstreamGateTarget, defaultPh
 }
 
 // collectPhaseCompletion finalizes the phase worktree and merges it into the base branch.
-func (runner *phaseRunner) collectPhaseCompletion(step workstreamStep) error {
+func (runner *phaseRunner) collectPhaseCompletion(step workstreamStep, worktreePath string, workerStateDir string) error {
 	taskID := step.workstreamID()
 	branchName := step.branchName()
 	baseBranch := strings.TrimSpace(runner.cfg.Branches.Base)
 	if baseBranch == "" {
 		baseBranch = config.Defaults().Branches.Base
 	}
-
-	worktreePath, err := runner.worktreeManager.WorktreePath(taskID)
-	if err != nil {
-		return fmt.Errorf("resolve worktree for phase %s: %w", step.phase.String(), err)
-	}
-	workerStateDir := workerStateDirPath(worktreePath, 1, roles.StageWork, step.role)
 	exitStatus, finished, err := worker.ReadExitStatus(workerStateDir, taskID, roles.StageWork)
 	if err != nil {
 		return fmt.Errorf("read phase exit status: %w", err)
@@ -316,6 +386,9 @@ func ensureCleanRepoRoot(repoRoot string) error {
 			continue
 		}
 		path := strings.TrimSpace(line[3:])
+		if path == filepath.ToSlash(filepath.Join("_governator", "_durable-state", "phase-state.json")) {
+			continue
+		}
 		if strings.HasPrefix(path, "_governator/_local-state") {
 			continue
 		}

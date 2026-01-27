@@ -18,6 +18,8 @@ We will:
 - add `Task.Kind` with explicit values `planning` and `execution`,
 - seed planning steps as `planning` tasks in `_governator/task-index.json`
   during `init`, and
+- assign worktree-safe planning task IDs (for example,
+  `planning-architecture-baseline`), and
 - refresh index digests and mark the completed planning step inside the
   planning worktree before merging it into the base branch.
 
@@ -40,4 +42,3 @@ on `execution` tasks.
   shared workstream runner.
 - Planning tasks are present in the index even though their lifecycle is still
   driven by phase state.
-
