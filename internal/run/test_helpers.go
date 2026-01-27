@@ -43,6 +43,8 @@ func writeTestTaskIndex(t *testing.T, repoRoot string, tasks []index.Task) {
 	if err != nil {
 		t.Fatalf("compute digests: %v", err)
 	}
+	planning := mergedPlanningTasks()
+	tasks = append(planning, tasks...)
 	idx := index.Index{
 		SchemaVersion: taskIndexSchema,
 		Digests:       digestsMap,
@@ -70,6 +72,15 @@ func newTestTask(id, title, role, path string, order int) index.Task {
 		Order:    order,
 		Overlap:  []string{},
 	}
+}
+
+// mergedPlanningTasks returns the planning tasks marked as merged for test setups.
+func mergedPlanningTasks() []index.Task {
+	planning := planningTasks(newPlanningTask())
+	for i := range planning {
+		planning[i].State = index.TaskStateMerged
+	}
+	return planning
 }
 
 func taskFilesInDir(repoRoot string) []string {

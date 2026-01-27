@@ -19,13 +19,12 @@ func TestPhaseRunnerEnsurePhasePrereqsBlocksMissingArtifacts(t *testing.T) {
 	t.Parallel()
 
 	repoRoot := t.TempDir()
-	store := phase.NewStore(repoRoot)
 	inFlightStore, err := inflight.NewStore(repoRoot)
 	if err != nil {
 		t.Fatalf("new in-flight store: %v", err)
 	}
 	stderr := &bytes.Buffer{}
-	runner := newPhaseRunner(repoRoot, config.Defaults(), Options{Stdout: io.Discard, Stderr: stderr}, store, inFlightStore, inflight.Set{})
+	runner := newPhaseRunner(repoRoot, config.Defaults(), Options{Stdout: io.Discard, Stderr: stderr}, inFlightStore, inflight.Set{})
 
 	err = runner.ensurePhasePrereqs(phase.PhaseGapAnalysis)
 	if err == nil {
@@ -44,33 +43,22 @@ func TestPhaseRunnerCompletePhaseAdvancesState(t *testing.T) {
 
 	repoRoot := t.TempDir()
 	writeRequiredDocs(t, repoRoot)
-	store := phase.NewStore(repoRoot)
 	inFlightStore, err := inflight.NewStore(repoRoot)
 	if err != nil {
 		t.Fatalf("new in-flight store: %v", err)
 	}
-	state := phase.DefaultState()
-	state.Current = phase.PhaseArchitectureBaseline
 	stderr := &bytes.Buffer{}
-	runner := newPhaseRunner(repoRoot, config.Defaults(), Options{Stdout: io.Discard, Stderr: stderr}, store, inFlightStore, inflight.Set{})
-
-	if err := runner.completePhase(&state); err != nil {
+	runner := newPhaseRunner(repoRoot, config.Defaults(), Options{Stdout: io.Discard, Stderr: stderr}, inFlightStore, inflight.Set{})
+	step, ok := runner.planning.stepForPhase(phase.PhaseArchitectureBaseline)
+	if !ok {
+		t.Fatalf("missing architecture baseline step")
+	}
+	if err := runner.completePhase(step); err != nil {
 		t.Fatalf("complete phase: %v", err)
 	}
 
-	if state.Current != phase.PhaseGapAnalysis {
-		t.Fatalf("current phase = %v, want %v", state.Current, phase.PhaseGapAnalysis)
-	}
 	if stderr.Len() != 0 {
 		t.Fatalf("unexpected stderr output: %q", stderr.String())
-	}
-
-	loaded, err := store.Load()
-	if err != nil {
-		t.Fatalf("load stored state: %v", err)
-	}
-	if loaded.Current != state.Current {
-		t.Fatalf("stored current = %v, want %v", loaded.Current, state.Current)
 	}
 }
 

@@ -13,7 +13,6 @@ import (
 
 	"github.com/cmtonkinson/governator/internal/digests"
 	"github.com/cmtonkinson/governator/internal/index"
-	"github.com/cmtonkinson/governator/internal/phase"
 	"github.com/cmtonkinson/governator/internal/testrepos"
 	"github.com/cmtonkinson/governator/internal/worktree"
 )
@@ -24,26 +23,27 @@ func TestRunHappyPathWithResume(t *testing.T) {
 	repoRoot := setupTestRepoWithConfig(t)
 
 	// Create a test index with a blocked task that can be resumed
+	tasks := []index.Task{
+		{
+			ID:    "T-001",
+			Kind:  index.TaskKindExecution,
+			State: index.TaskStateBlocked,
+			Attempts: index.AttemptCounters{
+				Total:  1,
+				Failed: 1,
+			},
+			Retries: index.RetryPolicy{
+				MaxAttempts: 3,
+			},
+		},
+	}
 	idx := index.Index{
 		SchemaVersion: 1,
 		Digests: index.Digests{
 			GovernatorMD: computeTestDigest(),
 			PlanningDocs: map[string]string{},
 		},
-		Tasks: []index.Task{
-			{
-				ID:    "T-001",
-				Kind:  index.TaskKindExecution,
-				State: index.TaskStateBlocked,
-				Attempts: index.AttemptCounters{
-					Total:  1,
-					Failed: 1,
-				},
-				Retries: index.RetryPolicy{
-					MaxAttempts: 3,
-				},
-			},
-		},
+		Tasks: append(mergedPlanningTasks(), tasks...),
 	}
 
 	// Save the index
@@ -113,26 +113,27 @@ func TestRunBlocksTasksExceedingRetryLimit(t *testing.T) {
 	repoRoot := setupTestRepoWithConfig(t)
 
 	// Create a test index with a blocked task that has exceeded retry limits
+	tasks := []index.Task{
+		{
+			ID:    "T-001",
+			Kind:  index.TaskKindExecution,
+			State: index.TaskStateBlocked,
+			Attempts: index.AttemptCounters{
+				Total:  3,
+				Failed: 3,
+			},
+			Retries: index.RetryPolicy{
+				MaxAttempts: 3,
+			},
+		},
+	}
 	idx := index.Index{
 		SchemaVersion: 1,
 		Digests: index.Digests{
 			GovernatorMD: computeTestDigest(),
 			PlanningDocs: map[string]string{},
 		},
-		Tasks: []index.Task{
-			{
-				ID:    "T-001",
-				Kind:  index.TaskKindExecution,
-				State: index.TaskStateBlocked,
-				Attempts: index.AttemptCounters{
-					Total:  3,
-					Failed: 3,
-				},
-				Retries: index.RetryPolicy{
-					MaxAttempts: 3,
-				},
-			},
-		},
+		Tasks: append(mergedPlanningTasks(), tasks...),
 	}
 
 	// Save the index
@@ -188,19 +189,20 @@ func TestRunNoResumeCandidates(t *testing.T) {
 	repoRoot := setupTestRepoWithConfig(t)
 
 	// Create a test index with no blocked tasks
+	tasks := []index.Task{
+		{
+			ID:    "T-001",
+			Kind:  index.TaskKindExecution,
+			State: index.TaskStateOpen,
+		},
+	}
 	idx := index.Index{
 		SchemaVersion: 1,
 		Digests: index.Digests{
 			GovernatorMD: computeTestDigest(),
 			PlanningDocs: map[string]string{},
 		},
-		Tasks: []index.Task{
-			{
-				ID:    "T-001",
-				Kind:  index.TaskKindExecution,
-				State: index.TaskStateOpen,
-			},
-		},
+		Tasks: append(mergedPlanningTasks(), tasks...),
 	}
 
 	// Save the index
@@ -258,6 +260,7 @@ func TestRunPlanningDriftMessage(t *testing.T) {
 	idx := index.Index{
 		SchemaVersion: 1,
 		Digests:       stored,
+		Tasks:         mergedPlanningTasks(),
 	}
 
 	indexPath := filepath.Join(repoRoot, "_governator/task-index.json")
@@ -414,13 +417,6 @@ func setupTestRepoWithConfig(t *testing.T) string {
 	workerContract := filepath.Join(repoRoot, "_governator", "worker-contract.md")
 	if err := os.WriteFile(workerContract, []byte("# Worker Contract\n\nPlaceholder.\n"), 0o644); err != nil {
 		t.Fatalf("write worker contract: %v", err)
-	}
-
-	stateStore := phase.NewStore(repoRoot)
-	state := phase.DefaultState()
-	state.Current = phase.PhaseExecution
-	if err := stateStore.Save(state); err != nil {
-		t.Fatalf("save phase state: %v", err)
 	}
 
 	return repoRoot

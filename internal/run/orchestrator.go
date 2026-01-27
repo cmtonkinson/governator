@@ -14,7 +14,6 @@ import (
 	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/index"
 	"github.com/cmtonkinson/governator/internal/inflight"
-	"github.com/cmtonkinson/governator/internal/phase"
 	"github.com/cmtonkinson/governator/internal/roles"
 	"github.com/cmtonkinson/governator/internal/scheduler"
 	"github.com/cmtonkinson/governator/internal/worker"
@@ -54,12 +53,6 @@ func Run(repoRoot string, opts Options) (Result, error) {
 		return Result{}, fmt.Errorf("load config: %w", err)
 	}
 
-	stateStore := phase.NewStore(repoRoot)
-	state, err := stateStore.Load()
-	if err != nil {
-		return Result{}, fmt.Errorf("load phase state: %w", err)
-	}
-
 	inFlightStore, err := inflight.NewStore(repoRoot)
 	if err != nil {
 		return Result{}, fmt.Errorf("create in-flight store: %w", err)
@@ -72,28 +65,33 @@ func Run(repoRoot string, opts Options) (Result, error) {
 		inFlight = inflight.Set{}
 	}
 
-	phaseRunner := newPhaseRunner(repoRoot, cfg, opts, stateStore, inFlightStore, inFlight)
-	handled, err := phaseRunner.EnsurePlanningPhases(&state)
-	if err != nil {
-		return Result{}, fmt.Errorf("run phases: %w", err)
-	}
-	if handled {
-		return Result{}, nil
-	}
-	if state.Current < phase.PhaseExecution {
-		return Result{}, fmt.Errorf("phase %d (%s) still pending", state.Current.Number(), state.Current)
-	}
-
-	// Build role caps before executing stages
-	caps := scheduler.RoleCapsFromConfig(cfg)
-	baseBranch := baseBranchName(cfg)
-
 	// Load task index
 	indexPath := filepath.Join(repoRoot, indexFilePath)
 	idx, err := index.Load(indexPath)
 	if err != nil {
 		return Result{}, fmt.Errorf("load task index: %w", err)
 	}
+
+	planning := newPlanningTask()
+	complete, err := planningComplete(idx, planning)
+	if err != nil {
+		return Result{}, fmt.Errorf("planning index: %w", err)
+	}
+	if !complete {
+		phaseRunner := newPhaseRunner(repoRoot, cfg, opts, inFlightStore, inFlight)
+		handled, err := phaseRunner.EnsurePlanningPhases(&idx)
+		if err != nil {
+			return Result{}, fmt.Errorf("run planning: %w", err)
+		}
+		if handled {
+			return Result{}, nil
+		}
+		return Result{}, fmt.Errorf("planning tasks still pending")
+	}
+
+	// Build role caps before executing stages
+	caps := scheduler.RoleCapsFromConfig(cfg)
+	baseBranch := baseBranchName(cfg)
 
 	// Check for planning drift
 	if err := CheckPlanningDrift(repoRoot, idx.Digests); err != nil {

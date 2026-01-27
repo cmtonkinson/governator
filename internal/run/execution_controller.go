@@ -81,12 +81,12 @@ func newExecutionController(repoRoot string, idx *index.Index, cfg config.Config
 }
 
 // CurrentStep returns the active execution stage as a workstream step.
-func (controller *executionController) CurrentStep() (workstreamStep, bool) {
+func (controller *executionController) CurrentStep() (workstreamStep, bool, error) {
 	if controller.cursor >= len(controller.stages) {
-		return workstreamStep{}, false
+		return workstreamStep{}, false, nil
 	}
 	stage := controller.stages[controller.cursor]
-	return workstreamStep{name: string(stage)}, true
+	return workstreamStep{name: string(stage)}, true, nil
 }
 
 // Collect is a no-op for execution stages, which collect during dispatch.

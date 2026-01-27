@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cmtonkinson/governator/internal/config"
+	"github.com/cmtonkinson/governator/internal/index"
 	"github.com/cmtonkinson/governator/internal/inflight"
 	"github.com/cmtonkinson/governator/internal/phase"
 	"github.com/cmtonkinson/governator/internal/roles"
@@ -25,12 +26,6 @@ func TestPhaseRunnerPlanningInFlight(t *testing.T) {
 	repoRoot := repo.Root
 	setupPlanningRepo(t, repoRoot, repo)
 
-	stateStore := phase.NewStore(repoRoot)
-	state := phase.DefaultState()
-	if err := stateStore.Save(state); err != nil {
-		t.Fatalf("save phase state: %v", err)
-	}
-
 	cfg, err := config.Load(repoRoot, nil, nil)
 	if err != nil {
 		t.Fatalf("load config: %v", err)
@@ -43,7 +38,7 @@ func TestPhaseRunnerPlanningInFlight(t *testing.T) {
 	inFlight := inflight.Set{}
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	runner := newPhaseRunner(repoRoot, cfg, Options{Stdout: stdout, Stderr: stderr}, stateStore, inFlightStore, inFlight)
+	runner := newPhaseRunner(repoRoot, cfg, Options{Stdout: stdout, Stderr: stderr}, inFlightStore, inFlight)
 
 	archStep, ok := runner.planning.stepForPhase(phase.PhaseArchitectureBaseline)
 	if !ok {
@@ -51,7 +46,13 @@ func TestPhaseRunnerPlanningInFlight(t *testing.T) {
 	}
 	archID := archStep.workstreamID()
 
-	handled, err := runner.EnsurePlanningPhases(&state)
+	indexPath := filepath.Join(repoRoot, indexFilePath)
+	idx, err := index.Load(indexPath)
+	if err != nil {
+		t.Fatalf("load task index: %v", err)
+	}
+
+	handled, err := runner.EnsurePlanningPhases(&idx)
 	if err != nil {
 		t.Fatalf("ensure planning phases (dispatch): %v", err)
 	}
@@ -73,7 +74,7 @@ func TestPhaseRunnerPlanningInFlight(t *testing.T) {
 
 	waitForPlanningExitStatus(t, archEntry.WorkerStateDir, archID, roles.StageWork)
 
-	handled, err = runner.EnsurePlanningPhases(&state)
+	handled, err = runner.EnsurePlanningPhases(&idx)
 	if err != nil {
 		t.Fatalf("ensure planning phases (collect): %v", err)
 	}

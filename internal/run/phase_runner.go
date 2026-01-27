@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -25,15 +24,14 @@ type phaseRunner struct {
 	cfg                 config.Config
 	stdout              io.Writer
 	stderr              io.Writer
-	store               *phase.Store
 	worktreeManager     worktree.Manager
 	worktreeManagerInit bool
-	planning            phaseWorkstream
+	planning            planningTask
 	inFlightStore       inflight.Store
 	inFlight            inflight.Set
 }
 
-func newPhaseRunner(repoRoot string, cfg config.Config, opts Options, store *phase.Store, inFlightStore inflight.Store, inFlight inflight.Set) *phaseRunner {
+func newPhaseRunner(repoRoot string, cfg config.Config, opts Options, inFlightStore inflight.Store, inFlight inflight.Set) *phaseRunner {
 	stdout := opts.Stdout
 	if stdout == nil {
 		stdout = io.Discard
@@ -47,7 +45,6 @@ func newPhaseRunner(repoRoot string, cfg config.Config, opts Options, store *pha
 		cfg:           cfg,
 		stdout:        stdout,
 		stderr:        stderr,
-		store:         store,
 		planning:      newPlanningTask(),
 		inFlight:      inFlight,
 		inFlightStore: inFlightStore,
@@ -67,14 +64,14 @@ func (runner *phaseRunner) ensureWorktreeManager() error {
 	return nil
 }
 
-func (runner *phaseRunner) EnsurePlanningPhases(state *phase.State) (bool, error) {
+func (runner *phaseRunner) EnsurePlanningPhases(idx *index.Index) (bool, error) {
 	if err := runner.ensureWorktreeManager(); err != nil {
 		return false, fmt.Errorf("create worktree manager: %w", err)
 	}
 	if runner.inFlight == nil {
 		runner.inFlight = inflight.Set{}
 	}
-	controller := newPlanningController(runner, state)
+	controller := newPlanningController(runner, idx)
 	worker := newWorkstreamRunner()
 	return worker.Run(controller)
 }
@@ -187,30 +184,18 @@ func (runner *phaseRunner) dispatchPhase(step workstreamStep) error {
 	return nil
 }
 
-func (runner *phaseRunner) completePhase(state *phase.State) error {
-	current := state.Current
-	advancePhase := true
-	step, ok := runner.planning.stepForPhase(current)
-	if ok {
-		advancePhase = step.actions.advancePhase
-	}
+func (runner *phaseRunner) completePhase(step workstreamStep) error {
+	current := step.phase
+	advancePhase := step.actions.advancePhase
 	next := current.Next()
 	if advancePhase {
 		gateTarget := next
-		if ok && step.gates.beforeAdvance.enabled {
+		if step.gates.beforeAdvance.enabled {
 			gateTarget = step.gates.beforeAdvance.phase
 		}
 		if err := runner.ensurePhasePrereqs(gateTarget); err != nil {
 			return err
 		}
-	}
-
-	if advancePhase {
-		state.Current = next
-	}
-
-	if err := runner.store.Save(*state); err != nil {
-		return fmt.Errorf("save phase state: %w", err)
 	}
 
 	runner.emitPhaseComplete(current)
@@ -311,9 +296,6 @@ func ensureCleanRepoRoot(repoRoot string) error {
 			continue
 		}
 		path := strings.TrimSpace(line[3:])
-		if path == filepath.ToSlash(filepath.Join("_governator", "_durable-state", "phase-state.json")) {
-			continue
-		}
 		if strings.HasPrefix(path, "_governator/_local-state") {
 			continue
 		}

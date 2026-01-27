@@ -50,8 +50,3 @@ func (step workstreamStep) branchName() string {
 func (step workstreamStep) title() string {
 	return fmt.Sprintf("Phase %d %s", step.phase.Number(), step.phase.String())
 }
-
-// phaseWorkstream provides step lookup for a phase-aware workstream definition.
-type phaseWorkstream interface {
-	stepForPhase(phase.Phase) (workstreamStep, bool)
-}

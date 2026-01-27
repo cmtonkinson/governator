@@ -25,25 +25,26 @@ func TestExecuteTestStageHappyPath(t *testing.T) {
 	repoRoot := setupTestRepoWithConfig(t)
 
 	// Create a test index with a worked task
+	tasks := []index.Task{
+		{
+			ID:    "T-001",
+			Kind:  index.TaskKindExecution,
+			State: index.TaskStateWorked,
+			Role:  "test_engineer",
+			Path:  "task-001.md",
+			Attempts: index.AttemptCounters{
+				Total:  1,
+				Failed: 0,
+			},
+		},
+	}
 	idx := index.Index{
 		SchemaVersion: 1,
 		Digests: index.Digests{
 			GovernatorMD: computeTestDigest(),
 			PlanningDocs: map[string]string{},
 		},
-		Tasks: []index.Task{
-			{
-				ID:    "T-001",
-				Kind:  index.TaskKindExecution,
-				State: index.TaskStateWorked,
-				Role:  "test_engineer",
-				Path:  "task-001.md",
-				Attempts: index.AttemptCounters{
-					Total:  1,
-					Failed: 0,
-				},
-			},
-		},
+		Tasks: append(mergedPlanningTasks(), tasks...),
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -80,8 +81,12 @@ func TestExecuteTestStageHappyPath(t *testing.T) {
 	}
 
 	// Verify task state was updated to blocked
-	if idx.Tasks[0].State != index.TaskStateBlocked {
-		t.Fatalf("task state = %q, want %q", idx.Tasks[0].State, index.TaskStateBlocked)
+	task, err := findIndexTask(&idx, "T-001")
+	if err != nil {
+		t.Fatalf("find task: %v", err)
+	}
+	if task.State != index.TaskStateBlocked {
+		t.Fatalf("task state = %q, want %q", task.State, index.TaskStateBlocked)
 	}
 }
 
@@ -144,25 +149,26 @@ func TestRunWithTestStage(t *testing.T) {
 	repoRoot := setupTestRepoWithConfig(t)
 
 	// Create a test index with a worked task
+	tasks := []index.Task{
+		{
+			ID:    "T-001",
+			Kind:  index.TaskKindExecution,
+			State: index.TaskStateWorked,
+			Role:  "test_engineer",
+			Path:  "task-001.md",
+			Attempts: index.AttemptCounters{
+				Total:  1,
+				Failed: 0,
+			},
+		},
+	}
 	idx := index.Index{
 		SchemaVersion: 1,
 		Digests: index.Digests{
 			GovernatorMD: computeTestDigest(),
 			PlanningDocs: map[string]string{},
 		},
-		Tasks: []index.Task{
-			{
-				ID:    "T-001",
-				Kind:  index.TaskKindExecution,
-				State: index.TaskStateWorked,
-				Role:  "test_engineer",
-				Path:  "task-001.md",
-				Attempts: index.AttemptCounters{
-					Total:  1,
-					Failed: 0,
-				},
-			},
-		},
+		Tasks: append(mergedPlanningTasks(), tasks...),
 	}
 
 	// Save the index
@@ -278,25 +284,26 @@ func TestExecuteReviewStageHappyPath(t *testing.T) {
 	repoRoot := setupTestRepoWithConfig(t)
 
 	// Create a test index with a tested task
+	tasks := []index.Task{
+		{
+			ID:    "T-001",
+			Kind:  index.TaskKindExecution,
+			State: index.TaskStateTested,
+			Role:  "reviewer",
+			Path:  "task-001.md",
+			Attempts: index.AttemptCounters{
+				Total:  1,
+				Failed: 0,
+			},
+		},
+	}
 	idx := index.Index{
 		SchemaVersion: 1,
 		Digests: index.Digests{
 			GovernatorMD: computeTestDigest(),
 			PlanningDocs: map[string]string{},
 		},
-		Tasks: []index.Task{
-			{
-				ID:    "T-001",
-				Kind:  index.TaskKindExecution,
-				State: index.TaskStateTested,
-				Role:  "reviewer",
-				Path:  "task-001.md",
-				Attempts: index.AttemptCounters{
-					Total:  1,
-					Failed: 0,
-				},
-			},
-		},
+		Tasks: append(mergedPlanningTasks(), tasks...),
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -333,8 +340,12 @@ func TestExecuteReviewStageHappyPath(t *testing.T) {
 	}
 
 	// Verify task state was updated back to open
-	if idx.Tasks[0].State != index.TaskStateOpen {
-		t.Fatalf("task state = %q, want %q", idx.Tasks[0].State, index.TaskStateOpen)
+	task, err := findIndexTask(&idx, "T-001")
+	if err != nil {
+		t.Fatalf("find task: %v", err)
+	}
+	if task.State != index.TaskStateOpen {
+		t.Fatalf("task state = %q, want %q", task.State, index.TaskStateOpen)
 	}
 }
 
@@ -398,25 +409,26 @@ func TestRunWithReviewStage(t *testing.T) {
 	repoRoot := setupTestRepoWithConfig(t)
 
 	// Create a test index with a tested task
+	tasks := []index.Task{
+		{
+			ID:    "T-001",
+			Kind:  index.TaskKindExecution,
+			State: index.TaskStateTested,
+			Role:  "reviewer",
+			Path:  "task-001.md",
+			Attempts: index.AttemptCounters{
+				Total:  1,
+				Failed: 0,
+			},
+		},
+	}
 	idx := index.Index{
 		SchemaVersion: 1,
 		Digests: index.Digests{
 			GovernatorMD: computeTestDigest(),
 			PlanningDocs: map[string]string{},
 		},
-		Tasks: []index.Task{
-			{
-				ID:    "T-001",
-				Kind:  index.TaskKindExecution,
-				State: index.TaskStateTested,
-				Role:  "reviewer",
-				Path:  "task-001.md",
-				Attempts: index.AttemptCounters{
-					Total:  1,
-					Failed: 0,
-				},
-			},
-		},
+		Tasks: append(mergedPlanningTasks(), tasks...),
 	}
 
 	// Save the index

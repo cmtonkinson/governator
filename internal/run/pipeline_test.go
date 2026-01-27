@@ -15,7 +15,6 @@ import (
 
 	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/index"
-	"github.com/cmtonkinson/governator/internal/phase"
 	"github.com/cmtonkinson/governator/internal/roles"
 	"github.com/cmtonkinson/governator/internal/testrepos"
 	"github.com/cmtonkinson/governator/internal/worktree"
@@ -45,8 +44,9 @@ func TestPipelineIntegrationHappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load index: %v", err)
 	}
-	if len(idx.Tasks) != 1 {
-		t.Fatalf("index contains %d tasks, want 1", len(idx.Tasks))
+	expectedTasks := 1 + len(mergedPlanningTasks())
+	if len(idx.Tasks) != expectedTasks {
+		t.Fatalf("index contains %d tasks, want %d", len(idx.Tasks), expectedTasks)
 	}
 
 	if err := prepareWorkedTask(t, repoRoot, &idx, repo, config.Defaults().Branches.Base); err != nil {
@@ -197,13 +197,6 @@ func setupPipelineRepo(t *testing.T, workerCommand []string) *testrepos.TempRepo
 	repo.RunGit(t, "commit", "-m", "Add worker role prompt")
 	writePipelineConfig(t, repo.Root, workerCommand)
 	repo.RunGit(t, "remote", "add", "origin", repo.Root)
-
-	stateStore := phase.NewStore(repo.Root)
-	state := phase.DefaultState()
-	state.Current = phase.PhaseExecution
-	if err := stateStore.Save(state); err != nil {
-		t.Fatalf("save phase state: %v", err)
-	}
 	return repo
 }
 
@@ -240,6 +233,9 @@ func prepareWorkedTask(t *testing.T, repoRoot string, idx *index.Index, repo *te
 	}
 	for i := range idx.Tasks {
 		task := &idx.Tasks[i]
+		if task.Kind == index.TaskKindPlanning {
+			continue
+		}
 		task.State = index.TaskStateWorked
 		task.Attempts.Total = 1
 		branchName := fmt.Sprintf("task-%s", task.ID)

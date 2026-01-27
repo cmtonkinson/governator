@@ -5,7 +5,7 @@ import "errors"
 
 // workstreamController defines the adapter hooks required by the workstream runner.
 type workstreamController interface {
-	CurrentStep() (workstreamStep, bool)
+	CurrentStep() (workstreamStep, bool, error)
 	Collect(step workstreamStep) (workstreamCollectResult, error)
 	Advance(step workstreamStep, collect workstreamCollectResult) (bool, error)
 	GateBeforeDispatch(step workstreamStep) error
@@ -44,7 +44,10 @@ func (runner *workstreamRunner) Run(controller workstreamController) (bool, erro
 
 	handled := false
 	for {
-		step, ok := controller.CurrentStep()
+		step, ok, err := controller.CurrentStep()
+		if err != nil {
+			return handled, err
+		}
 		if !ok {
 			return handled, nil
 		}

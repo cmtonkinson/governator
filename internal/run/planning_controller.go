@@ -3,36 +3,37 @@ package run
 
 import (
 	"fmt"
+	"path/filepath"
 
-	"github.com/cmtonkinson/governator/internal/phase"
+	"github.com/cmtonkinson/governator/internal/index"
 	"github.com/cmtonkinson/governator/internal/roles"
 	"github.com/cmtonkinson/governator/internal/worker"
 )
 
-// planningController adapts phase state to the generic workstream runner.
+// planningController adapts planning progress to the generic workstream runner.
 type planningController struct {
 	runner *phaseRunner
-	state  *phase.State
+	idx    *index.Index
 }
 
 // newPlanningController constructs a controller for the planning workstream.
-func newPlanningController(runner *phaseRunner, state *phase.State) *planningController {
+func newPlanningController(runner *phaseRunner, idx *index.Index) *planningController {
 	return &planningController{
 		runner: runner,
-		state:  state,
+		idx:    idx,
 	}
 }
 
-// CurrentStep returns the active planning step derived from phase state.
-func (controller *planningController) CurrentStep() (workstreamStep, bool) {
-	if controller.state.Current >= phase.PhaseExecution {
-		return workstreamStep{}, false
+// CurrentStep returns the active planning step derived from the task index.
+func (controller *planningController) CurrentStep() (workstreamStep, bool, error) {
+	if controller.idx == nil {
+		return workstreamStep{}, false, fmt.Errorf("task index is required")
 	}
-	step, ok := controller.runner.planning.stepForPhase(controller.state.Current)
-	if !ok {
-		return workstreamStep{}, false
+	step, ok, err := currentPlanningStep(*controller.idx, controller.runner.planning)
+	if err != nil {
+		return workstreamStep{}, false, err
 	}
-	return step, true
+	return step, ok, nil
 }
 
 // Collect finalizes the planning step when the worker is no longer running.
@@ -83,11 +84,13 @@ func (controller *planningController) Advance(step workstreamStep, collect works
 	if !collect.Completed {
 		return false, nil
 	}
-	before := controller.state.Current
-	if err := controller.runner.completePhase(controller.state); err != nil {
+	if err := controller.runner.completePhase(step); err != nil {
 		return false, err
 	}
-	return controller.state.Current != before, nil
+	if err := controller.reloadIndex(); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // GateBeforeDispatch checks the configured gate before dispatching the step.
@@ -114,4 +117,18 @@ func (controller *planningController) EmitRunning(step workstreamStep, pids []in
 // EmitAgentComplete logs that the phase worker has exited.
 func (controller *planningController) EmitAgentComplete(step workstreamStep, collect workstreamCollectResult) {
 	controller.runner.emitPhaseAgentComplete(step.phase, collect.CompletedPID)
+}
+
+// reloadIndex refreshes the planning index state from disk.
+func (controller *planningController) reloadIndex() error {
+	if controller.idx == nil {
+		return fmt.Errorf("task index is required")
+	}
+	indexPath := filepath.Join(controller.runner.repoRoot, indexFilePath)
+	updated, err := index.Load(indexPath)
+	if err != nil {
+		return fmt.Errorf("reload task index: %w", err)
+	}
+	*controller.idx = updated
+	return nil
 }
