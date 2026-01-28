@@ -44,7 +44,7 @@ func TestExecuteTestStageHappyPath(t *testing.T) {
 			GovernatorMD: computeTestDigest(),
 			PlanningDocs: map[string]string{},
 		},
-		Tasks: append(mergedPlanningTasks(), tasks...),
+		Tasks: append(mergedPlanningTasks(t, repoRoot), tasks...),
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -168,7 +168,7 @@ func TestRunWithTestStage(t *testing.T) {
 			GovernatorMD: computeTestDigest(),
 			PlanningDocs: map[string]string{},
 		},
-		Tasks: append(mergedPlanningTasks(), tasks...),
+		Tasks: append(mergedPlanningTasks(t, repoRoot), tasks...),
 	}
 
 	// Save the index
@@ -303,7 +303,7 @@ func TestExecuteReviewStageHappyPath(t *testing.T) {
 			GovernatorMD: computeTestDigest(),
 			PlanningDocs: map[string]string{},
 		},
-		Tasks: append(mergedPlanningTasks(), tasks...),
+		Tasks: append(mergedPlanningTasks(t, repoRoot), tasks...),
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -428,7 +428,7 @@ func TestRunWithReviewStage(t *testing.T) {
 			GovernatorMD: computeTestDigest(),
 			PlanningDocs: map[string]string{},
 		},
-		Tasks: append(mergedPlanningTasks(), tasks...),
+		Tasks: append(mergedPlanningTasks(t, repoRoot), tasks...),
 	}
 
 	// Save the index

@@ -42,7 +42,7 @@ func TestLifecycleEndToEndHappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load index: %v", err)
 	}
-	expectedTasks := lifecycleTaskCount + len(mergedPlanningTasks())
+	expectedTasks := lifecycleTaskCount + len(mergedPlanningTasks(t, repoRoot))
 	if len(idx.Tasks) != expectedTasks {
 		t.Fatalf("index contains %d tasks, want %d", len(idx.Tasks), expectedTasks)
 	}
@@ -131,7 +131,7 @@ func TestLifecycleEndToEndTimeoutResume(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load index: %v", err)
 	}
-	expectedTasks := lifecycleTaskCount + len(mergedPlanningTasks())
+	expectedTasks := lifecycleTaskCount + len(mergedPlanningTasks(t, repoRoot))
 	if len(idx.Tasks) != expectedTasks {
 		t.Fatalf("index contains %d tasks, want %d", len(idx.Tasks), expectedTasks)
 	}

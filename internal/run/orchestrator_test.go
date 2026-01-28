@@ -43,7 +43,7 @@ func TestRunHappyPathWithResume(t *testing.T) {
 			GovernatorMD: computeTestDigest(),
 			PlanningDocs: map[string]string{},
 		},
-		Tasks: append(mergedPlanningTasks(), tasks...),
+		Tasks: append(mergedPlanningTasks(t, repoRoot), tasks...),
 	}
 
 	// Save the index
@@ -133,7 +133,7 @@ func TestRunBlocksTasksExceedingRetryLimit(t *testing.T) {
 			GovernatorMD: computeTestDigest(),
 			PlanningDocs: map[string]string{},
 		},
-		Tasks: append(mergedPlanningTasks(), tasks...),
+		Tasks: append(mergedPlanningTasks(t, repoRoot), tasks...),
 	}
 
 	// Save the index
@@ -202,7 +202,7 @@ func TestRunNoResumeCandidates(t *testing.T) {
 			GovernatorMD: computeTestDigest(),
 			PlanningDocs: map[string]string{},
 		},
-		Tasks: append(mergedPlanningTasks(), tasks...),
+		Tasks: append(mergedPlanningTasks(t, repoRoot), tasks...),
 	}
 
 	// Save the index
@@ -260,7 +260,7 @@ func TestRunPlanningDriftMessage(t *testing.T) {
 	idx := index.Index{
 		SchemaVersion: 1,
 		Digests:       stored,
-		Tasks:         mergedPlanningTasks(),
+		Tasks:         mergedPlanningTasks(t, repoRoot),
 	}
 
 	indexPath := filepath.Join(repoRoot, "_governator/task-index.json")
@@ -348,6 +348,7 @@ func setupTestRepoWithConfig(t *testing.T) string {
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("create config directory: %v", err)
 	}
+	writeTestPlanningSpec(t, repoRoot)
 
 	configPath := filepath.Join(configDir, "config.json")
 	configContent := `{

@@ -44,7 +44,7 @@ func TestPipelineIntegrationHappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load index: %v", err)
 	}
-	expectedTasks := 1 + len(mergedPlanningTasks())
+	expectedTasks := 1 + len(mergedPlanningTasks(t, repoRoot))
 	if len(idx.Tasks) != expectedTasks {
 		t.Fatalf("index contains %d tasks, want %d", len(idx.Tasks), expectedTasks)
 	}

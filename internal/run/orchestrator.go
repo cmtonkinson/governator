@@ -72,13 +72,16 @@ func Run(repoRoot string, opts Options) (Result, error) {
 		return Result{}, fmt.Errorf("load task index: %w", err)
 	}
 
-	planning := newPlanningTask()
+	planning, err := newPlanningTask(repoRoot)
+	if err != nil {
+		return Result{}, fmt.Errorf("load planning spec: %w", err)
+	}
 	complete, err := planningComplete(idx, planning)
 	if err != nil {
 		return Result{}, fmt.Errorf("planning index: %w", err)
 	}
 	if !complete {
-		phaseRunner := newPhaseRunner(repoRoot, cfg, opts, inFlightStore, inFlight)
+		phaseRunner := newPhaseRunner(repoRoot, cfg, opts, inFlightStore, inFlight, planning)
 		handled, err := phaseRunner.EnsurePlanningPhases(&idx)
 		if err != nil {
 			return Result{}, fmt.Errorf("run planning: %w", err)

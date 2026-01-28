@@ -25,7 +25,10 @@ func SeedPlanningIndex(repoRoot string) error {
 		return fmt.Errorf("stat task index: %w", err)
 	}
 
-	planning := newPlanningTask()
+	planning, err := newPlanningTask(repoRoot)
+	if err != nil {
+		return fmt.Errorf("load planning spec: %w", err)
+	}
 	tasks := planningTasks(planning)
 
 	digestsMap, err := digests.Compute(repoRoot)
@@ -84,7 +87,7 @@ func planningTasks(task planningTask) []index.Task {
 	}
 	tasks := make([]index.Task, 0, len(task.ordered))
 	var previousID string
-	for _, step := range task.ordered {
+	for i, step := range task.ordered {
 		taskID := planningTaskID(step)
 		deps := []string{}
 		if previousID != "" {
@@ -100,7 +103,7 @@ func planningTasks(task planningTask) []index.Task {
 			Dependencies: deps,
 			Retries:      index.RetryPolicy{MaxAttempts: 1},
 			Attempts:     index.AttemptCounters{},
-			Order:        step.phase.Number() * 10,
+			Order:        (i + 1) * 10,
 			Overlap:      []string{},
 		})
 		previousID = taskID

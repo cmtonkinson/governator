@@ -2,7 +2,7 @@
 package run
 
 import (
-	"fmt"
+	"strings"
 
 	"github.com/cmtonkinson/governator/internal/index"
 	"github.com/cmtonkinson/governator/internal/phase"
@@ -28,12 +28,13 @@ type workstreamStepGates struct {
 
 // workstreamStep is the minimal unit required to drive a workstream step.
 type workstreamStep struct {
-	phase      phase.Phase
-	name       string
-	promptPath string
-	role       index.Role
-	actions    workstreamStepActions
-	gates      workstreamStepGates
+	phase       phase.Phase
+	name        string
+	displayName string
+	promptPath  string
+	role        index.Role
+	actions     workstreamStepActions
+	gates       workstreamStepGates
 }
 
 // workstreamID returns the stable workstream identifier for the step.
@@ -48,5 +49,8 @@ func (step workstreamStep) branchName() string {
 
 // title returns a human-friendly title used in commit messages.
 func (step workstreamStep) title() string {
-	return fmt.Sprintf("Phase %d %s", step.phase.Number(), step.phase.String())
+	if strings.TrimSpace(step.displayName) != "" {
+		return step.displayName
+	}
+	return step.name
 }

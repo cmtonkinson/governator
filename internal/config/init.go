@@ -125,6 +125,10 @@ func InitFullLayout(repoRoot string, opts InitOptions) error {
 		return fmt.Errorf("create planning prompts: %w", err)
 	}
 
+	if err := ensurePlanningSpec(repoRoot, opts); err != nil {
+		return fmt.Errorf("create planning spec: %w", err)
+	}
+
 	if err := ensureWorkerContract(repoRoot, opts); err != nil {
 		return fmt.Errorf("create worker contract: %w", err)
 	}
@@ -201,6 +205,25 @@ func ensurePlanningPrompts(repoRoot string, opts InitOptions) error {
 		}
 		opts.logf("created planning prompt %s", repoRelativePath(repoRoot, path))
 	}
+	return nil
+}
+
+// ensurePlanningSpec writes the planning workstream spec if it does not already exist.
+func ensurePlanningSpec(repoRoot string, opts InitOptions) error {
+	path := filepath.Join(repoRoot, "_governator", "planning.json")
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("stat planning spec %s: %w", path, err)
+	}
+	data, err := templates.Read("planning/planning.json")
+	if err != nil {
+		return fmt.Errorf("read planning spec template: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return fmt.Errorf("write planning spec %s: %w", path, err)
+	}
+	opts.logf("created planning spec %s", repoRelativePath(repoRoot, path))
 	return nil
 }
 

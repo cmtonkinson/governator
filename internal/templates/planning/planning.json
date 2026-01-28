@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "steps": [
+    {
+      "id": "architecture-baseline",
+      "name": "Architecture Baseline",
+      "prompt": "_governator/prompts/architecture-baseline.md",
+      "role": "architect",
+      "gates": {
+        "before_dispatch": "architecture-baseline",
+        "before_advance": "gap-analysis"
+      }
+    },
+    {
+      "id": "gap-analysis",
+      "name": "Gap Analysis",
+      "prompt": "_governator/prompts/gap-analysis.md",
+      "role": "default",
+      "gates": {
+        "before_dispatch": "gap-analysis",
+        "before_advance": "project-planning"
+      }
+    },
+    {
+      "id": "project-planning",
+      "name": "Project Planning",
+      "prompt": "_governator/prompts/roadmap.md",
+      "role": "planner",
+      "gates": {
+        "before_dispatch": "project-planning",
+        "before_advance": "task-planning"
+      }
+    },
+    {
+      "id": "task-planning",
+      "name": "Task Planning",
+      "prompt": "_governator/prompts/task-planning.md",
+      "role": "planner",
+      "gates": {
+        "before_dispatch": "task-planning",
+        "before_advance": "execution"
+      }
+    }
+  ]
+}

@@ -19,12 +19,17 @@ func TestPhaseRunnerEnsurePhasePrereqsBlocksMissingArtifacts(t *testing.T) {
 	t.Parallel()
 
 	repoRoot := t.TempDir()
+	writeTestPlanningSpec(t, repoRoot)
 	inFlightStore, err := inflight.NewStore(repoRoot)
 	if err != nil {
 		t.Fatalf("new in-flight store: %v", err)
 	}
 	stderr := &bytes.Buffer{}
-	runner := newPhaseRunner(repoRoot, config.Defaults(), Options{Stdout: io.Discard, Stderr: stderr}, inFlightStore, inflight.Set{})
+	planning, err := newPlanningTask(repoRoot)
+	if err != nil {
+		t.Fatalf("load planning spec: %v", err)
+	}
+	runner := newPhaseRunner(repoRoot, config.Defaults(), Options{Stdout: io.Discard, Stderr: stderr}, inFlightStore, inflight.Set{}, planning)
 
 	err = runner.ensurePhasePrereqs(phase.PhaseGapAnalysis)
 	if err == nil {
@@ -42,13 +47,18 @@ func TestPhaseRunnerCompletePhaseAdvancesState(t *testing.T) {
 	t.Parallel()
 
 	repoRoot := t.TempDir()
+	writeTestPlanningSpec(t, repoRoot)
 	writeRequiredDocs(t, repoRoot)
 	inFlightStore, err := inflight.NewStore(repoRoot)
 	if err != nil {
 		t.Fatalf("new in-flight store: %v", err)
 	}
 	stderr := &bytes.Buffer{}
-	runner := newPhaseRunner(repoRoot, config.Defaults(), Options{Stdout: io.Discard, Stderr: stderr}, inFlightStore, inflight.Set{})
+	planning, err := newPlanningTask(repoRoot)
+	if err != nil {
+		t.Fatalf("load planning spec: %v", err)
+	}
+	runner := newPhaseRunner(repoRoot, config.Defaults(), Options{Stdout: io.Discard, Stderr: stderr}, inFlightStore, inflight.Set{}, planning)
 	step, ok := runner.planning.stepForPhase(phase.PhaseArchitectureBaseline)
 	if !ok {
 		t.Fatalf("missing architecture baseline step")

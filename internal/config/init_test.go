@@ -77,6 +77,27 @@ func TestInitRepoConfig(t *testing.T) {
 		}
 	})
 
+	t.Run("seeds planning spec from embedded template", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		if err := InitFullLayout(tempDir, InitOptions{}); err != nil {
+			t.Fatalf("InitFullLayout failed: %v", err)
+		}
+
+		path := filepath.Join(tempDir, "_governator", "planning.json")
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read planning spec: %v", err)
+		}
+		expected, err := templates.Read("planning/planning.json")
+		if err != nil {
+			t.Fatalf("read embedded planning spec: %v", err)
+		}
+		if !bytes.Equal(bytes.TrimSpace(data), bytes.TrimSpace(expected)) {
+			t.Fatalf("planning spec mismatch")
+		}
+	})
+
 	t.Run("preserves existing config file", func(t *testing.T) {
 		// Create temporary directory for test
 		tempDir := t.TempDir()

@@ -113,3 +113,19 @@ func TestValidateTaskBacklog(t *testing.T) {
 		t.Fatalf("expected task backlog validation to succeed")
 	}
 }
+
+func TestParsePhase(t *testing.T) {
+	t.Parallel()
+
+	phase, err := ParsePhase("gap-analysis")
+	if err != nil {
+		t.Fatalf("parse phase: %v", err)
+	}
+	if phase != PhaseGapAnalysis {
+		t.Fatalf("phase = %v, want %v", phase, PhaseGapAnalysis)
+	}
+
+	if _, err := ParsePhase("unknown"); err == nil {
+		t.Fatalf("expected error for unknown phase")
+	}
+}

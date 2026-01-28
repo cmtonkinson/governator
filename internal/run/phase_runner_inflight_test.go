@@ -38,7 +38,11 @@ func TestPhaseRunnerPlanningInFlight(t *testing.T) {
 	inFlight := inflight.Set{}
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	runner := newPhaseRunner(repoRoot, cfg, Options{Stdout: stdout, Stderr: stderr}, inFlightStore, inFlight)
+	planning, err := newPlanningTask(repoRoot)
+	if err != nil {
+		t.Fatalf("load planning spec: %v", err)
+	}
+	runner := newPhaseRunner(repoRoot, cfg, Options{Stdout: stdout, Stderr: stderr}, inFlightStore, inFlight, planning)
 
 	archStep, ok := runner.planning.stepForPhase(phase.PhaseArchitectureBaseline)
 	if !ok {

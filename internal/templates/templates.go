@@ -19,7 +19,7 @@ const (
 	workerContractName = "worker-contract.md"
 )
 
-//go:embed bootstrap/*.md planning/*.md reasoning/*.md roles/*.md custom-prompts/*.md worker-contract.md
+//go:embed bootstrap/*.md planning/*.md planning/*.json reasoning/*.md roles/*.md custom-prompts/*.md worker-contract.md
 var embeddedFS embed.FS
 
 var requiredTemplates = []string{
@@ -34,6 +34,7 @@ var requiredTemplates = []string{
 	"planning/gap-analysis.md",
 	"planning/roadmap.md",
 	"planning/plan-tasks.md",
+	"planning/planning.json",
 	"roles/architect.md",
 	"roles/default.md",
 	"roles/planner.md",

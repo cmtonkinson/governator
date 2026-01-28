@@ -31,7 +31,7 @@ type phaseRunner struct {
 	inFlight            inflight.Set
 }
 
-func newPhaseRunner(repoRoot string, cfg config.Config, opts Options, inFlightStore inflight.Store, inFlight inflight.Set) *phaseRunner {
+func newPhaseRunner(repoRoot string, cfg config.Config, opts Options, inFlightStore inflight.Store, inFlight inflight.Set, planning planningTask) *phaseRunner {
 	stdout := opts.Stdout
 	if stdout == nil {
 		stdout = io.Discard
@@ -45,7 +45,7 @@ func newPhaseRunner(repoRoot string, cfg config.Config, opts Options, inFlightSt
 		cfg:           cfg,
 		stdout:        stdout,
 		stderr:        stderr,
-		planning:      newPlanningTask(),
+		planning:      planning,
 		inFlight:      inFlight,
 		inFlightStore: inFlightStore,
 	}
