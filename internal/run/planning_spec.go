@@ -12,12 +12,11 @@ import (
 	"strings"
 
 	"github.com/cmtonkinson/governator/internal/index"
-	"github.com/cmtonkinson/governator/internal/phase"
 )
 
 const (
 	planningSpecFilePath = "_governator/planning.json"
-	planningSpecVersion  = 1
+	planningSpecVersion  = 2
 )
 
 // PlanningSpec defines the JSON schema for the planning workstream.
@@ -28,17 +27,25 @@ type PlanningSpec struct {
 
 // PlanningStepSpec declares a single step in the planning workstream.
 type PlanningStepSpec struct {
-	ID     string            `json:"id"`
-	Name   string            `json:"name"`
-	Prompt string            `json:"prompt"`
-	Role   string            `json:"role"`
-	Gates  *PlanningGateSpec `json:"gates"`
+	ID         string                  `json:"id"`
+	Name       string                  `json:"name"`
+	Prompt     string                  `json:"prompt"`
+	Role       string                  `json:"role"`
+	Validations []PlanningValidationSpec `json:"validations,omitempty"`
 }
 
-// PlanningGateSpec captures the phase gates to check around a planning step.
-type PlanningGateSpec struct {
-	BeforeDispatch *string `json:"before_dispatch"`
-	BeforeAdvance  *string `json:"before_advance"`
+// PlanningValidationSpec defines a validation check to run after step completion.
+type PlanningValidationSpec struct {
+	Type          string `json:"type"` // "command", "file", or "prompt"
+	Command       string `json:"command,omitempty"`
+	Expect        string `json:"expect,omitempty"` // for command: expected exit behavior
+	StdoutRegex   string `json:"stdout_regex,omitempty"`
+	StdoutContains string `json:"stdout_contains,omitempty"`
+	Path          string `json:"path,omitempty"` // for file validation
+	FileRegex     string `json:"regex,omitempty"` // for file content validation
+	PromptRole    string `json:"role,omitempty"` // for prompt validation
+	Inline        string `json:"inline,omitempty"` // for prompt validation
+	PromptPath    string `json:"prompt_path,omitempty"` // for prompt validation
 }
 
 // LoadPlanningSpec reads and parses the planning spec from the repository.
@@ -96,7 +103,6 @@ func validatePlanningSpec(spec PlanningSpec) error {
 		return fmt.Errorf("planning spec requires at least one step")
 	}
 	ids := make(map[string]struct{}, len(spec.Steps))
-	phases := make(map[phase.Phase]struct{}, len(spec.Steps))
 	for i, step := range spec.Steps {
 		label := fmt.Sprintf("step[%d]", i)
 		if strings.TrimSpace(step.ID) == "" {
@@ -121,25 +127,42 @@ func validatePlanningSpec(spec PlanningSpec) error {
 		if strings.TrimSpace(step.Role) == "" {
 			return fmt.Errorf("planning step %q role is required", step.ID)
 		}
-		if step.Gates == nil {
-			return fmt.Errorf("planning step %q gates are required", step.ID)
+		if err := validatePlanningValidations(step.ID, step.Validations); err != nil {
+			return fmt.Errorf("planning step %q validations: %w", step.ID, err)
 		}
-		if step.Gates.BeforeDispatch == nil || strings.TrimSpace(*step.Gates.BeforeDispatch) == "" {
-			return fmt.Errorf("planning step %q gates.before_dispatch is required", step.ID)
+	}
+	return nil
+}
+
+// validatePlanningValidations checks that validation specs are well-formed.
+func validatePlanningValidations(stepID string, validations []PlanningValidationSpec) error {
+	for i, validation := range validations {
+		label := fmt.Sprintf("validation[%d]", i)
+		if strings.TrimSpace(validation.Type) == "" {
+			return fmt.Errorf("%s type is required", label)
 		}
-		parsedDispatch, err := phase.ParsePhase(*step.Gates.BeforeDispatch)
-		if err != nil {
-			return fmt.Errorf("planning step %q gates.before_dispatch: %w", step.ID, err)
-		}
-		if _, ok := phases[parsedDispatch]; ok {
-			return fmt.Errorf("duplicate planning gate %q", *step.Gates.BeforeDispatch)
-		}
-		phases[parsedDispatch] = struct{}{}
-		if step.Gates.BeforeAdvance == nil || strings.TrimSpace(*step.Gates.BeforeAdvance) == "" {
-			return fmt.Errorf("planning step %q gates.before_advance is required", step.ID)
-		}
-		if _, err := phase.ParsePhase(*step.Gates.BeforeAdvance); err != nil {
-			return fmt.Errorf("planning step %q gates.before_advance: %w", step.ID, err)
+		
+		switch validation.Type {
+		case "command":
+			if strings.TrimSpace(validation.Command) == "" {
+				return fmt.Errorf("%s command is required for type 'command'", label)
+			}
+		case "file":
+			if strings.TrimSpace(validation.Path) == "" {
+				return fmt.Errorf("%s path is required for type 'file'", label)
+			}
+		case "prompt":
+			if strings.TrimSpace(validation.Inline) == "" && strings.TrimSpace(validation.PromptPath) == "" {
+				return fmt.Errorf("%s either inline or prompt_path is required for type 'prompt'", label)
+			}
+			if strings.TrimSpace(validation.Inline) != "" && strings.TrimSpace(validation.PromptPath) != "" {
+				return fmt.Errorf("%s inline and prompt_path are mutually exclusive", label)
+			}
+			if strings.TrimSpace(validation.Inline) != "" && strings.TrimSpace(validation.PromptPath) != "" {
+				return fmt.Errorf("%s inline and prompt_path are mutually exclusive", label)
+			}
+		default:
+			return fmt.Errorf("%s unknown validation type %q", label, validation.Type)
 		}
 	}
 	return nil
@@ -148,32 +171,37 @@ func validatePlanningSpec(spec PlanningSpec) error {
 // planningTaskFromSpec translates a planning spec into a planning task.
 func planningTaskFromSpec(spec PlanningSpec) (planningTask, error) {
 	ordered := make([]workstreamStep, 0, len(spec.Steps))
-	byPhase := make(map[phase.Phase]workstreamStep, len(spec.Steps))
-	for _, stepSpec := range spec.Steps {
+	byID := make(map[string]workstreamStep, len(spec.Steps))
+	
+	for i, stepSpec := range spec.Steps {
 		promptPath, _ := normalizePlanningPromptPath(stepSpec.Prompt)
-		beforeDispatch, _ := phase.ParsePhase(*stepSpec.Gates.BeforeDispatch)
-		beforeAdvance, _ := phase.ParsePhase(*stepSpec.Gates.BeforeAdvance)
+		
+		// Determine next step ID for sequencing
+		var nextStepID string
+		if i < len(spec.Steps)-1 {
+			nextStepID = spec.Steps[i+1].ID
+		} else {
+			nextStepID = "execution" // Final step transitions to execution
+		}
+		
 		step := workstreamStep{
-			phase:       beforeDispatch,
 			name:        stepSpec.ID,
 			displayName: stepSpec.Name,
 			promptPath:  promptPath,
 			role:        index.Role(stepSpec.Role),
+			validations: stepSpec.Validations,
 			actions: workstreamStepActions{
 				mergeToBase:  true,
 				advancePhase: true,
 			},
-			gates: workstreamStepGates{
-				beforeDispatch: workstreamGateTarget{enabled: true, phase: beforeDispatch},
-				beforeAdvance:  workstreamGateTarget{enabled: true, phase: beforeAdvance},
-			},
+			nextStepID: nextStepID,
 		}
 		ordered = append(ordered, step)
-		byPhase[beforeDispatch] = step
+		byID[stepSpec.ID] = step
 	}
 	return planningTask{
 		ordered: ordered,
-		byPhase: byPhase,
+		byID:    byID,
 	}, nil
 }
 

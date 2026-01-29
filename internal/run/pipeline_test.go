@@ -94,9 +94,12 @@ func TestPipelineIntegrationHappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload index: %v", err)
 	}
-	task = finalIdx.Tasks[0]
-	if task.State != index.TaskStateDone {
-		t.Fatalf("task state = %q, want %q", task.State, index.TaskStateDone)
+	foundTask, err := findIndexTask(&finalIdx, "T-PIPE-001")
+	if err != nil {
+		t.Fatalf("find task: %v", err)
+	}
+	if foundTask.State != index.TaskStateDone {
+		t.Fatalf("task state = %q, want %q", foundTask.State, index.TaskStateDone)
 	}
 	if !strings.Contains(result.Message, "review task(s)") {
 		t.Fatalf("expected review stage summary in result message, got %q", result.Message)
@@ -138,8 +141,8 @@ func TestPipelineIntegrationDrift(t *testing.T) {
 	if !strings.Contains(output, "planning=drift status=blocked") {
 		t.Fatalf("stdout = %q, want planning drift prefix", output)
 	}
-	if !strings.Contains(output, "governator run") {
-		t.Fatalf("stdout = %q, want run guidance", output)
+	if !strings.Contains(output, "governator plan") {
+		t.Fatalf("stdout = %q, want plan guidance", output)
 	}
 }
 

@@ -11,7 +11,10 @@ import (
 	"github.com/cmtonkinson/governator/internal/index"
 )
 
-const taskIndexSchemaVersion = 1
+const (
+	taskIndexSchemaVersion = 1
+	planningIndexTaskID    = "planning"
+)
 
 // SeedPlanningIndex writes the planning task index on init when it is missing.
 func SeedPlanningIndex(repoRoot string) error {
@@ -25,11 +28,28 @@ func SeedPlanningIndex(repoRoot string) error {
 		return fmt.Errorf("stat task index: %w", err)
 	}
 
-	planning, err := newPlanningTask(repoRoot)
+	spec, err := LoadPlanningSpec(repoRoot)
 	if err != nil {
 		return fmt.Errorf("load planning spec: %w", err)
 	}
-	tasks := planningTasks(planning)
+	if len(spec.Steps) == 0 {
+		return fmt.Errorf("planning spec requires at least one step")
+	}
+	firstStepID := strings.TrimSpace(spec.Steps[0].ID)
+	if firstStepID == "" {
+		return fmt.Errorf("planning spec first step id is required")
+	}
+	tasks := []index.Task{
+		{
+			ID:       planningIndexTaskID,
+			Title:    "Planning",
+			Path:     planningSpecFilePath,
+			Kind:     index.TaskKindPlanning,
+			State:    index.TaskStateTriaged,
+			Retries:  index.RetryPolicy{MaxAttempts: 1},
+			Attempts: index.AttemptCounters{},
+		},
+	}
 
 	digestsMap, err := digests.Compute(repoRoot)
 	if err != nil {
@@ -41,13 +61,14 @@ func SeedPlanningIndex(repoRoot string) error {
 		Digests:       digestsMap,
 		Tasks:         tasks,
 	}
+	updatePlanningTaskState(&idx, firstStepID)
 	if err := index.Save(indexPath, idx); err != nil {
 		return fmt.Errorf("save task index: %w", err)
 	}
 	return nil
 }
 
-// UpdatePlanningIndex refreshes digests and marks the completed planning step.
+// UpdatePlanningIndex refreshes digests after a completed planning step.
 func UpdatePlanningIndex(worktreePath string, step workstreamStep) error {
 	if strings.TrimSpace(worktreePath) == "" {
 		return fmt.Errorf("worktree path is required")
@@ -64,55 +85,14 @@ func UpdatePlanningIndex(worktreePath string, step workstreamStep) error {
 	}
 	idx.Digests = digestsMap
 
-	taskID := planningTaskID(step)
-	for i := range idx.Tasks {
-		if idx.Tasks[i].ID != taskID {
-			continue
-		}
-		idx.Tasks[i].State = index.TaskStateMerged
-		idx.Tasks[i].PID = 0
-		break
-	}
-
 	if err := index.Save(indexPath, idx); err != nil {
 		return fmt.Errorf("save task index: %w", err)
 	}
 	return commitPlanningIndex(worktreePath, step.title())
 }
 
-// planningTasks converts the planning workstream definition into index tasks.
-func planningTasks(task planningTask) []index.Task {
-	if len(task.ordered) == 0 {
-		return nil
-	}
-	tasks := make([]index.Task, 0, len(task.ordered))
-	var previousID string
-	for i, step := range task.ordered {
-		taskID := planningTaskID(step)
-		deps := []string{}
-		if previousID != "" {
-			deps = []string{previousID}
-		}
-		tasks = append(tasks, index.Task{
-			ID:           taskID,
-			Title:        step.title(),
-			Path:         step.promptPath,
-			Kind:         index.TaskKindPlanning,
-			State:        index.TaskStateBacklog,
-			Role:         step.role,
-			Dependencies: deps,
-			Retries:      index.RetryPolicy{MaxAttempts: 1},
-			Attempts:     index.AttemptCounters{},
-			Order:        (i + 1) * 10,
-			Overlap:      []string{},
-		})
-		previousID = taskID
-	}
-	return tasks
-}
-
-// planningTaskID builds the stable, worktree-safe task id for a planning step.
-func planningTaskID(step workstreamStep) string {
+// planningStepWorkstreamID builds the stable, worktree-safe id for a planning step workstream.
+func planningStepWorkstreamID(step workstreamStep) string {
 	return fmt.Sprintf("planning-%s", step.name)
 }
 

@@ -28,18 +28,18 @@ type workstreamStepGates struct {
 
 // workstreamStep is the minimal unit required to drive a workstream step.
 type workstreamStep struct {
-	phase       phase.Phase
 	name        string
 	displayName string
 	promptPath  string
 	role        index.Role
+	validations []PlanningValidationSpec
 	actions     workstreamStepActions
-	gates       workstreamStepGates
+	nextStepID  string
 }
 
 // workstreamID returns the stable workstream identifier for the step.
 func (step workstreamStep) workstreamID() string {
-	return planningTaskID(step)
+	return planningIndexTaskID
 }
 
 // branchName returns the branch name associated with the step workstream.

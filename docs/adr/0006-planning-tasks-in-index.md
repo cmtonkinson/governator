@@ -1,6 +1,6 @@
 # ADR 0006: Seed planning tasks in the task index during init
 
-- Status: Accepted
+- Status: Superseded by ADR 0011 (2026-01-28)
 - Date: 2026-01-27
 
 ## Context

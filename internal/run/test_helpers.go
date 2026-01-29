@@ -43,8 +43,8 @@ func writeTestTaskIndex(t *testing.T, repoRoot string, tasks []index.Task) {
 	if err != nil {
 		t.Fatalf("compute digests: %v", err)
 	}
-	planning := mergedPlanningTasks(t, repoRoot)
-	tasks = append(planning, tasks...)
+	planning := mergedPlanningTask()
+	tasks = append([]index.Task{planning}, tasks...)
 	idx := index.Index{
 		SchemaVersion: taskIndexSchema,
 		Digests:       digestsMap,
@@ -74,18 +74,21 @@ func newTestTask(id, title, role, path string, order int) index.Task {
 	}
 }
 
-// mergedPlanningTasks returns the planning tasks marked as merged for test setups.
+// mergedPlanningTask returns the planning task marked as merged for test setups.
+func mergedPlanningTask() index.Task {
+	return index.Task{
+		ID:    planningIndexTaskID,
+		Title: "Planning",
+		Path:  planningSpecFilePath,
+		Kind:  index.TaskKindPlanning,
+		State: PlanningCompleteState,
+	}
+}
+
+// mergedPlanningTasks returns the planning task list marked as merged for test setups.
 func mergedPlanningTasks(t *testing.T, repoRoot string) []index.Task {
 	t.Helper()
-	planning, err := newPlanningTask(repoRoot)
-	if err != nil {
-		t.Fatalf("load planning spec: %v", err)
-	}
-	planningTasks := planningTasks(planning)
-	for i := range planningTasks {
-		planningTasks[i].State = index.TaskStateMerged
-	}
-	return planningTasks
+	return []index.Task{mergedPlanningTask()}
 }
 
 func taskFilesInDir(repoRoot string) []string {

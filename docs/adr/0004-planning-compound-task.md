@@ -1,6 +1,6 @@
 # ADR 0004: Model planning phases as a compound task
 
-- Status: Accepted
+- Status: Superseded by ADR 0011 (2026-01-28)
 - Date: 2026-01-27
 
 ## Context
@@ -52,4 +52,3 @@ by the Go runtime.
 ## Notes
 
 This ADR focuses on the orchestration model only. Prompt content and worker contracts remain unchanged.
-

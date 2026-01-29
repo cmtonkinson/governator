@@ -12,13 +12,13 @@ Governator v2 previously treated planning as a deterministic JSON pipeline: a si
 
 The new intent is to run four independent agents (baseline, gap, roadmap, tasking) in sequence, with each agent writing Markdown documents instead of structured JSON payloads. The architecture baseline agent produces the Power Six artifacts under `_governator/docs/`, the gap analysis agent emits Markdown gap reports, the roadmap agent produces canonical `milestones.md` and `epics.md`, and the task planning agent writes Markdown tasks under `_governator/tasks/`. Because there is no longer a single JSON blob flowing through the system, the schema validation/plan parsing plumbing is dead weight.
 
-> **Note:** The standalone `governator plan` helper described later in this ADR has been removed; planning phases now execute automatically via `governator run`, which reuses the templates/prompts described below.
+> **Note:** Planning now executes via `governator plan`, which spawns a detached supervisor to run the serial prompts and validations end-to-end. `governator run` is deprecated and should emit a warning.
 
 ## Decision
 
 - Remove the JSON planner contract entirely and stop emitting `_governator/plan/*.json` and the supporting schema validation/plan parsing logic for the arch/gap/roadmap/task agents. The planner now expects the agents to write Markdown artifacts and the CLI no longer tries to parse them.
 - Ensure the planning artifacts exist, digests for `_governator/docs/` are computed, and four Markdown prompts (`architecture-baseline.md`, `gap-analysis.md`, `roadmap.md`, `task-planning.md`) live under `_governator/_local-state/plan/`. Each prompt combines curated templates with `GOVERNATOR.md`, the current docs, and any existing `_governator/tasks` backlog so that the scheduled agents operate deterministically.
-- Treat the plan phase as a manual sequence: each agent consumes the prompts referenced above, runs serially, and emits Markdown outputs (the Power Six baseline docs, a gap report, milestones/epics, and Markdown task files). Downstream automation or agents consume these artifacts directly instead of relying on parser-generated structs.
+- Treat the plan phase as a supervised serial sequence: each agent consumes the prompts referenced above, runs serially, and emits Markdown outputs (the Power Six baseline docs, a gap report, milestones/epics, and Markdown task files). The supervisor chains steps and any configured validations automatically.
 
 ## Consequences
 

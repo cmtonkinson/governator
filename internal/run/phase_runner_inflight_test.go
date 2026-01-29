@@ -90,16 +90,20 @@ func TestPhaseRunnerPlanningInFlight(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload in-flight: %v", err)
 	}
-	if savedInFlight.Contains(archID) {
-		t.Fatalf("architecture step should be removed from in-flight after collection")
-	}
-
 	gapStep, ok := runner.planning.stepForPhase(phase.PhaseGapAnalysis)
 	if !ok {
 		t.Fatalf("missing gap analysis step")
 	}
-	if !savedInFlight.Contains(gapStep.workstreamID()) {
+	gapEntry, ok := savedInFlight.Entry(gapStep.workstreamID())
+	if !ok {
 		t.Fatalf("expected gap analysis to be dispatched after architecture collection")
+	}
+	expectedGapDir := planningWorkerStateDir(archEntry.Worktree, gapStep)
+	if gapEntry.WorkerStateDir != expectedGapDir {
+		t.Fatalf("gap analysis worker state dir = %q, want %q", gapEntry.WorkerStateDir, expectedGapDir)
+	}
+	if gapEntry.WorkerStateDir == archEntry.WorkerStateDir {
+		t.Fatalf("expected worker state dir to change after advancing planning step")
 	}
 }
 

@@ -6,16 +6,19 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/cmtonkinson/governator/internal/buildinfo"
 	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/repo"
 	"github.com/cmtonkinson/governator/internal/run"
 	"github.com/cmtonkinson/governator/internal/status"
+	"github.com/cmtonkinson/governator/internal/supervisor"
 )
 
-const usageLine = "usage: governator [-v|--verbose] <init|run|status|version>"
+const usageLine = "usage: governator [-v|--verbose] <init|plan|execute|run|status|stop|restart|reset|version>"
 
 func main() {
 	verbose := false
@@ -40,10 +43,20 @@ flagLoop:
 	switch args[0] {
 	case "init":
 		runInit(verbose)
+	case "plan":
+		runPlan(args[1:])
+	case "execute":
+		runExecute()
 	case "run":
 		runRun()
 	case "status":
 		runStatus()
+	case "stop":
+		runStop(args[1:])
+	case "restart":
+		runRestart(args[1:])
+	case "reset":
+		runReset(args[1:])
 	case "version":
 		runVersion()
 	default:
@@ -111,10 +124,176 @@ func runRun() {
 		emitUsage()
 		os.Exit(2)
 	}
+	fmt.Fprintln(os.Stderr, "Warning: governator run is deprecated. Use `governator plan` followed by `governator execute`.")
 	if _, err := run.Run(repoRoot, run.Options{Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
+}
+
+func runPlan(args []string) {
+	if len(args) > 0 && args[0] == "--supervisor" {
+		runPlanSupervisor()
+		return
+	}
+	if len(args) > 0 {
+		emitUsage()
+		os.Exit(2)
+	}
+	repoRoot, err := repo.DiscoverRootFromCWD()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		emitUsage()
+		os.Exit(2)
+	}
+	if _, running, err := supervisor.PlanningSupervisorRunning(repoRoot); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	} else if running {
+		fmt.Fprintln(os.Stderr, "planning supervisor already running; use governator stop or governator reset first")
+		os.Exit(1)
+	}
+
+	logPath := supervisor.PlanningLogPath(repoRoot)
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	defer logFile.Close()
+
+	cmd := exec.Command(os.Args[0], "plan", "--supervisor")
+	cmd.Dir = repoRoot
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	pid := cmd.Process.Pid
+	state := supervisor.PlanningSupervisorState{
+		Phase:          "planning",
+		PID:            pid,
+		State:          supervisor.SupervisorStateRunning,
+		StartedAt:      time.Now().UTC(),
+		LastTransition: time.Now().UTC(),
+		LogPath:        logPath,
+	}
+	if err := supervisor.SavePlanningState(repoRoot, state); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	if err := cmd.Process.Release(); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	fmt.Printf("planning supervisor started (pid %d)\n", pid)
+}
+
+func runPlanSupervisor() {
+	repoRoot, err := repo.DiscoverRootFromCWD()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		emitUsage()
+		os.Exit(2)
+	}
+	if err := run.RunPlanningSupervisor(repoRoot, run.PlanningSupervisorOptions{Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+}
+
+func runExecute() {
+	repoRoot, err := repo.DiscoverRootFromCWD()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		emitUsage()
+		os.Exit(2)
+	}
+	if _, err := run.Execute(repoRoot, run.Options{Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+}
+
+func runStop(args []string) {
+	stopWorker, err := parseWorkerFlag(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		emitUsage()
+		os.Exit(2)
+	}
+	repoRoot, err := repo.DiscoverRootFromCWD()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		emitUsage()
+		os.Exit(2)
+	}
+	if err := run.StopPlanningSupervisor(repoRoot, run.PlanningSupervisorStopOptions{StopWorker: stopWorker}); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	fmt.Println("planning supervisor stopped")
+}
+
+func runRestart(args []string) {
+	stopWorker, err := parseWorkerFlag(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		emitUsage()
+		os.Exit(2)
+	}
+	repoRoot, err := repo.DiscoverRootFromCWD()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		emitUsage()
+		os.Exit(2)
+	}
+	if err := run.StopPlanningSupervisor(repoRoot, run.PlanningSupervisorStopOptions{StopWorker: stopWorker}); err != nil && !errors.Is(err, supervisor.ErrPlanningSupervisorNotRunning) {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	runPlan(nil)
+}
+
+func runReset(args []string) {
+	stopWorker, err := parseWorkerFlag(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		emitUsage()
+		os.Exit(2)
+	}
+	repoRoot, err := repo.DiscoverRootFromCWD()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		emitUsage()
+		os.Exit(2)
+	}
+	if err := run.StopPlanningSupervisor(repoRoot, run.PlanningSupervisorStopOptions{StopWorker: stopWorker}); err != nil && !errors.Is(err, supervisor.ErrPlanningSupervisorNotRunning) {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	if err := supervisor.ClearPlanningState(repoRoot); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	fmt.Println("planning supervisor reset")
+}
+
+func parseWorkerFlag(args []string) (bool, error) {
+	stopWorker := false
+	for _, arg := range args {
+		if arg == "--worker" || arg == "-w" {
+			stopWorker = true
+			continue
+		}
+		return false, fmt.Errorf("unknown flag %q", arg)
+	}
+	return stopWorker, nil
 }
 
 func runStatus() {

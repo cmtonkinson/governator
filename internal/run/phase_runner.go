@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -64,6 +65,12 @@ func (runner *phaseRunner) ensureWorktreeManager() error {
 	return nil
 }
 
+func (runner *phaseRunner) logf(format string, args ...any) {
+	if runner.stderr != nil {
+		fmt.Fprintf(runner.stderr, format+"\n", args...)
+	}
+}
+
 func (runner *phaseRunner) EnsurePlanningPhases(idx *index.Index) (bool, error) {
 	if err := runner.ensureWorktreeManager(); err != nil {
 		return false, fmt.Errorf("create worktree manager: %w", err)
@@ -83,10 +90,10 @@ func (runner *phaseRunner) resolvePlanningPaths(step workstreamStep, entry infli
 	if worktreePath == "" {
 		resolved, ok, err := runner.worktreeManager.ExistingWorktreePath(taskID)
 		if err != nil {
-			return "", "", fmt.Errorf("resolve worktree for phase %s: %w", step.phase.String(), err)
+			return "", "", fmt.Errorf("resolve worktree for step %s: %w", step.name, err)
 		}
 		if !ok {
-			return "", "", fmt.Errorf("resolve worktree for phase %s: missing worktree", step.phase.String())
+			return "", "", fmt.Errorf("resolve worktree for step %s: missing worktree", step.name)
 		}
 		worktreePath = resolved
 	}
@@ -128,6 +135,21 @@ func (runner *phaseRunner) dispatchPhase(step workstreamStep) error {
 		Role: step.role,
 	}
 
+	// Map step name to legacy phase for backward compatibility
+	var legacyPhase phase.Phase
+	switch step.name {
+	case "architecture-baseline":
+		legacyPhase = phase.PhaseArchitectureBaseline
+	case "gap-analysis":
+		legacyPhase = phase.PhaseGapAnalysis
+	case "project-planning":
+		legacyPhase = phase.PhaseProjectPlanning
+	case "task-planning":
+		legacyPhase = phase.PhaseTaskPlanning
+	default:
+		legacyPhase = phase.PhaseNew
+	}
+
 	branchName := step.branchName()
 	baseBranch := strings.TrimSpace(runner.cfg.Branches.Base)
 	if baseBranch == "" {
@@ -139,7 +161,7 @@ func (runner *phaseRunner) dispatchPhase(step workstreamStep) error {
 		BaseBranch:   baseBranch,
 	})
 	if err != nil {
-		return fmt.Errorf("ensure worktree for phase %s: %w", step.phase.String(), err)
+		return fmt.Errorf("ensure worktree for step %s: %w", step.name, err)
 	}
 
 	stageInput := newWorkerStageInput(
@@ -157,6 +179,7 @@ func (runner *phaseRunner) dispatchPhase(step workstreamStep) error {
 			fmt.Fprintf(runner.stderr, "Warning: %s\n", msg)
 		},
 	)
+	stageInput.WorkerStateDir = planningWorkerStateDir(worktreeResult.Path, step)
 
 	stageResult, err := worker.StageEnvAndPrompts(stageInput)
 	if err != nil {
@@ -170,7 +193,7 @@ func (runner *phaseRunner) dispatchPhase(step workstreamStep) error {
 		fmt.Fprintf(runner.stderr, "Warning: %s\n", msg)
 	})
 	if err != nil {
-		return fmt.Errorf("dispatch phase %s agent: %w", step.phase.String(), err)
+		return fmt.Errorf("dispatch step %s agent: %w", step.name, err)
 	}
 
 	if err := runner.inFlight.AddWithStartAndPath(taskID, dispatchResult.StartedAt, worktreeResult.Path, dispatchResult.WorkerStateDir, string(roles.StageWork), string(step.role)); err != nil {
@@ -180,25 +203,41 @@ func (runner *phaseRunner) dispatchPhase(step workstreamStep) error {
 		return err
 	}
 
-	runner.emitPhaseDispatched(step.phase, dispatchResult.PID)
+	runner.emitPhaseDispatched(legacyPhase, dispatchResult.PID)
 	return nil
 }
 
+func planningWorkerStateDir(worktreePath string, step workstreamStep) string {
+	dirName := planningStepWorkstreamID(step)
+	if strings.TrimSpace(dirName) == "" {
+		dirName = "planning"
+	}
+	return filepath.Join(worktreePath, localStateDirName, dirName)
+}
+
 func (runner *phaseRunner) completePhase(step workstreamStep) error {
-	current := step.phase
-	advancePhase := step.actions.advancePhase
-	next := current.Next()
-	if advancePhase {
-		gateTarget := next
-		if step.gates.beforeAdvance.enabled {
-			gateTarget = step.gates.beforeAdvance.phase
-		}
-		if err := runner.ensurePhasePrereqs(gateTarget); err != nil {
-			return err
-		}
+	// New validation engine doesn't use phase-based gating
+	// Validations are run after worker completion in the controller
+
+	// Legacy phase completion for backward compatibility
+	// In new architecture, this would be handled by planning state updates
+
+	// Map step name to legacy phase for backward compatibility
+	var legacyPhase phase.Phase
+	switch step.name {
+	case "architecture-baseline":
+		legacyPhase = phase.PhaseArchitectureBaseline
+	case "gap-analysis":
+		legacyPhase = phase.PhaseGapAnalysis
+	case "project-planning":
+		legacyPhase = phase.PhaseProjectPlanning
+	case "task-planning":
+		legacyPhase = phase.PhaseTaskPlanning
+	default:
+		legacyPhase = phase.PhaseNew
 	}
 
-	runner.emitPhaseComplete(current)
+	runner.emitPhaseComplete(legacyPhase)
 	return nil
 }
 
@@ -239,10 +278,10 @@ func (runner *phaseRunner) collectPhaseCompletion(step workstreamStep, worktreeP
 		return fmt.Errorf("read phase exit status: %w", err)
 	}
 	if !finished {
-		return fmt.Errorf("phase %d (%s) agent exited without exit.json", step.phase.Number(), step.phase)
+		return fmt.Errorf("step %s agent exited without exit.json", step.name)
 	}
 	if exitStatus.ExitCode != 0 {
-		return fmt.Errorf("phase %d (%s) agent failed with exit code %d", step.phase.Number(), step.phase, exitStatus.ExitCode)
+		return fmt.Errorf("step %s agent failed with exit code %d", step.name, exitStatus.ExitCode)
 	}
 
 	phaseTask := index.Task{
@@ -253,7 +292,7 @@ func (runner *phaseRunner) collectPhaseCompletion(step workstreamStep, worktreeP
 		Role:  step.role,
 	}
 	if _, err := finalizeStageSuccess(worktreePath, workerStateDir, phaseTask, roles.StageWork); err != nil {
-		return fmt.Errorf("finalize phase %s: %w", step.phase.String(), err)
+		return fmt.Errorf("finalize step %s: %w", step.name, err)
 	}
 	if err := UpdatePlanningIndex(worktreePath, step); err != nil {
 		return fmt.Errorf("update planning index: %w", err)

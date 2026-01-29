@@ -290,8 +290,8 @@ func TestRunPlanningDriftMessage(t *testing.T) {
 	if !strings.Contains(output, "planning=drift status=blocked") {
 		t.Fatalf("stdout = %q, want planning drift prefix", output)
 	}
-	if !strings.Contains(output, "governator run") {
-		t.Fatalf("stdout = %q, want run guidance", output)
+	if !strings.Contains(output, "governator plan") {
+		t.Fatalf("stdout = %q, want plan guidance", output)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/cmtonkinson/governator/internal/index"
+	"github.com/cmtonkinson/governator/internal/phase"
 	"github.com/cmtonkinson/governator/internal/roles"
 	"github.com/cmtonkinson/governator/internal/worker"
 )
@@ -79,23 +80,74 @@ func (controller *planningController) Collect(step workstreamStep) (workstreamCo
 	return result, nil
 }
 
-// Advance finalizes a completed planning step and refreshes the task index.
+// Advance finalizes a completed planning step, runs validations, and refreshes the task index.
 func (controller *planningController) Advance(step workstreamStep, collect workstreamCollectResult) (bool, error) {
 	if !collect.Completed {
 		return false, nil
 	}
+
+	// Run validations after worker completion
+	if len(step.validations) > 0 {
+		validationEngine := NewValidationEngine(controller.runner.repoRoot)
+		results, err := validationEngine.RunValidations(step.name, step.displayName, step.validations)
+		if err != nil {
+			return false, fmt.Errorf("validation execution failed: %w", err)
+		}
+
+		// Check if all validations passed
+		allValid := true
+		for _, result := range results {
+			if !result.Valid {
+				allValid = false
+				controller.runner.logf("Validation failed for step %s: %s (%s)", step.name, result.Message, result.Type)
+				break
+			}
+		}
+
+		if !allValid {
+			return false, fmt.Errorf("validation failed for step %s: planning cannot advance", step.name)
+		}
+	}
+
+	// Complete the phase and update planning state
 	if err := controller.runner.completePhase(step); err != nil {
 		return false, err
 	}
-	if err := controller.reloadIndex(); err != nil {
-		return false, err
+
+	// Check if this is the final planning step (transition to execution)
+	if step.nextStepID == "" || step.nextStepID == "execution" {
+		// Planning is complete - perform task inventory
+		taskInventory := NewTaskInventory(controller.runner.repoRoot, controller.idx)
+		inventoryResult, err := taskInventory.InventoryTasks()
+		if err != nil {
+			return false, fmt.Errorf("task inventory failed: %w", err)
+		}
+
+		if inventoryResult.TasksAdded == 0 {
+			return false, fmt.Errorf("planning completion requires at least one task file in _governator/tasks")
+		}
+
+		controller.runner.logf("Task inventory completed: added %d tasks to execution backlog", inventoryResult.TasksAdded)
+
+		// Clear planning state to indicate completion
+		if err := controller.persistPlanningState(""); err != nil {
+			return false, err
+		}
+	} else {
+		// Move to next planning step
+		if err := controller.persistPlanningState(step.nextStepID); err != nil {
+			return false, err
+		}
 	}
+
 	return true, nil
 }
 
 // GateBeforeDispatch checks the configured gate before dispatching the step.
 func (controller *planningController) GateBeforeDispatch(step workstreamStep) error {
-	return controller.runner.ensureStepGate(step.gates.beforeDispatch, step.phase)
+	// New validation engine doesn't use phase-based gating
+	// Validations are run after worker completion instead
+	return nil
 }
 
 // Dispatch starts the worker for the planning step.
@@ -111,12 +163,40 @@ func (controller *planningController) EmitRunning(step workstreamStep, pids []in
 	if len(pids) == 0 {
 		return
 	}
-	controller.runner.emitPhaseRunning(step.phase, pids[0])
+	// Map step name to legacy phase for backward compatibility
+	var legacyPhase phase.Phase
+	switch step.name {
+	case "architecture-baseline":
+		legacyPhase = phase.PhaseArchitectureBaseline
+	case "gap-analysis":
+		legacyPhase = phase.PhaseGapAnalysis
+	case "project-planning":
+		legacyPhase = phase.PhaseProjectPlanning
+	case "task-planning":
+		legacyPhase = phase.PhaseTaskPlanning
+	default:
+		legacyPhase = phase.PhaseNew
+	}
+	controller.runner.emitPhaseRunning(legacyPhase, pids[0])
 }
 
 // EmitAgentComplete logs that the phase worker has exited.
 func (controller *planningController) EmitAgentComplete(step workstreamStep, collect workstreamCollectResult) {
-	controller.runner.emitPhaseAgentComplete(step.phase, collect.CompletedPID)
+	// Map step name to legacy phase for backward compatibility
+	var legacyPhase phase.Phase
+	switch step.name {
+	case "architecture-baseline":
+		legacyPhase = phase.PhaseArchitectureBaseline
+	case "gap-analysis":
+		legacyPhase = phase.PhaseGapAnalysis
+	case "project-planning":
+		legacyPhase = phase.PhaseProjectPlanning
+	case "task-planning":
+		legacyPhase = phase.PhaseTaskPlanning
+	default:
+		legacyPhase = phase.PhaseNew
+	}
+	controller.runner.emitPhaseAgentComplete(legacyPhase, collect.CompletedPID)
 }
 
 // reloadIndex refreshes the planning index state from disk.
@@ -128,6 +208,23 @@ func (controller *planningController) reloadIndex() error {
 	updated, err := index.Load(indexPath)
 	if err != nil {
 		return fmt.Errorf("reload task index: %w", err)
+	}
+	*controller.idx = updated
+	return nil
+}
+
+func (controller *planningController) persistPlanningState(nextStepID string) error {
+	if controller.idx == nil {
+		return fmt.Errorf("task index is required")
+	}
+	indexPath := filepath.Join(controller.runner.repoRoot, indexFilePath)
+	updated, err := index.Load(indexPath)
+	if err != nil {
+		return fmt.Errorf("reload task index: %w", err)
+	}
+	updatePlanningState(&updated, nextStepID)
+	if err := index.Save(indexPath, updated); err != nil {
+		return fmt.Errorf("save task index: %w", err)
 	}
 	*controller.idx = updated
 	return nil

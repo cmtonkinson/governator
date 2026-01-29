@@ -21,7 +21,7 @@ func TestPlanningTaskStepForPhase(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected architecture step")
 	}
-	if step.workstreamID() != "planning-architecture-baseline" {
+	if step.workstreamID() != planningIndexTaskID {
 		t.Fatalf("workstream id = %q", step.workstreamID())
 	}
 	expectedPrompt := filepath.ToSlash(filepath.Join("_governator", "prompts", "architecture-baseline.md"))
@@ -31,11 +31,9 @@ func TestPlanningTaskStepForPhase(t *testing.T) {
 	if !step.actions.mergeToBase || !step.actions.advancePhase {
 		t.Fatalf("expected deterministic success actions to be enabled")
 	}
-	if !step.gates.beforeDispatch.enabled || step.gates.beforeDispatch.phase != phase.PhaseArchitectureBaseline {
-		t.Fatalf("unexpected dispatch gate: %+v", step.gates.beforeDispatch)
-	}
-	if !step.gates.beforeAdvance.enabled || step.gates.beforeAdvance.phase != phase.PhaseGapAnalysis {
-		t.Fatalf("unexpected advance gate: %+v", step.gates.beforeAdvance)
+	// New structure uses nextStepID instead of gates
+	if step.nextStepID != "gap-analysis" {
+		t.Fatalf("unexpected next step ID: %q, want %q", step.nextStepID, "gap-analysis")
 	}
 }
 

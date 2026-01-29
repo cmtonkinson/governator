@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const usageMessage = "usage: governator [-v|--verbose] <init|run|status|version>"
+const usageMessage = "usage: governator [-v|--verbose] <init|plan|execute|run|status|stop|restart|reset|version>"
 
 func TestCLICommands(t *testing.T) {
 	// Build the CLI binary for testing
@@ -276,7 +276,7 @@ func TestStatusCommand(t *testing.T) {
 		}
 
 		outputStr := strings.TrimSpace(string(output))
-		expected := "tasks backlog=0 merged=0 in-progress=0"
+		expected := "supervisors=0\ntasks backlog=0 merged=0 in-progress=0"
 		if outputStr != expected {
 			t.Errorf("Expected %q, got %q", expected, outputStr)
 		}
@@ -309,6 +309,9 @@ func TestStatusCommand(t *testing.T) {
 		}
 
 		outputStr := strings.TrimSpace(string(output))
+		if !strings.Contains(outputStr, "supervisors=0") {
+			t.Fatalf("expected supervisors line in output, got %q", outputStr)
+		}
 		if !strings.Contains(outputStr, "tasks backlog=0 merged=2 in-progress=5") {
 			t.Fatalf("expected counts line in output, got %q", outputStr)
 		}

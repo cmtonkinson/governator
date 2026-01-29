@@ -11,7 +11,7 @@ import (
 
 func TestSummaryString(t *testing.T) {
 	empty := Summary{}
-	if got := empty.String(); got != "tasks backlog=0 merged=0 in-progress=0" {
+	if got := empty.String(); got != "supervisors=0\ntasks backlog=0 merged=0 in-progress=0" {
 		t.Fatalf("empty summary string = %q", got)
 	}
 
@@ -24,6 +24,9 @@ func TestSummaryString(t *testing.T) {
 		},
 	}
 	result := withRows.String()
+	if !strings.Contains(result, "supervisors=0") {
+		t.Fatalf("summary header missing supervisors: %q", result)
+	}
 	if !strings.Contains(result, "tasks backlog=1 merged=1 in-progress=1") {
 		t.Fatalf("summary header missing counts: %q", result)
 	}

@@ -58,7 +58,7 @@ func TestCheckPlanningDriftDetectsChange(t *testing.T) {
 	if !strings.Contains(message, "GOVERNATOR.md changed") {
 		t.Fatalf("expected drift details, got %q", message)
 	}
-	if !strings.Contains(message, "governator run") {
+	if !strings.Contains(message, "governator plan") {
 		t.Fatalf("expected replanning guidance, got %q", message)
 	}
 }

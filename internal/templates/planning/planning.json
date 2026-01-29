@@ -1,45 +1,58 @@
 {
-  "version": 1,
+  "version": 2,
   "steps": [
     {
       "id": "architecture-baseline",
       "name": "Architecture Baseline",
       "prompt": "_governator/prompts/architecture-baseline.md",
       "role": "architect",
-      "gates": {
-        "before_dispatch": "architecture-baseline",
-        "before_advance": "gap-analysis"
-      }
+      "validations": [
+        {
+          "type": "file",
+          "path": "_governator/docs/architecture-decision-records.md",
+          "regex": "(?m)^# Architecture Decision Records"
+        }
+      ]
     },
     {
       "id": "gap-analysis",
       "name": "Gap Analysis",
       "prompt": "_governator/prompts/gap-analysis.md",
       "role": "default",
-      "gates": {
-        "before_dispatch": "gap-analysis",
-        "before_advance": "project-planning"
-      }
+      "validations": [
+        {
+          "type": "file",
+          "path": "_governator/docs/gap-analysis.md"
+        }
+      ]
     },
     {
       "id": "project-planning",
       "name": "Project Planning",
       "prompt": "_governator/prompts/roadmap.md",
       "role": "planner",
-      "gates": {
-        "before_dispatch": "project-planning",
-        "before_advance": "task-planning"
-      }
+      "validations": [
+        {
+          "type": "file",
+          "path": "_governator/docs/milestones.md"
+        },
+        {
+          "type": "file",
+          "path": "_governator/docs/epics.md"
+        }
+      ]
     },
     {
       "id": "task-planning",
       "name": "Task Planning",
       "prompt": "_governator/prompts/task-planning.md",
       "role": "planner",
-      "gates": {
-        "before_dispatch": "task-planning",
-        "before_advance": "execution"
-      }
+      "validations": [
+        {
+          "type": "file",
+          "path": "_governator/tasks"
+        }
+      ]
     }
   ]
 }
