@@ -32,6 +32,8 @@ var requiredTemplates = []string{
 	"planning/task.md",
 	"planning/architecture-baseline.md",
 	"planning/gap-analysis.md",
+	"planning/milestones.md",
+	"planning/epics.md",
 	"planning/roadmap.md",
 	"planning/plan-tasks.md",
 	"planning/planning.json",

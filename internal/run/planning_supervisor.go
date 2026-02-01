@@ -89,15 +89,7 @@ func RunPlanningSupervisor(repoRoot string, opts PlanningSupervisorOptions) erro
 			return failPlanningSupervisor(repoRoot, &state, fmt.Errorf("planning index: %w", err))
 		}
 		if complete {
-			state.State = supervisor.SupervisorStateCompleted
-			state.StepID = ""
-			state.StepName = ""
-			state.WorkerPID = 0
-			state.ValidationPID = 0
-			state.WorkerStateDir = ""
-			state.Error = ""
-			state = markPlanningSupervisorTransition(state)
-			return supervisor.SavePlanningState(repoRoot, state)
+			return completePlanningSupervisor(repoRoot, &state)
 		}
 
 		step, stepOK, err := currentPlanningStep(idx, planning)
@@ -195,6 +187,29 @@ func readDispatchWrapperPID(workerStateDir string) (int, bool) {
 func markPlanningSupervisorTransition(state supervisor.PlanningSupervisorState) supervisor.PlanningSupervisorState {
 	state.LastTransition = time.Now().UTC()
 	return state
+}
+
+// completePlanningSupervisor clears persisted supervisor state after a healthy completion.
+func completePlanningSupervisor(repoRoot string, state *supervisor.PlanningSupervisorState) error {
+	if state == nil {
+		return errors.New("planning supervisor state is required")
+	}
+	state.State = supervisor.SupervisorStateCompleted
+	state.StepID = ""
+	state.StepName = ""
+	state.WorkerPID = 0
+	state.ValidationPID = 0
+	state.WorkerStateDir = ""
+	state.Error = ""
+	updated := markPlanningSupervisorTransition(*state)
+	*state = updated
+	if err := supervisor.ClearPlanningState(repoRoot); err != nil {
+		if saveErr := supervisor.SavePlanningState(repoRoot, updated); saveErr != nil {
+			return fmt.Errorf("clear planning supervisor state: %w; save fallback failed: %v", err, saveErr)
+		}
+		return fmt.Errorf("clear planning supervisor state: %w", err)
+	}
+	return nil
 }
 
 func maybePersistPlanningSupervisorState(repoRoot string, state *supervisor.PlanningSupervisorState) error {

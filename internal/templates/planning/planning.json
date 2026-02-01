@@ -17,7 +17,7 @@
         },
         {
           "type": "file",
-          "path": "_governator/docs/adr/adr*.md"
+          "path": "_governator/docs/adr/[Aa][Dd][Rr]-*.md"
         }
       ]
     },
@@ -29,7 +29,15 @@
       "validations": [
         {
           "type": "file",
-          "path": "_governator/docs/gap-analysis.md"
+          "path": "_governator/docs/gap-decision-ledger.md"
+        },
+        {
+          "type": "file",
+          "path": "_governator/docs/gap-register.md"
+        },
+        {
+          "type": "file",
+          "path": "_governator/docs/gap-planning-constraints.md"
         }
       ]
     },

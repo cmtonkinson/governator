@@ -12,6 +12,10 @@ design of the solution. Every project team member will need to make decisions
 about how to complete their tasks an may reference your work; reducing
 uncertainty helps ensure alignment across tasks and roles.
 
+This step runs before roadmap and task planning. Do not block on missing
+milestones, epics, or task plans; proceed using `GOVERNATOR.md` and any existing
+code only.
+
 ## Artifacts
 
 ### Power Six

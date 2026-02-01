@@ -17,14 +17,14 @@
 > - Use as few milestones as necessary.
 > - Small or trivial projects may have just a single "Delivery" milestone.
 
-## Milestone M0 — _[Name]_
+## Milestone M0 -- _[Name]_
 
 ### Outcome
 A short, concrete description of the system state at completion of this milestone.
 Must be something that can be demonstrated, tested, or reviewed.
 
 ### Why This Milestone Exists
-What risk does this milestone retire?  
+What risk does this milestone retire?
 What does it unlock for subsequent work?
 
 ### In Scope
@@ -49,7 +49,7 @@ The milestone is considered complete when:
 Optional.
 Key constraints, guardrails, or context worth preserving.
 
-## Milestone M1 — _[Name]_
+## Milestone M1 -- _[Name]_
 
 _(Repeat the same structure as above)_
 

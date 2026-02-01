@@ -1,5 +1,5 @@
 # Project Epics
-> This document defines the project’s **epics**: coherent capabilities that
+> This document defines the project's **epics**: coherent capabilities that
 > collectively realize each milestone.
 >
 > Epics exist to preserve **intent, scope boundaries, and design decisions**
@@ -11,9 +11,9 @@
 - Tasks must map to **exactly one epic**.
 - Epics should remain stable even if tasks change.
 
-## Milestone M0 — _[Milestone Name]_
+## Milestone M0 -- _[Milestone Name]_
 
-### Epic E0.1 — _[Epic Name]_
+### Epic E0.1 -- _[Epic Name]_
 **Goal**  
 A concise statement of the capability this epic delivers.
 
@@ -47,11 +47,11 @@ This epic is complete when:
 - Acceptance conditions are met across all related stories
 - Integration points are validated
 
-### Epic E0.2 — _[Epic Name]_
+### Epic E0.2 -- _[Epic Name]_
 
 _(Repeat the same structure)_
 
-## Milestone M1 — _[Milestone Name]_
+## Milestone M1 -- _[Milestone Name]_
 
 _(Repeat epic sections for this milestone)_
 
@@ -68,6 +68,6 @@ Epics should:
 - Be large enough that splitting them further would reduce clarity
 
 If an epic:
-- Spans multiple milestones → split it
-- Contains unrelated capabilities → split it
-- Collapses to a single trivial story → consider inlining or merging
+- Spans multiple milestones -> split it
+- Contains unrelated capabilities -> split it
+- Collapses to a single trivial story -> consider inlining or merging

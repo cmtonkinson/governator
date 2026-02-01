@@ -17,6 +17,10 @@ You MUST:
 - Perform only the work explicitly requested in the assigned task.
 - Modify only files necessary to complete the task.
 - Prefer minimal, localized changes.
+- Treat `GOVERNATOR_WORKTREE_DIR` (your current working directory) as the repo
+  root for all file paths.
+- Do not read or write outside `GOVERNATOR_WORKTREE_DIR`, even if another
+  repository root exists elsewhere on disk.
 
 You MUST NOT:
 - Expand or reinterpret the task.
@@ -37,7 +41,15 @@ conditions include (but are not limited to):
 - Required decisions outside your authority
 - Unclear file ownership or modification boundaries
 
-To block a task, append a section titled `## Blocking Reason` to the task file.
+The task file is the file at `GOVERNATOR_TASK_PATH`.
+
+If `GOVERNATOR_TASK_PATH` points under `_governator/prompts` or
+`_governator/_local-state`, do NOT edit it. Instead, append a section titled
+`## Blocking Reason` to `_governator/docs/planning-notes.md` (create the file if
+missing).
+
+Otherwise, to block a task, append a section titled `## Blocking Reason` to the
+task file.
 Clearly describe:
 - What is unclear or missing
 - What decision or information is required to proceed
@@ -46,7 +58,8 @@ Do not make speculative changes when blocked.
 
 ## 6. Completing the Task
 When you believe the task is complete, append a section titled `## Change
-Summary` to the task file:
+Summary` to the task file (or to `_governator/docs/planning-notes.md` when the
+task file is under `_governator/prompts` or `_governator/_local-state`):
 - Describe what was changed.
 - Note any assumptions made.
 - Mention potential follow-up concerns without creating tasks for them.

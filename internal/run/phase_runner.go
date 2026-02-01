@@ -298,7 +298,7 @@ func (runner *phaseRunner) collectPhaseCompletion(step workstreamStep, worktreeP
 		return fmt.Errorf("update planning index: %w", err)
 	}
 	if step.actions.mergeToBase {
-		if err := runner.mergePlanningBranch(baseBranch, branchName); err != nil {
+		if err := runner.mergePlanningBranch(baseBranch, branchName, step.title()); err != nil {
 			return err
 		}
 	}
@@ -306,18 +306,47 @@ func (runner *phaseRunner) collectPhaseCompletion(step workstreamStep, worktreeP
 }
 
 // mergePlanningBranch fast-forwards the base branch with the phase branch after validating cleanliness.
-func (runner *phaseRunner) mergePlanningBranch(baseBranch string, phaseBranch string) error {
+func (runner *phaseRunner) mergePlanningBranch(baseBranch string, phaseBranch string, stepTitle string) error {
 	if err := ensureCleanRepoRoot(runner.repoRoot); err != nil {
 		return err
 	}
 	if err := runGitInRepo(runner.repoRoot, "checkout", baseBranch); err != nil {
 		return fmt.Errorf("checkout base branch %s: %w", baseBranch, err)
 	}
-	if err := runGitInRepo(runner.repoRoot, "merge", "--ff-only", phaseBranch); err != nil {
+	if err := commitPlanningIndexIfDirty(runner.repoRoot, stepTitle); err != nil {
+		return err
+	}
+	if err := runGitInRepo(runner.repoRoot, "merge", "--no-ff", "--no-edit", phaseBranch); err != nil {
 		return fmt.Errorf("merge phase branch %s: %w", phaseBranch, err)
 	}
 	return nil
 }
+
+// commitPlanningIndexIfDirty commits the planning index on the base branch when modified.
+func commitPlanningIndexIfDirty(repoRoot string, stepTitle string) error {
+	status, err := runGitOutput(repoRoot, "status", "--porcelain", "--", indexFilePath)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(status) == "" {
+		return nil
+	}
+	if err := runGit(repoRoot, "add", "--", indexFilePath); err != nil {
+		return err
+	}
+	subject := strings.TrimSpace(stepTitle)
+	if subject == "" {
+		subject = "planning"
+	}
+	message := fmt.Sprintf("[planning] %s index", subject)
+	return runGitWithEnv(repoRoot, []string{
+		"GIT_AUTHOR_NAME=Governator CLI",
+		"GIT_AUTHOR_EMAIL=governator@localhost",
+		"GIT_COMMITTER_NAME=Governator CLI",
+		"GIT_COMMITTER_EMAIL=governator@localhost",
+	}, "commit", "-m", message)
+}
+
 
 // ensureCleanRepoRoot verifies the repository root has no uncommitted changes (ignoring local-state).
 func ensureCleanRepoRoot(repoRoot string) error {
@@ -330,12 +359,19 @@ func ensureCleanRepoRoot(repoRoot string) error {
 	if err != nil {
 		return fmt.Errorf("check repo status: %w", err)
 	}
-	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
-		if line == "" {
+	trimmedOutput := strings.TrimRight(string(output), "\n")
+	for _, line := range strings.Split(trimmedOutput, "\n") {
+		if strings.TrimSpace(line) == "" {
 			continue
+		}
+		if len(line) < 3 {
+			return fmt.Errorf("repository has uncommitted changes: %s", line)
 		}
 		path := strings.TrimSpace(line[3:])
 		if strings.HasPrefix(path, "_governator/_local-state") {
+			continue
+		}
+		if strings.HasPrefix(path, "_governator/task-index.json") {
 			continue
 		}
 		return fmt.Errorf("repository has uncommitted changes: %s", line)
