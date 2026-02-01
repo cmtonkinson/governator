@@ -5,7 +5,7 @@ task:
 depends_on: []
 ---
 
-# Task: <Short Descriptive Title>
+# Task: Short Descriptive Title
 
 ## Objective
 Clearly and unambiguously describe **what outcome must exist** when this task is
@@ -63,6 +63,5 @@ Example:
 
 =============================================================================
 =============================================================================
-
-## Notes
+# Notes
 
