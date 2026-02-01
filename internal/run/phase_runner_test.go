@@ -88,10 +88,11 @@ func writeRequiredDocs(t *testing.T, repoRoot string) {
 		}
 	}
 	requiredPlanningDocs := map[string]string{
-		"architecture-decision-records.md": "# Architecture Decision Records\n",
-		"gap-analysis.md":                  "gap analysis\n",
-		"milestones.md":                    "milestones\n",
-		"epics.md":                         "epics\n",
+		"arch-asr.md":     "architecture ASR\n",
+		"arch-arc42.md":   "architecture arc42\n",
+		"gap-analysis.md": "gap analysis\n",
+		"milestones.md":   "milestones\n",
+		"epics.md":        "epics\n",
 	}
 	for name, content := range requiredPlanningDocs {
 		path := filepath.Join(docsDir, name)
@@ -99,12 +100,16 @@ func writeRequiredDocs(t *testing.T, repoRoot string) {
 			t.Fatalf("write planning doc %s: %v", name, err)
 		}
 	}
+	adrDir := filepath.Join(docsDir, "adr")
+	if err := os.MkdirAll(adrDir, 0o755); err != nil {
+		t.Fatalf("mkdir adr dir: %v", err)
+	}
+	adrPath := filepath.Join(adrDir, "adr-001.md")
+	if err := os.WriteFile(adrPath, []byte("adr"), 0o644); err != nil {
+		t.Fatalf("write adr file: %v", err)
+	}
 	tasksDir := filepath.Join(repoRoot, "_governator", "tasks")
 	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
 		t.Fatalf("mkdir tasks: %v", err)
-	}
-	taskPath := filepath.Join(tasksDir, "T-000-placeholder.md")
-	if err := os.WriteFile(taskPath, []byte("task"), 0o644); err != nil {
-		t.Fatalf("write tasks placeholder: %v", err)
 	}
 }

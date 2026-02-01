@@ -162,7 +162,7 @@ func BuildRoleAssignmentPrompt(promptTemplate string, request RoleAssignmentRequ
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("%s\n\nInput JSON:\n%s\n", promptTemplate, string(encoded)), nil
+	return fmt.Sprintf("%s\n\n%s\n", promptTemplate, string(encoded)), nil
 }
 
 // SelectRole invokes the role assignment LLM to choose a role at dispatch time.

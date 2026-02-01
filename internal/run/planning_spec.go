@@ -27,25 +27,25 @@ type PlanningSpec struct {
 
 // PlanningStepSpec declares a single step in the planning workstream.
 type PlanningStepSpec struct {
-	ID         string                  `json:"id"`
-	Name       string                  `json:"name"`
-	Prompt     string                  `json:"prompt"`
-	Role       string                  `json:"role"`
+	ID          string                   `json:"id"`
+	Name        string                   `json:"name"`
+	Prompt      string                   `json:"prompt"`
+	Role        string                   `json:"role"`
 	Validations []PlanningValidationSpec `json:"validations,omitempty"`
 }
 
 // PlanningValidationSpec defines a validation check to run after step completion.
 type PlanningValidationSpec struct {
-	Type          string `json:"type"` // "command", "file", or "prompt"
-	Command       string `json:"command,omitempty"`
-	Expect        string `json:"expect,omitempty"` // for command: expected exit behavior
-	StdoutRegex   string `json:"stdout_regex,omitempty"`
+	Type           string `json:"type"` // "command", "file", "directory", or "prompt"
+	Command        string `json:"command,omitempty"`
+	Expect         string `json:"expect,omitempty"` // for command: expected exit behavior
+	StdoutRegex    string `json:"stdout_regex,omitempty"`
 	StdoutContains string `json:"stdout_contains,omitempty"`
-	Path          string `json:"path,omitempty"` // for file validation
-	FileRegex     string `json:"regex,omitempty"` // for file content validation
-	PromptRole    string `json:"role,omitempty"` // for prompt validation
-	Inline        string `json:"inline,omitempty"` // for prompt validation
-	PromptPath    string `json:"prompt_path,omitempty"` // for prompt validation
+	Path           string `json:"path,omitempty"`        // for file/directory validation
+	FileRegex      string `json:"regex,omitempty"`       // for file content validation
+	PromptRole     string `json:"role,omitempty"`        // for prompt validation
+	Inline         string `json:"inline,omitempty"`      // for prompt validation
+	PromptPath     string `json:"prompt_path,omitempty"` // for prompt validation
 }
 
 // LoadPlanningSpec reads and parses the planning spec from the repository.
@@ -141,15 +141,51 @@ func validatePlanningValidations(stepID string, validations []PlanningValidation
 		if strings.TrimSpace(validation.Type) == "" {
 			return fmt.Errorf("%s type is required", label)
 		}
-		
+
 		switch validation.Type {
 		case "command":
 			if strings.TrimSpace(validation.Command) == "" {
 				return fmt.Errorf("%s command is required for type 'command'", label)
 			}
+			if err := rejectValidationFields(label, validation,
+				fieldSpec{"path", validation.Path},
+				fieldSpec{"regex", validation.FileRegex},
+				fieldSpec{"role", validation.PromptRole},
+				fieldSpec{"inline", validation.Inline},
+				fieldSpec{"prompt_path", validation.PromptPath},
+			); err != nil {
+				return err
+			}
 		case "file":
 			if strings.TrimSpace(validation.Path) == "" {
 				return fmt.Errorf("%s path is required for type 'file'", label)
+			}
+			if err := rejectValidationFields(label, validation,
+				fieldSpec{"command", validation.Command},
+				fieldSpec{"expect", validation.Expect},
+				fieldSpec{"stdout_regex", validation.StdoutRegex},
+				fieldSpec{"stdout_contains", validation.StdoutContains},
+				fieldSpec{"role", validation.PromptRole},
+				fieldSpec{"inline", validation.Inline},
+				fieldSpec{"prompt_path", validation.PromptPath},
+			); err != nil {
+				return err
+			}
+		case "directory":
+			if strings.TrimSpace(validation.Path) == "" {
+				return fmt.Errorf("%s path is required for type 'directory'", label)
+			}
+			if err := rejectValidationFields(label, validation,
+				fieldSpec{"command", validation.Command},
+				fieldSpec{"expect", validation.Expect},
+				fieldSpec{"stdout_regex", validation.StdoutRegex},
+				fieldSpec{"stdout_contains", validation.StdoutContains},
+				fieldSpec{"regex", validation.FileRegex},
+				fieldSpec{"role", validation.PromptRole},
+				fieldSpec{"inline", validation.Inline},
+				fieldSpec{"prompt_path", validation.PromptPath},
+			); err != nil {
+				return err
 			}
 		case "prompt":
 			if strings.TrimSpace(validation.Inline) == "" && strings.TrimSpace(validation.PromptPath) == "" {
@@ -158,8 +194,13 @@ func validatePlanningValidations(stepID string, validations []PlanningValidation
 			if strings.TrimSpace(validation.Inline) != "" && strings.TrimSpace(validation.PromptPath) != "" {
 				return fmt.Errorf("%s inline and prompt_path are mutually exclusive", label)
 			}
-			if strings.TrimSpace(validation.Inline) != "" && strings.TrimSpace(validation.PromptPath) != "" {
-				return fmt.Errorf("%s inline and prompt_path are mutually exclusive", label)
+			if err := rejectValidationFields(label, validation,
+				fieldSpec{"command", validation.Command},
+				fieldSpec{"expect", validation.Expect},
+				fieldSpec{"path", validation.Path},
+				fieldSpec{"regex", validation.FileRegex},
+			); err != nil {
+				return err
 			}
 		default:
 			return fmt.Errorf("%s unknown validation type %q", label, validation.Type)
@@ -168,14 +209,34 @@ func validatePlanningValidations(stepID string, validations []PlanningValidation
 	return nil
 }
 
+// fieldSpec captures a JSON field name and its string value for validation checks.
+type fieldSpec struct {
+	name  string
+	value string
+}
+
+// rejectValidationFields errors if any disallowed fields are present on a validation spec.
+func rejectValidationFields(label string, validation PlanningValidationSpec, fields ...fieldSpec) error {
+	var unexpected []string
+	for _, field := range fields {
+		if strings.TrimSpace(field.value) != "" {
+			unexpected = append(unexpected, field.name)
+		}
+	}
+	if len(unexpected) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%s unexpected fields for type %q: %s", label, validation.Type, strings.Join(unexpected, ", "))
+}
+
 // planningTaskFromSpec translates a planning spec into a planning task.
 func planningTaskFromSpec(spec PlanningSpec) (planningTask, error) {
 	ordered := make([]workstreamStep, 0, len(spec.Steps))
 	byID := make(map[string]workstreamStep, len(spec.Steps))
-	
+
 	for i, stepSpec := range spec.Steps {
 		promptPath, _ := normalizePlanningPromptPath(stepSpec.Prompt)
-		
+
 		// Determine next step ID for sequencing
 		var nextStepID string
 		if i < len(spec.Steps)-1 {
@@ -183,7 +244,7 @@ func planningTaskFromSpec(spec PlanningSpec) (planningTask, error) {
 		} else {
 			nextStepID = "execution" // Final step transitions to execution
 		}
-		
+
 		step := workstreamStep{
 			name:        stepSpec.ID,
 			displayName: stepSpec.Name,

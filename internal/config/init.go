@@ -256,8 +256,11 @@ func ensureCustomPrompts(repoRoot string, opts InitOptions) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("stat custom prompt %s: %w", path, err)
 	}
-	content := "# Global Custom Prompts\n\nUse this file to inject shared prompt fragments for reasoning or agent contracts.\n"
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	data, err := templates.Read("custom-prompts/_global.md")
+	if err != nil {
+		return fmt.Errorf("read custom prompt template custom-prompts/_global.md: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return fmt.Errorf("write custom prompt %s: %w", path, err)
 	}
 	opts.logf("created custom prompt %s", repoRelativePath(repoRoot, path))

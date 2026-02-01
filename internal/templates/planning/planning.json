@@ -9,8 +9,15 @@
       "validations": [
         {
           "type": "file",
-          "path": "_governator/docs/architecture-decision-records.md",
-          "regex": "(?m)^# Architecture Decision Records"
+          "path": "_governator/docs/arch-asr.md"
+        },
+        {
+          "type": "file",
+          "path": "_governator/docs/arch-arc42.md"
+        },
+        {
+          "type": "file",
+          "path": "_governator/docs/adr/adr*.md"
         }
       ]
     },
@@ -49,7 +56,7 @@
       "role": "planner",
       "validations": [
         {
-          "type": "file",
+          "type": "directory",
           "path": "_governator/tasks"
         }
       ]

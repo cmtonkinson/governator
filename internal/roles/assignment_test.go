@@ -37,8 +37,8 @@ func TestSelectRoleHappyPath(t *testing.T) {
 	if len(warnings) != 0 {
 		t.Fatalf("warnings = %v, want none", warnings)
 	}
-	if invoker.prompt == "" || !strings.Contains(invoker.prompt, "Input JSON:") {
-		t.Fatal("prompt should include JSON input section")
+	if invoker.prompt == "" || !strings.Contains(invoker.prompt, "\"task\"") {
+		t.Fatal("prompt should include request JSON payload")
 	}
 	if len(auditor.outcomes) != 1 {
 		t.Fatalf("audit outcomes = %d, want 1", len(auditor.outcomes))
