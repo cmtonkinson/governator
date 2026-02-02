@@ -2,6 +2,7 @@
 package run
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -76,7 +77,30 @@ func UpdatePlanningIndex(worktreePath string, step workstreamStep) error {
 	indexPath := filepath.Join(worktreePath, indexFilePath)
 	idx, err := index.Load(indexPath)
 	if err != nil {
-		return fmt.Errorf("load task index: %w", err)
+		// If index doesn't exist in worktree, create initial index
+		if errors.Is(err, os.ErrNotExist) {
+			idx = index.Index{
+				SchemaVersion: taskIndexSchemaVersion,
+				Tasks: []index.Task{
+					{
+						ID:       planningIndexTaskID,
+						Title:    "Planning",
+						Path:     planningSpecFilePath,
+						Kind:     index.TaskKindPlanning,
+						State:    index.TaskStateTriaged,
+						Retries:  index.RetryPolicy{MaxAttempts: 1},
+						Attempts: index.AttemptCounters{},
+					},
+				},
+			}
+			// Ensure directory exists
+			indexDir := filepath.Dir(indexPath)
+			if err := os.MkdirAll(indexDir, 0o755); err != nil {
+				return fmt.Errorf("create index directory: %w", err)
+			}
+		} else {
+			return fmt.Errorf("load task index: %w", err)
+		}
 	}
 
 	digestsMap, err := digests.Compute(worktreePath)

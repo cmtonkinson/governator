@@ -199,6 +199,10 @@ func TestE2EPlanning(t *testing.T) {
 		t.Fatalf("seed planning index: %v", err)
 	}
 
+	// Commit all governator setup files (matching what `governator init` does)
+	repo.RunGit(t, "add", "GOVERNATOR.md", "_governator")
+	repo.RunGit(t, "commit", "-m", "Add governator configuration")
+
 	// Run planning supervisor
 	err = run.RunPlanningSupervisor(repoRoot, run.PlanningSupervisorOptions{
 		Stdout:       os.Stdout,
