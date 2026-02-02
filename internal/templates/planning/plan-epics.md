@@ -88,7 +88,7 @@ increment by 1 for each subsequent epic.
 ### 3. Tasks
 Read and review existing tasks (except "done") for context. Where gaps were 
 identified, and now certain epics exist without all the necessary tasks required
-to implement them, create those new tasks in `_governator/task-backlog/` using
+to implement them, create those new tasks in `_governator/tasks/` using
 the standard task template at `_governator/templates/task.md`. Be sure to
 include the correct milestone and epic numbers in the YAML frontmatter.
 

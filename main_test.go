@@ -151,7 +151,6 @@ func TestInitCommand(t *testing.T) {
 		"_governator/_durable-state/migrations",
 		"_governator/docs",
 		"_governator/docs/adr",
-		"_governator/task",
 		"_governator/roles",
 		"_governator/custom-prompts",
 		"_governator/prompts",

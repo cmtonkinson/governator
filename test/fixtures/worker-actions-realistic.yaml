@@ -1,0 +1,285 @@
+# Realistic Governator Test Worker Fixtures
+# Based on actual governator-TEST planning flow
+
+rules:
+  # Planning Step 1: Architecture Baseline
+  # Matches: architecture-baseline.md prompt
+  - pattern: 'Architecture Baseline|Power Six|Architecturally Significant Requirements'
+    actions:
+      - write:
+          path: '_governator/docs/arch-asr.md'
+          content: |
+            # Architecturally Significant Requirements (ASRs)
+
+            ## ASR-1: Deterministic Ordering
+            **Requirement**: Directory listings must be deterministic and stable.
+            **Rationale**: Enables testability and reproducibility.
+
+            ## ASR-2: POSIX C-Only
+            **Requirement**: Implementation must use only POSIX C standard library.
+            **Rationale**: Portability and minimal dependencies.
+
+      - write:
+          path: '_governator/docs/arch-arc42.md'
+          content: |
+            # Architecture Overview (arc42)
+
+            ## Introduction and Goals
+            Toy ls clone for educational purposes.
+
+            ## Constraints
+            - POSIX C only
+            - No external dependencies
+
+      - write:
+          path: '_governator/docs/arch-wardley.md'
+          content: |
+            # Wardley Map
+
+            [Intentionally omitted - project scope too small for meaningful map]
+
+      - write:
+          path: '_governator/docs/arch-c4.md'
+          content: |
+            # C4 Diagrams
+
+            ## Context
+            Single binary CLI tool.
+
+      - write:
+          path: '_governator/docs/adr/adr-0001-posix-c-stdlib.md'
+          content: |
+            # ADR-0001: Use POSIX C Standard Library Only
+
+            ## Status
+            Accepted
+
+            ## Context
+            Need to choose implementation language and libraries.
+
+            ## Decision
+            Use POSIX C standard library only.
+
+            ## Consequences
+            - Highly portable
+            - No dependency management
+            - Manual memory management required
+
+      - write:
+          path: '_governator/docs/adr/adr-0002-timestamp-format.md'
+          content: |
+            # ADR-0002: Timestamp Format Policy
+
+            ## Status
+            Accepted
+
+            ## Context
+            Need consistent timestamp display format.
+
+            ## Decision
+            Use `YYYY-MM-DD HH:MM:SS` local time format.
+
+            ## Consequences
+            - Human readable
+            - Deterministic output for testing
+
+  # Planning Step 2: Gap Analysis
+  # Matches: gap-analysis.md prompt
+  - pattern: 'Gap Analysis|gap analysis|missing requirements|unresolved decisions'
+    actions:
+      - write:
+          path: '_governator/docs/gap-register.md'
+          content: |
+            # Gap Register
+
+            ## GR-001: Repository Layout
+            **Status**: Open
+            **Description**: Directory structure and build system undefined.
+
+            ## GR-002: Output Format Columns
+            **Status**: Open
+            **Description**: Column widths and padding rules not specified.
+
+            ## GR-003: Birth Time API
+            **Status**: Open
+            **Description**: Platform-specific creation time API selection needed.
+
+      - write:
+          path: '_governator/docs/gap-decision-ledger.md'
+          content: |
+            # Gap Decision Ledger
+
+            This document tracks decisions made to resolve gaps.
+
+            ## Decisions Pending
+            - GR-002: Define exact column widths
+            - GR-003: Select birth time API strategy
+
+      - write:
+          path: '_governator/docs/gap-planning-constraints.md'
+          content: |
+            # Gap-Derived Planning Constraints
+
+            ## PCA-001: POSIX-Only Scope
+            **Source**: ADR-0001
+            **Constraint**: No platform-specific code outside documented fallbacks.
+
+  # Planning Step 3: Project Planning (Roadmap)
+  # Matches: roadmap.md prompt
+  - pattern: 'Project Planning|roadmap|milestones|epics'
+    actions:
+      - write:
+          path: '_governator/docs/milestones.md'
+          content: |
+            # Project Milestones
+
+            ## Milestone m1 -- Spec Closure and Project Skeleton
+
+            ### Outcome
+            Output format, metadata policies, and build strategy defined.
+
+            ### In Scope
+            - Decide output column widths (GR-002)
+            - Decide birth-time API strategy (GR-003)
+            - Define repository layout (GR-001)
+
+            ### Acceptance Criteria
+            - [ ] ADRs exist for output format and metadata policies
+            - [ ] Repository layout and build commands defined
+
+            ## Milestone m2 -- Toyls CLI Delivery
+
+            ### Outcome
+            Working `toyls` CLI with deterministic output.
+
+            ### In Scope
+            - Implement directory listing
+            - Format output per ADRs
+            - Handle errors explicitly
+
+      - write:
+          path: '_governator/docs/epics.md'
+          content: |
+            # Project Epics
+
+            ## Milestone m1 -- Spec Closure and Project Skeleton
+
+            ### Epic E1.1 -- Output and Metadata Policy Decisions
+
+            **Goal**: Lock output format and metadata policies.
+
+            **In Scope**
+            - Define column widths and alignment (GR-002)
+            - Specify birth-time API selection (GR-003)
+
+            **Out of Scope**
+            - Implementing production code
+
+            **Definition of Done**
+            - Output format documented in ADR
+            - GR-002 and GR-003 marked resolved
+
+            ### Epic E1.2 -- Repository Layout and Test Strategy
+
+            **Goal**: Define project structure and testing approach.
+
+            **In Scope**
+            - Repository layout
+            - Build system selection
+            - Test strategy
+
+  # Planning Step 4: Task Planning
+  # Matches: task-planning.md prompt
+  - pattern: 'Task Planning|task planning|decompose epics|create tasks'
+    actions:
+      - write:
+          path: '_governator/tasks/001-output-format-contract-architect.md'
+          content: |
+            ---
+            milestone: m1
+            epic: e1.1
+            task: 001
+            depends_on: []
+            ---
+
+            # Task: Define Output Format Contract
+
+            ## Objective
+            Define and document fixed output column widths and alignment.
+
+            ## Requirements
+            - [ ] Decide exact column widths for permissions, times, name
+            - [ ] Define alignment and padding rules
+            - [ ] Record in ADR under `_governator/docs`
+
+            ## Acceptance Criteria
+            - [ ] Output-format widths explicitly documented
+            - [ ] GR-002 marked resolved
+
+      - write:
+          path: '_governator/tasks/002-metadata-error-policies-architect.md'
+          content: |
+            ---
+            milestone: m1
+            epic: e1.1
+            task: 002
+            depends_on: []
+            ---
+
+            # Task: Define Metadata and Error Policies
+
+            ## Objective
+            Specify birth-time API strategy and error handling.
+
+            ## Requirements
+            - [ ] Select birth-time API and document fallback rules
+            - [ ] Define per-entry stat error behavior
+            - [ ] Record in ADR
+
+            ## Acceptance Criteria
+            - [ ] Birth-time policy documented
+            - [ ] GR-003 marked resolved
+
+      - write:
+          path: '_governator/tasks/003-repository-layout-build-planner.md'
+          content: |
+            ---
+            milestone: m1
+            epic: e1.2
+            task: 003
+            depends_on: []
+            ---
+
+            # Task: Define Repository Layout
+
+            ## Objective
+            Establish directory structure and build system.
+
+            ## Requirements
+            - [ ] Define source directory layout
+            - [ ] Specify build command
+            - [ ] Document in planning notes
+
+            ## Acceptance Criteria
+            - [ ] Repository layout documented
+            - [ ] Build command specified
+
+  # Generic planning completion marker
+  - pattern: 'planning.*complete|task.*complete'
+    actions:
+      - write:
+          path: '_governator/docs/planning-notes.md'
+          content: |
+            # Planning Notes
+
+            ## Change Summary
+            Planning phase completed successfully.
+
+            ### Artifacts Created
+            - Architecture baseline (Power Six)
+            - Gap analysis
+            - Milestones and epics
+            - Task breakdown
+
+            ### Status
+            Ready for implementation phase.

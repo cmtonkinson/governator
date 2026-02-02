@@ -67,6 +67,9 @@ func docsDigests(repoRoot string) (map[string]string, error) {
 		if !entry.Type().IsRegular() {
 			return nil
 		}
+		if entry.Name() == ".keep" {
+			return nil
+		}
 
 		digest, err := digestFile(path)
 		if err != nil {

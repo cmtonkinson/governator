@@ -16,6 +16,9 @@ func TestComputeDigests(t *testing.T) {
 	if err := os.MkdirAll(docsDir, 0o755); err != nil {
 		t.Fatalf("mkdir plan dir: %v", err)
 	}
+	if err := os.WriteFile(filepath.Join(docsDir, ".keep"), []byte(""), 0o644); err != nil {
+		t.Fatalf("write keep: %v", err)
+	}
 	governatorContent := "governator\n"
 	if err := os.WriteFile(filepath.Join(root, "GOVERNATOR.md"), []byte(governatorContent), 0o644); err != nil {
 		t.Fatalf("write GOV: %v", err)
@@ -37,6 +40,11 @@ func TestComputeDigests(t *testing.T) {
 	relativePlan := filepath.ToSlash(filepath.Join("_governator", "docs", "roadmap.md"))
 	if got.PlanningDocs[relativePlan] != digestForString(planContent) {
 		t.Fatalf("unexpected plan digest: %s", got.PlanningDocs[relativePlan])
+	}
+	for path := range got.PlanningDocs {
+		if filepath.Base(path) == ".keep" {
+			t.Fatalf("unexpected .keep digest for %s", path)
+		}
 	}
 }
 
