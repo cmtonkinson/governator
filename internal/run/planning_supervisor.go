@@ -2,7 +2,6 @@
 package run
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,9 +13,11 @@ import (
 	"time"
 
 	"github.com/cmtonkinson/governator/internal/config"
+	"github.com/cmtonkinson/governator/internal/digests"
 	"github.com/cmtonkinson/governator/internal/index"
 	"github.com/cmtonkinson/governator/internal/inflight"
 	"github.com/cmtonkinson/governator/internal/supervisor"
+	"github.com/cmtonkinson/governator/internal/supervisorlock"
 	"github.com/cmtonkinson/governator/internal/worker"
 )
 
@@ -46,6 +47,19 @@ func RunPlanningSupervisor(repoRoot string, opts PlanningSupervisorOptions) erro
 	if stderr == nil {
 		stderr = io.Discard
 	}
+
+	if held, err := supervisorlock.Held(repoRoot, supervisor.ExecutionSupervisorLockName); err != nil {
+		return err
+	} else if held {
+		return errors.New("execution supervisor already running; stop it before starting planning")
+	}
+	lock, err := supervisorlock.Acquire(repoRoot, supervisor.PlanningSupervisorLockName)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = lock.Release()
+	}()
 
 	cfg, err := config.Load(repoRoot, nil, nil)
 	if err != nil {
@@ -84,6 +98,22 @@ func RunPlanningSupervisor(repoRoot string, opts PlanningSupervisorOptions) erro
 			return failPlanningSupervisor(repoRoot, &state, fmt.Errorf("load task index: %w", err))
 		}
 
+		inFlight, err := inFlightStore.Load()
+		if err != nil {
+			return failPlanningSupervisor(repoRoot, &state, fmt.Errorf("load in-flight tasks: %w", err))
+		}
+		if inFlight == nil {
+			inFlight = inflight.Set{}
+		}
+
+		handled, err := maybeCompletePlanningFromTasks(repoRoot, planning, &idx, inFlight)
+		if err != nil {
+			return failPlanningSupervisor(repoRoot, &state, err)
+		}
+		if handled {
+			return completePlanningSupervisor(repoRoot, &state)
+		}
+
 		complete, err := planningComplete(idx, planning)
 		if err != nil {
 			return failPlanningSupervisor(repoRoot, &state, fmt.Errorf("planning index: %w", err))
@@ -104,13 +134,6 @@ func RunPlanningSupervisor(repoRoot string, opts PlanningSupervisorOptions) erro
 			state.StepName = step.title()
 		}
 
-		inFlight, err := inFlightStore.Load()
-		if err != nil {
-			return failPlanningSupervisor(repoRoot, &state, fmt.Errorf("load in-flight tasks: %w", err))
-		}
-		if inFlight == nil {
-			inFlight = inflight.Set{}
-		}
 		if stepOK {
 			state = refreshPlanningWorkerState(state, inFlight, step)
 		}
@@ -125,6 +148,98 @@ func RunPlanningSupervisor(repoRoot string, opts PlanningSupervisorOptions) erro
 
 		time.Sleep(opts.PollInterval)
 	}
+}
+
+// maybeCompletePlanningFromTasks registers on-disk tasks and completes planning when the plan is unused.
+func maybeCompletePlanningFromTasks(repoRoot string, planning planningTask, idx *index.Index, inFlight inflight.Set) (bool, error) {
+	if idx == nil {
+		return false, errors.New("task index is required")
+	}
+	stateID, err := planningTaskState(*idx)
+	if err != nil {
+		return false, err
+	}
+	firstStepID, ok := firstPlanningStepID(planning)
+	if !ok {
+		return false, fmt.Errorf("planning spec requires at least one step")
+	}
+
+	notStarted := stateID == firstStepID && !inFlight.Contains(planningIndexTaskID)
+	alreadyComplete := stateID == PlanningCompleteState
+	if !notStarted && !alreadyComplete {
+		return false, nil
+	}
+
+	needsInventory, err := tasksMissingFromIndex(repoRoot, *idx)
+	if err != nil {
+		return false, err
+	}
+	if !needsInventory {
+		return false, nil
+	}
+
+	taskInventory := NewTaskInventory(repoRoot, idx)
+	inventoryResult, err := taskInventory.InventoryTasks()
+	if err != nil {
+		return false, fmt.Errorf("task inventory failed: %w", err)
+	}
+	if inventoryResult.TasksAdded == 0 {
+		return false, nil
+	}
+
+	updatePlanningTaskState(idx, "")
+	digestsMap, err := digests.Compute(repoRoot)
+	if err != nil {
+		return false, fmt.Errorf("compute digests: %w", err)
+	}
+	idx.Digests = digestsMap
+
+	indexPath := filepath.Join(repoRoot, indexFilePath)
+	if err := index.Save(indexPath, *idx); err != nil {
+		return false, fmt.Errorf("save task index: %w", err)
+	}
+	return true, nil
+}
+
+// tasksMissingFromIndex reports whether any on-disk task file is missing from the index.
+func tasksMissingFromIndex(repoRoot string, idx index.Index) (bool, error) {
+	tasksDir := filepath.Join(repoRoot, "_governator", "tasks")
+	if _, err := os.Stat(tasksDir); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("stat tasks directory: %w", err)
+	}
+	entries, err := os.ReadDir(tasksDir)
+	if err != nil {
+		return false, fmt.Errorf("read tasks directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		path := filepath.Join("_governator", "tasks", entry.Name())
+		found := false
+		for _, task := range idx.Tasks {
+			if task.Path == path {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// firstPlanningStepID returns the first step id from the planning spec.
+func firstPlanningStepID(planning planningTask) (string, bool) {
+	if len(planning.ordered) == 0 {
+		return "", false
+	}
+	return planning.ordered[0].name, true
 }
 
 func newPlanningSupervisorState(repoRoot string, logPath string) supervisor.PlanningSupervisorState {
@@ -162,26 +277,6 @@ func refreshPlanningWorkerState(state supervisor.PlanningSupervisorState, inFlig
 		state.WorkerPID = 0
 	}
 	return state
-}
-
-func readDispatchWrapperPID(workerStateDir string) (int, bool) {
-	if strings.TrimSpace(workerStateDir) == "" {
-		return 0, false
-	}
-	data, err := os.ReadFile(filepath.Join(workerStateDir, "dispatch.json"))
-	if err != nil {
-		return 0, false
-	}
-	var payload struct {
-		WrapperPID int `json:"wrapper_pid"`
-	}
-	if err := json.Unmarshal(data, &payload); err != nil {
-		return 0, false
-	}
-	if payload.WrapperPID <= 0 {
-		return 0, false
-	}
-	return payload.WrapperPID, true
 }
 
 func markPlanningSupervisorTransition(state supervisor.PlanningSupervisorState) supervisor.PlanningSupervisorState {

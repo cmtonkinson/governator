@@ -2,11 +2,8 @@
 package run
 
 import (
-	"errors"
 	"fmt"
-	"os"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/cmtonkinson/governator/internal/inflight"
@@ -81,22 +78,5 @@ func stopPlanningWorker(repoRoot string, state supervisor.PlanningSupervisorStat
 		return nil
 	}
 	killWorkerProcess(wrapperPID, workerStateDir, nil)
-	return nil
-}
-
-func terminateProcess(pid int) error {
-	if pid <= 0 {
-		return nil
-	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return fmt.Errorf("find supervisor pid %d: %w", pid, err)
-	}
-	if err := proc.Signal(syscall.SIGTERM); err != nil {
-		if errors.Is(err, syscall.ESRCH) {
-			return nil
-		}
-		return fmt.Errorf("terminate supervisor pid %d: %w", pid, err)
-	}
 	return nil
 }

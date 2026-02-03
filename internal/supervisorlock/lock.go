@@ -1,5 +1,5 @@
-// Package runlock provides exclusive locking for governator runs.
-package runlock
+// Package supervisorlock provides exclusive locking for governator supervisors.
+package supervisorlock
 
 import (
 	"errors"
@@ -15,36 +15,76 @@ import (
 const (
 	// localStateDirName is the relative path for transient governator state.
 	localStateDirName = "_governator/_local-state"
-	// runLockFileName is the filename used for run locking.
-	runLockFileName = "run.lock"
-	// runLockFileMode defines the permissions for the lock file.
-	runLockFileMode = 0o644
+	// lockFileMode defines the permissions for the lock file.
+	lockFileMode = 0o644
 	// localStateDirMode defines the permissions for the local state directory.
 	localStateDirMode = 0o755
 )
 
-var ErrLockHeld = errors.New("run lock already held")
+// ErrLockHeld indicates a supervisor lock is already held.
+var ErrLockHeld = errors.New("supervisor lock already held")
 
-// Lock holds the acquired run lock file handle.
+// Lock holds the acquired supervisor lock file handle.
 type Lock struct {
 	file *os.File
 	path string
 }
 
-// Acquire attempts to create and lock the run lock file for the repo.
-func Acquire(repoRoot string) (*Lock, error) {
+// Held reports whether the named supervisor lock is currently held by a live process.
+func Held(repoRoot string, name string) (bool, error) {
+	if repoRoot == "" {
+		return false, errors.New("repo root is required")
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false, errors.New("lock name is required")
+	}
+
+	lockPath := filepath.Join(repoRoot, localStateDirName, name)
+	data, err := os.ReadFile(lockPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, fmt.Errorf("read supervisor lock %s: %w", lockPath, err)
+	}
+	if len(strings.TrimSpace(string(data))) == 0 {
+		return false, nil
+	}
+
+	info, err := parseLockInfo(data)
+	if err != nil {
+		return false, fmt.Errorf("stale supervisor lock at %s: %w; remove the lock file to continue", lockPath, err)
+	}
+	active, err := processExists(info.pid)
+	if err != nil {
+		return false, fmt.Errorf("verify supervisor lock pid %d: %w", info.pid, err)
+	}
+	if !active {
+		return false, fmt.Errorf("stale supervisor lock at %s (pid %d since %s); remove the lock file to continue",
+			lockPath, info.pid, info.startedAt.Format(time.RFC3339))
+	}
+	return true, nil
+}
+
+// Acquire attempts to create and lock the named supervisor lock file for the repo.
+func Acquire(repoRoot string, name string) (*Lock, error) {
 	if repoRoot == "" {
 		return nil, errors.New("repo root is required")
 	}
-
-	lockPath := filepath.Join(repoRoot, localStateDirName, runLockFileName)
-	if err := os.MkdirAll(filepath.Dir(lockPath), localStateDirMode); err != nil {
-		return nil, fmt.Errorf("create run lock directory %s: %w", filepath.Dir(lockPath), err)
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, errors.New("lock name is required")
 	}
 
-	file, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, runLockFileMode)
+	lockPath := filepath.Join(repoRoot, localStateDirName, name)
+	if err := os.MkdirAll(filepath.Dir(lockPath), localStateDirMode); err != nil {
+		return nil, fmt.Errorf("create supervisor lock directory %s: %w", filepath.Dir(lockPath), err)
+	}
+
+	file, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, lockFileMode)
 	if err != nil {
-		return nil, fmt.Errorf("open run lock %s: %w", lockPath, err)
+		return nil, fmt.Errorf("open supervisor lock %s: %w", lockPath, err)
 	}
 
 	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
@@ -52,7 +92,7 @@ func Acquire(repoRoot string) (*Lock, error) {
 		if isLockBusy(err) {
 			return nil, fmt.Errorf("%w: %v", ErrLockHeld, formatHeldLockError(lockPath))
 		}
-		return nil, fmt.Errorf("lock run lock %s: %w", lockPath, err)
+		return nil, fmt.Errorf("lock supervisor lock %s: %w", lockPath, err)
 	}
 
 	if err := checkForStaleLock(lockPath); err != nil {
@@ -71,7 +111,23 @@ func Acquire(repoRoot string) (*Lock, error) {
 	return &Lock{file: file, path: lockPath}, nil
 }
 
-// Release unlocks and removes the run lock file.
+// Remove deletes the named supervisor lock file if it exists.
+func Remove(repoRoot string, name string) error {
+	if repoRoot == "" {
+		return errors.New("repo root is required")
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("lock name is required")
+	}
+	lockPath := filepath.Join(repoRoot, localStateDirName, name)
+	if err := os.Remove(lockPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove supervisor lock %s: %w", lockPath, err)
+	}
+	return nil
+}
+
+// Release unlocks and removes the supervisor lock file.
 func (lock *Lock) Release() error {
 	if lock == nil || lock.file == nil {
 		return nil
@@ -84,7 +140,7 @@ func (lock *Lock) Release() error {
 		return err
 	}
 	if err := os.Remove(lock.path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("remove run lock %s: %w", lock.path, err)
+		return fmt.Errorf("remove supervisor lock %s: %w", lock.path, err)
 	}
 	return nil
 }
@@ -102,7 +158,7 @@ func checkForStaleLock(lockPath string) error {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
-		return fmt.Errorf("read run lock %s: %w", lockPath, err)
+		return fmt.Errorf("read supervisor lock %s: %w", lockPath, err)
 	}
 	if len(strings.TrimSpace(string(data))) == 0 {
 		return nil
@@ -110,15 +166,15 @@ func checkForStaleLock(lockPath string) error {
 
 	info, err := parseLockInfo(data)
 	if err != nil {
-		return fmt.Errorf("stale run lock at %s: %w; remove the lock file to continue", lockPath, err)
+		return fmt.Errorf("stale supervisor lock at %s: %w; remove the lock file to continue", lockPath, err)
 	}
 
 	active, err := processExists(info.pid)
 	if err != nil {
-		return fmt.Errorf("verify run lock pid %d: %w", info.pid, err)
+		return fmt.Errorf("verify supervisor lock pid %d: %w", info.pid, err)
 	}
 	if !active {
-		return fmt.Errorf("stale run lock at %s (pid %d since %s); remove the lock file to continue",
+		return fmt.Errorf("stale supervisor lock at %s (pid %d since %s); remove the lock file to continue",
 			lockPath, info.pid, info.startedAt.Format(time.RFC3339))
 	}
 	return nil
@@ -128,13 +184,13 @@ func checkForStaleLock(lockPath string) error {
 func formatHeldLockError(lockPath string) error {
 	data, err := os.ReadFile(lockPath)
 	if err != nil {
-		return fmt.Errorf("run lock %s is already held; wait for the other process to finish", lockPath)
+		return fmt.Errorf("supervisor lock %s is already held; wait for the other process to finish", lockPath)
 	}
 	info, err := parseLockInfo(data)
 	if err != nil {
-		return fmt.Errorf("run lock %s is already held; wait for the other process to finish", lockPath)
+		return fmt.Errorf("supervisor lock %s is already held; wait for the other process to finish", lockPath)
 	}
-	return fmt.Errorf("run lock %s is already held by pid %d since %s; wait for the other process to finish",
+	return fmt.Errorf("supervisor lock %s is already held by pid %d since %s; wait for the other process to finish",
 		lockPath, info.pid, info.startedAt.Format(time.RFC3339))
 }
 
@@ -175,14 +231,14 @@ func writeLockInfo(file *os.File, info lockInfo) error {
 		return errors.New("lock file is required")
 	}
 	if err := file.Truncate(0); err != nil {
-		return fmt.Errorf("truncate run lock: %w", err)
+		return fmt.Errorf("truncate supervisor lock: %w", err)
 	}
 	if _, err := file.Seek(0, 0); err != nil {
-		return fmt.Errorf("seek run lock: %w", err)
+		return fmt.Errorf("seek supervisor lock: %w", err)
 	}
 	payload := fmt.Sprintf("pid=%d\nstarted_at=%s\n", info.pid, info.startedAt.Format(time.RFC3339))
 	if _, err := file.WriteString(payload); err != nil {
-		return fmt.Errorf("write run lock: %w", err)
+		return fmt.Errorf("write supervisor lock: %w", err)
 	}
 	return nil
 }
@@ -223,7 +279,7 @@ func releaseFileLock(file *os.File) error {
 		return nil
 	}
 	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_UN); err != nil {
-		return fmt.Errorf("unlock run lock: %w", err)
+		return fmt.Errorf("unlock supervisor lock: %w", err)
 	}
 	return nil
 }

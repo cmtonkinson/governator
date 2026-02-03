@@ -5,13 +5,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cmtonkinson/governator/internal/index"
+	"github.com/cmtonkinson/governator/internal/supervisor"
 )
 
 func TestSummaryString(t *testing.T) {
 	empty := Summary{}
-	if got := empty.String(); got != "supervisors=0\ntasks backlog=0 merged=0 in-progress=0" {
+	if got := empty.String(); got != "tasks backlog=0 merged=0 in-progress=0" {
 		t.Fatalf("empty summary string = %q", got)
 	}
 
@@ -24,9 +26,6 @@ func TestSummaryString(t *testing.T) {
 		},
 	}
 	result := withRows.String()
-	if !strings.Contains(result, "supervisors=0") {
-		t.Fatalf("summary header missing supervisors: %q", result)
-	}
 	if !strings.Contains(result, "tasks backlog=1 merged=1 in-progress=1") {
 		t.Fatalf("summary header missing counts: %q", result)
 	}
@@ -64,7 +63,7 @@ func TestGetSummary(t *testing.T) {
 		},
 	}
 
-	indexPath := filepath.Join(tempDir, "_governator", "task-index.json")
+	indexPath := filepath.Join(tempDir, "_governator", "index.json")
 	if err := index.Save(indexPath, testIndex); err != nil {
 		t.Fatalf("failed to save test index: %v", err)
 	}
@@ -104,4 +103,153 @@ func TestGetSummary(t *testing.T) {
 	if !foundAttrs {
 		t.Fatalf("blocked attribute missing from rows: %+v", summary.Rows)
 	}
+}
+
+// TestGetSummarySupervisorFiltering ensures status only reports running or failed supervisors.
+func TestGetSummarySupervisorFiltering(t *testing.T) {
+	t.Parallel()
+
+	t.Run("running_included", func(t *testing.T) {
+		t.Parallel()
+		repoRoot := t.TempDir()
+		stateDir := filepath.Join(repoRoot, "_governator")
+		if err := os.MkdirAll(stateDir, 0o755); err != nil {
+			t.Fatalf("create state dir: %v", err)
+		}
+		indexPath := filepath.Join(repoRoot, "_governator", "index.json")
+		if err := index.Save(indexPath, index.Index{SchemaVersion: 1}); err != nil {
+			t.Fatalf("save index: %v", err)
+		}
+		now := time.Now().UTC()
+		if err := supervisor.SavePlanningState(repoRoot, supervisor.PlanningSupervisorState{
+			Phase:          "planning",
+			PID:            os.Getpid(),
+			State:          supervisor.SupervisorStateRunning,
+			StartedAt:      now,
+			LastTransition: now,
+			LogPath:        supervisor.PlanningLogPath(repoRoot),
+		}); err != nil {
+			t.Fatalf("save planning state: %v", err)
+		}
+
+		summary, err := GetSummary(repoRoot)
+		if err != nil {
+			t.Fatalf("GetSummary() failed: %v", err)
+		}
+		if len(summary.Supervisors) != 1 {
+			t.Fatalf("supervisors=%d, want 1", len(summary.Supervisors))
+		}
+		if summary.Supervisors[0].State != string(supervisor.SupervisorStateRunning) {
+			t.Fatalf("state=%s, want %s", summary.Supervisors[0].State, supervisor.SupervisorStateRunning)
+		}
+		output := summary.String()
+		if !strings.Contains(output, "supervisors") {
+			t.Fatalf("expected supervisors header in output: %q", output)
+		}
+		if !strings.Contains(output, "runtime") {
+			t.Fatalf("expected runtime column in output: %q", output)
+		}
+	})
+
+	t.Run("stopped_excluded", func(t *testing.T) {
+		t.Parallel()
+		repoRoot := t.TempDir()
+		stateDir := filepath.Join(repoRoot, "_governator")
+		if err := os.MkdirAll(stateDir, 0o755); err != nil {
+			t.Fatalf("create state dir: %v", err)
+		}
+		indexPath := filepath.Join(repoRoot, "_governator", "index.json")
+		if err := index.Save(indexPath, index.Index{SchemaVersion: 1}); err != nil {
+			t.Fatalf("save index: %v", err)
+		}
+		now := time.Now().UTC()
+		if err := supervisor.SaveExecutionState(repoRoot, supervisor.ExecutionSupervisorState{
+			Phase:          "execution",
+			PID:            os.Getpid(),
+			State:          supervisor.SupervisorStateStopped,
+			StartedAt:      now,
+			LastTransition: now,
+			LogPath:        supervisor.ExecutionLogPath(repoRoot),
+		}); err != nil {
+			t.Fatalf("save execution state: %v", err)
+		}
+
+		summary, err := GetSummary(repoRoot)
+		if err != nil {
+			t.Fatalf("GetSummary() failed: %v", err)
+		}
+		if len(summary.Supervisors) != 0 {
+			t.Fatalf("supervisors=%d, want 0", len(summary.Supervisors))
+		}
+	})
+
+	t.Run("failed_included", func(t *testing.T) {
+		t.Parallel()
+		repoRoot := t.TempDir()
+		stateDir := filepath.Join(repoRoot, "_governator")
+		if err := os.MkdirAll(stateDir, 0o755); err != nil {
+			t.Fatalf("create state dir: %v", err)
+		}
+		indexPath := filepath.Join(repoRoot, "_governator", "index.json")
+		if err := index.Save(indexPath, index.Index{SchemaVersion: 1}); err != nil {
+			t.Fatalf("save index: %v", err)
+		}
+		now := time.Now().UTC()
+		if err := supervisor.SaveExecutionState(repoRoot, supervisor.ExecutionSupervisorState{
+			Phase:          "execution",
+			PID:            0,
+			State:          supervisor.SupervisorStateFailed,
+			StartedAt:      now,
+			LastTransition: now,
+			LogPath:        supervisor.ExecutionLogPath(repoRoot),
+		}); err != nil {
+			t.Fatalf("save execution state: %v", err)
+		}
+
+		summary, err := GetSummary(repoRoot)
+		if err != nil {
+			t.Fatalf("GetSummary() failed: %v", err)
+		}
+		if len(summary.Supervisors) != 1 {
+			t.Fatalf("supervisors=%d, want 1", len(summary.Supervisors))
+		}
+		if summary.Supervisors[0].State != string(supervisor.SupervisorStateFailed) {
+			t.Fatalf("state=%s, want %s", summary.Supervisors[0].State, supervisor.SupervisorStateFailed)
+		}
+	})
+
+	t.Run("stale_running_marked_failed", func(t *testing.T) {
+		t.Parallel()
+		repoRoot := t.TempDir()
+		stateDir := filepath.Join(repoRoot, "_governator")
+		if err := os.MkdirAll(stateDir, 0o755); err != nil {
+			t.Fatalf("create state dir: %v", err)
+		}
+		indexPath := filepath.Join(repoRoot, "_governator", "index.json")
+		if err := index.Save(indexPath, index.Index{SchemaVersion: 1}); err != nil {
+			t.Fatalf("save index: %v", err)
+		}
+		now := time.Now().UTC()
+		if err := supervisor.SaveExecutionState(repoRoot, supervisor.ExecutionSupervisorState{
+			Phase:          "execution",
+			PID:            999999,
+			State:          supervisor.SupervisorStateRunning,
+			StartedAt:      now,
+			LastTransition: now,
+			LogPath:        supervisor.ExecutionLogPath(repoRoot),
+		}); err != nil {
+			t.Fatalf("save execution state: %v", err)
+		}
+
+		summary, err := GetSummary(repoRoot)
+		if err != nil {
+			t.Fatalf("GetSummary() failed: %v", err)
+		}
+		if len(summary.Supervisors) != 1 {
+			t.Fatalf("supervisors=%d, want 1", len(summary.Supervisors))
+		}
+		if summary.Supervisors[0].State != string(supervisor.SupervisorStateFailed) {
+			t.Fatalf("state=%s, want %s", summary.Supervisors[0].State, supervisor.SupervisorStateFailed)
+		}
+	})
 }

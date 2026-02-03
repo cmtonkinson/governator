@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -79,21 +78,28 @@ type PlanningStepSummary struct {
 // String returns the formatted status output per flow.md.
 func (s Summary) String() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "supervisors=%d\n", len(s.Supervisors))
-	for _, supervisor := range s.Supervisors {
-		stepName := normalizeToken(supervisor.StepName)
-		fmt.Fprintf(&b, "supervisor phase=%s state=%s pid=%s step_id=%s step_name=%s worker_pid=%s validation_pid=%s started_at=%s last_transition=%s log_path=%s\n",
-			normalizeToken(supervisor.Phase),
-			normalizeToken(supervisor.State),
-			formatPID(supervisor.PID),
-			normalizeToken(supervisor.StepID),
-			strconv.Quote(stepName),
-			formatPID(supervisor.WorkerPID),
-			formatPID(supervisor.ValidationPID),
-			formatTime(supervisor.StartedAt),
-			formatTime(supervisor.LastTransition),
-			normalizeToken(supervisor.LogPath),
-		)
+	if len(s.Supervisors) > 0 {
+		fmt.Fprintln(&b, "supervisors")
+		fmt.Fprintf(&b, "%-10s %-8s %-6s %-8s %-14s %s\n", "phase", "state", "pid", "runtime", "step_id", "step_name")
+		for _, supervisor := range s.Supervisors {
+			fmt.Fprintf(&b, "%-10s %-8s %-6s %-8s %-14s %s\n",
+				normalizeToken(supervisor.Phase),
+				normalizeToken(supervisor.State),
+				formatPID(supervisor.PID),
+				formatSupervisorRuntime(supervisor.StartedAt),
+				normalizeToken(supervisor.StepID),
+				normalizeToken(supervisor.StepName),
+			)
+			fmt.Fprintf(&b, "worker_pid=%s validation_pid=%s\n",
+				formatPID(supervisor.WorkerPID),
+				formatPID(supervisor.ValidationPID),
+			)
+			fmt.Fprintf(&b, "started_at=%s last_transition=%s\n",
+				formatTime(supervisor.StartedAt),
+				formatTime(supervisor.LastTransition),
+			)
+			fmt.Fprintf(&b, "log=%s\n", normalizeToken(supervisor.LogPath))
+		}
 	}
 	if len(s.PlanningSteps) > 0 {
 		fmt.Fprintf(&b, "planning-steps=%d\n", len(s.PlanningSteps))
@@ -135,9 +141,34 @@ func (s Summary) String() string {
 	return strings.TrimSpace(b.String())
 }
 
+func formatDurationShort(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	totalSeconds := int64(d.Seconds())
+	if totalSeconds < 60 {
+		return fmt.Sprintf("%ds", totalSeconds)
+	}
+	minutes := totalSeconds / 60
+	seconds := totalSeconds % 60
+	if minutes < 60 {
+		return fmt.Sprintf("%dm%ds", minutes, seconds)
+	}
+	hours := minutes / 60
+	minutes = minutes % 60
+	return fmt.Sprintf("%dh%dm%ds", hours, minutes, seconds)
+}
+
+func formatSupervisorRuntime(startedAt time.Time) string {
+	if startedAt.IsZero() {
+		return "-"
+	}
+	return formatDurationShort(time.Since(startedAt))
+}
+
 // GetSummary reads the task index and returns a detailed summary.
 func GetSummary(repoRoot string) (Summary, error) {
-	indexPath := filepath.Join(repoRoot, "_governator", "task-index.json")
+	indexPath := filepath.Join(repoRoot, "_governator", "index.json")
 
 	idx, err := index.Load(indexPath)
 	if err != nil {
@@ -150,18 +181,62 @@ func GetSummary(repoRoot string) (Summary, error) {
 	if supervisorState, ok, err := supervisor.LoadPlanningState(repoRoot); err != nil {
 		return Summary{}, fmt.Errorf("load planning supervisor state: %w", err)
 	} else if ok {
-		summary.Supervisors = append(summary.Supervisors, SupervisorSummary{
-			Phase:          strings.TrimSpace(supervisorState.Phase),
-			State:          string(supervisorState.State),
-			PID:            supervisorState.PID,
-			WorkerPID:      supervisorState.WorkerPID,
-			ValidationPID:  supervisorState.ValidationPID,
-			StepID:         supervisorState.StepID,
-			StepName:       supervisorState.StepName,
-			StartedAt:      supervisorState.StartedAt,
-			LastTransition: supervisorState.LastTransition,
-			LogPath:        supervisorState.LogPath,
-		})
+		state := supervisorState
+		if supervisorState.State == supervisor.SupervisorStateRunning {
+			runningState, running, err := supervisor.PlanningSupervisorRunning(repoRoot)
+			if err != nil {
+				return Summary{}, fmt.Errorf("check planning supervisor: %w", err)
+			}
+			if running {
+				state = runningState
+			} else {
+				state.State = supervisor.SupervisorStateFailed
+			}
+		}
+		if state.State == supervisor.SupervisorStateRunning || state.State == supervisor.SupervisorStateFailed {
+			summary.Supervisors = append(summary.Supervisors, SupervisorSummary{
+				Phase:          strings.TrimSpace(state.Phase),
+				State:          string(state.State),
+				PID:            state.PID,
+				WorkerPID:      state.WorkerPID,
+				ValidationPID:  state.ValidationPID,
+				StepID:         state.StepID,
+				StepName:       state.StepName,
+				StartedAt:      state.StartedAt,
+				LastTransition: state.LastTransition,
+				LogPath:        state.LogPath,
+			})
+		}
+	}
+	if supervisorState, ok, err := supervisor.LoadExecutionState(repoRoot); err != nil {
+		return Summary{}, fmt.Errorf("load execution supervisor state: %w", err)
+	} else if ok {
+		state := supervisorState
+		if supervisorState.State == supervisor.SupervisorStateRunning {
+			runningState, running, err := supervisor.ExecutionSupervisorRunning(repoRoot)
+			if err != nil {
+				return Summary{}, fmt.Errorf("check execution supervisor: %w", err)
+			}
+			if running {
+				state = runningState
+			} else {
+				state.State = supervisor.SupervisorStateFailed
+			}
+		}
+		if state.State == supervisor.SupervisorStateRunning || state.State == supervisor.SupervisorStateFailed {
+			summary.Supervisors = append(summary.Supervisors, SupervisorSummary{
+				Phase:          strings.TrimSpace(state.Phase),
+				State:          string(state.State),
+				PID:            state.PID,
+				WorkerPID:      state.WorkerPID,
+				ValidationPID:  state.ValidationPID,
+				StepID:         state.StepID,
+				StepName:       state.StepName,
+				StartedAt:      state.StartedAt,
+				LastTransition: state.LastTransition,
+				LogPath:        state.LogPath,
+			})
+		}
 	}
 
 	for _, task := range idx.Tasks {

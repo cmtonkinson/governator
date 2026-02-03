@@ -1,5 +1,5 @@
-// Tests for run lock acquisition and stale handling.
-package runlock
+// Tests for supervisor lock acquisition and stale handling.
+package supervisorlock
 
 import (
 	"bufio"
@@ -14,16 +14,16 @@ import (
 	"time"
 )
 
-// TestAcquireReleaseLock verifies a single run acquires and releases the lock.
+// TestAcquireReleaseLock verifies a single supervisor acquires and releases the lock.
 func TestAcquireReleaseLock(t *testing.T) {
 	dir := t.TempDir()
 
-	lock, err := Acquire(dir)
+	lock, err := Acquire(dir, "planning_supervisor.lock")
 	if err != nil {
 		t.Fatalf("acquire lock: %v", err)
 	}
 
-	lockPath := filepath.Join(dir, localStateDirName, runLockFileName)
+	lockPath := filepath.Join(dir, localStateDirName, "planning_supervisor.lock")
 	data, err := os.ReadFile(lockPath)
 	if err != nil {
 		t.Fatalf("read lock file: %v", err)
@@ -43,12 +43,58 @@ func TestAcquireReleaseLock(t *testing.T) {
 	}
 }
 
-// TestAcquireLockContention ensures a second run reports the active lock.
+// TestHeldReportsActiveLock verifies Held reports active locks and clears after release.
+func TestHeldReportsActiveLock(t *testing.T) {
+	dir := t.TempDir()
+	lock, err := Acquire(dir, "planning_supervisor.lock")
+	if err != nil {
+		t.Fatalf("acquire lock: %v", err)
+	}
+	held, err := Held(dir, "planning_supervisor.lock")
+	if err != nil {
+		t.Fatalf("held check: %v", err)
+	}
+	if !held {
+		t.Fatal("expected lock to be held")
+	}
+	if err := lock.Release(); err != nil {
+		t.Fatalf("release lock: %v", err)
+	}
+	held, err = Held(dir, "planning_supervisor.lock")
+	if err != nil {
+		t.Fatalf("held check after release: %v", err)
+	}
+	if held {
+		t.Fatal("expected lock to be released")
+	}
+}
+
+// TestHeldReportsStaleLock verifies Held rejects stale locks.
+func TestHeldReportsStaleLock(t *testing.T) {
+	dir := t.TempDir()
+	lockPath := filepath.Join(dir, localStateDirName, "planning_supervisor.lock")
+	if err := os.MkdirAll(filepath.Dir(lockPath), localStateDirMode); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	info := lockInfo{pid: 999999, startedAt: time.Now().UTC().Add(-time.Hour)}
+	if err := os.WriteFile(lockPath, []byte(fmt.Sprintf("pid=%d\nstarted_at=%s\n", info.pid, info.startedAt.Format(time.RFC3339))), lockFileMode); err != nil {
+		t.Fatalf("write stale lock: %v", err)
+	}
+	held, err := Held(dir, "planning_supervisor.lock")
+	if err == nil {
+		t.Fatalf("expected stale lock error, got held=%v", held)
+	}
+	if !strings.Contains(err.Error(), "stale supervisor lock") {
+		t.Fatalf("expected stale lock guidance, got %v", err)
+	}
+}
+
+// TestAcquireLockContention ensures a second supervisor reports the active lock.
 func TestAcquireLockContention(t *testing.T) {
 	dir := t.TempDir()
-	lockPath := filepath.Join(dir, localStateDirName, runLockFileName)
+	lockPath := filepath.Join(dir, localStateDirName, "execution_supervisor.lock")
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestRunLockHelperProcess", "--", dir)
+	cmd := exec.Command(os.Args[0], "-test.run=TestSupervisorLockHelperProcess", "--", dir)
 	cmd.Env = append(os.Environ(), "GO_WANT_HELPER_PROCESS=1")
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -77,7 +123,7 @@ func TestAcquireLockContention(t *testing.T) {
 		t.Fatalf("expected lock file to exist: %v", err)
 	}
 
-	_, err = Acquire(dir)
+	_, err = Acquire(dir, "execution_supervisor.lock")
 	if err == nil {
 		t.Fatalf("expected lock contention error, got nil")
 	}
@@ -94,27 +140,27 @@ func TestAcquireLockContention(t *testing.T) {
 // TestAcquireStaleLock ensures stale locks provide operator guidance.
 func TestAcquireStaleLock(t *testing.T) {
 	dir := t.TempDir()
-	lockPath := filepath.Join(dir, localStateDirName, runLockFileName)
+	lockPath := filepath.Join(dir, localStateDirName, "execution_supervisor.lock")
 	if err := os.MkdirAll(filepath.Dir(lockPath), localStateDirMode); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 
 	info := lockInfo{pid: 999999, startedAt: time.Now().UTC().Add(-time.Hour)}
-	if err := os.WriteFile(lockPath, []byte(fmt.Sprintf("pid=%d\nstarted_at=%s\n", info.pid, info.startedAt.Format(time.RFC3339))), runLockFileMode); err != nil {
+	if err := os.WriteFile(lockPath, []byte(fmt.Sprintf("pid=%d\nstarted_at=%s\n", info.pid, info.startedAt.Format(time.RFC3339))), lockFileMode); err != nil {
 		t.Fatalf("write stale lock: %v", err)
 	}
 
-	_, err := Acquire(dir)
+	_, err := Acquire(dir, "execution_supervisor.lock")
 	if err == nil {
 		t.Fatalf("expected stale lock error, got nil")
 	}
-	if !strings.Contains(err.Error(), "stale run lock") {
+	if !strings.Contains(err.Error(), "stale supervisor lock") {
 		t.Fatalf("expected stale lock guidance, got %v", err)
 	}
 }
 
-// TestRunLockHelperProcess holds the lock to simulate contention.
-func TestRunLockHelperProcess(t *testing.T) {
+// TestSupervisorLockHelperProcess holds the lock to simulate contention.
+func TestSupervisorLockHelperProcess(t *testing.T) {
 	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
 		return
 	}
@@ -123,7 +169,7 @@ func TestRunLockHelperProcess(t *testing.T) {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(2)
 	}
-	lock, err := Acquire(root)
+	lock, err := Acquire(root, "execution_supervisor.lock")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "lock helper failed: %v\n", err)
 		os.Exit(2)

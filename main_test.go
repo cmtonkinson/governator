@@ -261,7 +261,7 @@ func TestStatusCommand(t *testing.T) {
 		}
 
 		// Write empty index file
-		indexPath := filepath.Join(stateDir, "task-index.json")
+		indexPath := filepath.Join(stateDir, "index.json")
 		emptyIndex := `{"schema_version":1,"tasks":[]}`
 		if err := os.WriteFile(indexPath, []byte(emptyIndex), 0644); err != nil {
 			t.Fatalf("Failed to write empty index: %v", err)
@@ -275,7 +275,7 @@ func TestStatusCommand(t *testing.T) {
 		}
 
 		outputStr := strings.TrimSpace(string(output))
-		expected := "supervisors=0\ntasks backlog=0 merged=0 in-progress=0"
+		expected := "tasks backlog=0 merged=0 in-progress=0"
 		if outputStr != expected {
 			t.Errorf("Expected %q, got %q", expected, outputStr)
 		}
@@ -283,7 +283,7 @@ func TestStatusCommand(t *testing.T) {
 
 	t.Run("status with populated index", func(t *testing.T) {
 		// Create a populated task index
-		indexPath := filepath.Join(tempDir, "_governator", "task-index.json")
+		indexPath := filepath.Join(tempDir, "_governator", "index.json")
 		populatedIndex := `{
 				"schema_version": 1,
 				"tasks": [
@@ -308,9 +308,6 @@ func TestStatusCommand(t *testing.T) {
 		}
 
 		outputStr := strings.TrimSpace(string(output))
-		if !strings.Contains(outputStr, "supervisors=0") {
-			t.Fatalf("expected supervisors line in output, got %q", outputStr)
-		}
 		if !strings.Contains(outputStr, "tasks backlog=0 merged=2 in-progress=5") {
 			t.Fatalf("expected counts line in output, got %q", outputStr)
 		}

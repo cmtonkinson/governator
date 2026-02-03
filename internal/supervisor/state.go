@@ -17,8 +17,18 @@ const (
 	planningSupervisorDirName   = "planning_supervisor"
 	planningSupervisorStateFile = "state.json"
 	planningSupervisorLogFile   = "supervisor.log"
+	executionSupervisorDirName   = "execution_supervisor"
+	executionSupervisorStateFile = "state.json"
+	executionSupervisorLogFile   = "supervisor.log"
 	planningSupervisorDirMode   = 0o755
 	planningSupervisorFileMode  = 0o644
+)
+
+const (
+	// PlanningSupervisorLockName is the lockfile name for planning supervision.
+	PlanningSupervisorLockName = "planning_supervisor.lock"
+	// ExecutionSupervisorLockName is the lockfile name for execution supervision.
+	ExecutionSupervisorLockName = "execution_supervisor.lock"
 )
 
 // SupervisorState labels the lifecycle state for a supervisor.
@@ -51,8 +61,27 @@ type PlanningSupervisorState struct {
 	WorkerStateDir string          `json:"worker_state_dir,omitempty"`
 }
 
+// ExecutionSupervisorState captures persisted execution supervisor metadata.
+type ExecutionSupervisorState struct {
+	Phase          string          `json:"phase"`
+	PID            int             `json:"pid"`
+	WorkerPID      int             `json:"worker_pid,omitempty"`
+	ValidationPID  int             `json:"validation_pid,omitempty"`
+	StepID         string          `json:"step_id,omitempty"`
+	StepName       string          `json:"step_name,omitempty"`
+	State          SupervisorState `json:"state"`
+	StartedAt      time.Time       `json:"started_at"`
+	LastTransition time.Time       `json:"last_transition"`
+	LogPath        string          `json:"log_path,omitempty"`
+	Error          string          `json:"error,omitempty"`
+	WorkerStateDir string          `json:"worker_state_dir,omitempty"`
+}
+
 // ErrPlanningSupervisorNotRunning indicates no planning supervisor is active.
 var ErrPlanningSupervisorNotRunning = errors.New("planning supervisor not running")
+
+// ErrExecutionSupervisorNotRunning indicates no execution supervisor is active.
+var ErrExecutionSupervisorNotRunning = errors.New("execution supervisor not running")
 
 // PlanningStatePath returns the path to the planning supervisor state file.
 func PlanningStatePath(repoRoot string) string {
@@ -62,6 +91,16 @@ func PlanningStatePath(repoRoot string) string {
 // PlanningLogPath returns the path to the planning supervisor log file.
 func PlanningLogPath(repoRoot string) string {
 	return filepath.Join(repoRoot, localStateDirName, planningSupervisorDirName, planningSupervisorLogFile)
+}
+
+// ExecutionStatePath returns the path to the execution supervisor state file.
+func ExecutionStatePath(repoRoot string) string {
+	return filepath.Join(repoRoot, localStateDirName, executionSupervisorDirName, executionSupervisorStateFile)
+}
+
+// ExecutionLogPath returns the path to the execution supervisor log file.
+func ExecutionLogPath(repoRoot string) string {
+	return filepath.Join(repoRoot, localStateDirName, executionSupervisorDirName, executionSupervisorLogFile)
 }
 
 // LoadPlanningState reads the planning supervisor state when present.
@@ -87,6 +126,29 @@ func LoadPlanningState(repoRoot string) (PlanningSupervisorState, bool, error) {
 	return state, true, nil
 }
 
+// LoadExecutionState reads the execution supervisor state when present.
+func LoadExecutionState(repoRoot string) (ExecutionSupervisorState, bool, error) {
+	if strings.TrimSpace(repoRoot) == "" {
+		return ExecutionSupervisorState{}, false, errors.New("repo root is required")
+	}
+	path := ExecutionStatePath(repoRoot)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return ExecutionSupervisorState{}, false, nil
+		}
+		return ExecutionSupervisorState{}, false, fmt.Errorf("read execution supervisor state %s: %w", path, err)
+	}
+	if len(strings.TrimSpace(string(data))) == 0 {
+		return ExecutionSupervisorState{}, false, nil
+	}
+	var state ExecutionSupervisorState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return ExecutionSupervisorState{}, false, fmt.Errorf("decode execution supervisor state %s: %w", path, err)
+	}
+	return state, true, nil
+}
+
 // SavePlanningState persists the planning supervisor state to disk.
 func SavePlanningState(repoRoot string, state PlanningSupervisorState) error {
 	if strings.TrimSpace(repoRoot) == "" {
@@ -107,6 +169,26 @@ func SavePlanningState(repoRoot string, state PlanningSupervisorState) error {
 	return nil
 }
 
+// SaveExecutionState persists the execution supervisor state to disk.
+func SaveExecutionState(repoRoot string, state ExecutionSupervisorState) error {
+	if strings.TrimSpace(repoRoot) == "" {
+		return errors.New("repo root is required")
+	}
+	path := ExecutionStatePath(repoRoot)
+	if err := os.MkdirAll(filepath.Dir(path), planningSupervisorDirMode); err != nil {
+		return fmt.Errorf("create execution supervisor directory %s: %w", filepath.Dir(path), err)
+	}
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode execution supervisor state: %w", err)
+	}
+	data = append(data, '\n')
+	if err := os.WriteFile(path, data, planningSupervisorFileMode); err != nil {
+		return fmt.Errorf("write execution supervisor state %s: %w", path, err)
+	}
+	return nil
+}
+
 // ClearPlanningState removes persisted planning supervisor state and logs.
 func ClearPlanningState(repoRoot string) error {
 	if strings.TrimSpace(repoRoot) == "" {
@@ -115,6 +197,18 @@ func ClearPlanningState(repoRoot string) error {
 	dir := filepath.Join(repoRoot, localStateDirName, planningSupervisorDirName)
 	if err := os.RemoveAll(dir); err != nil {
 		return fmt.Errorf("remove planning supervisor state %s: %w", dir, err)
+	}
+	return nil
+}
+
+// ClearExecutionState removes persisted execution supervisor state and logs.
+func ClearExecutionState(repoRoot string) error {
+	if strings.TrimSpace(repoRoot) == "" {
+		return errors.New("repo root is required")
+	}
+	dir := filepath.Join(repoRoot, localStateDirName, executionSupervisorDirName)
+	if err := os.RemoveAll(dir); err != nil {
+		return fmt.Errorf("remove execution supervisor state %s: %w", dir, err)
 	}
 	return nil
 }
@@ -133,6 +227,44 @@ func PlanningSupervisorRunning(repoRoot string) (PlanningSupervisorState, bool, 
 		return state, false, err
 	}
 	return state, alive, nil
+}
+
+// ExecutionSupervisorRunning reports whether an execution supervisor process is active.
+func ExecutionSupervisorRunning(repoRoot string) (ExecutionSupervisorState, bool, error) {
+	state, ok, err := LoadExecutionState(repoRoot)
+	if err != nil {
+		return ExecutionSupervisorState{}, false, err
+	}
+	if !ok || state.PID <= 0 {
+		return state, false, nil
+	}
+	alive, err := processExists(state.PID)
+	if err != nil {
+		return state, false, err
+	}
+	return state, alive, nil
+}
+
+// AnySupervisorRunning reports whether any supervisor process is active.
+func AnySupervisorRunning(repoRoot string) (string, bool, error) {
+	planningState, planningRunning, err := PlanningSupervisorRunning(repoRoot)
+	if err != nil {
+		return "", false, err
+	}
+	executionState, executionRunning, err := ExecutionSupervisorRunning(repoRoot)
+	if err != nil {
+		return "", false, err
+	}
+	if planningRunning && executionRunning {
+		return "", false, fmt.Errorf("multiple supervisors detected: planning pid %d, execution pid %d", planningState.PID, executionState.PID)
+	}
+	if planningRunning {
+		return "planning", true, nil
+	}
+	if executionRunning {
+		return "execution", true, nil
+	}
+	return "", false, nil
 }
 
 func processExists(pid int) (bool, error) {

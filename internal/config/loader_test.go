@@ -21,9 +21,6 @@ func TestLoadConfigPrecedence(t *testing.T) {
   "concurrency": {
     "global": 2
   },
-  "auto_rerun": {
-    "enabled": true
-  },
   "timeouts": {
     "worker_seconds": 300
   },
@@ -47,9 +44,6 @@ func TestLoadConfigPrecedence(t *testing.T) {
 		"concurrency": map[string]any{
 			"global": 4,
 		},
-		"auto_rerun": map[string]any{
-			"enabled": false,
-		},
 	}
 
 	cfg, err := Load(repoRoot, cliOverrides, nil)
@@ -62,9 +56,6 @@ func TestLoadConfigPrecedence(t *testing.T) {
 	}
 	if cfg.Timeouts.WorkerSeconds != 120 {
 		t.Fatalf("timeouts.worker_seconds = %d, want 120", cfg.Timeouts.WorkerSeconds)
-	}
-	if cfg.AutoRerun.Enabled {
-		t.Fatal("auto_rerun.enabled should be false after CLI override")
 	}
 	if len(cfg.Workers.Commands.Default) != 2 || cfg.Workers.Commands.Default[0] != "user" {
 		t.Fatalf("workers.commands.default should come from user defaults, got %v", cfg.Workers.Commands.Default)

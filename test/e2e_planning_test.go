@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cmtonkinson/governator/internal/config"
+	"github.com/cmtonkinson/governator/internal/index"
 	"github.com/cmtonkinson/governator/internal/run"
 	"github.com/cmtonkinson/governator/internal/testrepos"
 )
@@ -71,10 +72,6 @@ func TestE2EPlanning(t *testing.T) {
 		},
 		Retries: config.RetriesConfig{
 			MaxAttempts: 1, // No retries in tests
-		},
-		AutoRerun: config.AutoRerunConfig{
-			Enabled:         false,
-			CooldownSeconds: 0,
 		},
 		Branches: config.BranchConfig{
 			Base: "main",
@@ -366,6 +363,30 @@ func TestE2EPlanning(t *testing.T) {
 		}
 		assertContains(t, string(task001), "milestone: m1")
 		assertContains(t, string(task001), "Define Output Format Contract")
+	})
+
+	// Verify task inventory updated the execution index after planning completes.
+	t.Run("task_inventory_indexed", func(t *testing.T) {
+		indexPath := filepath.Join(repoRoot, "_governator", "index.json")
+		idx, err := index.Load(indexPath)
+		if err != nil {
+			t.Fatalf("load task index: %v", err)
+		}
+
+		expectedIDs := []string{
+			"001-output-format-contract-architect",
+			"002-metadata-error-policies-architect",
+			"003-repository-layout-build-planner",
+		}
+		taskByID := make(map[string]index.Task, len(idx.Tasks))
+		for _, task := range idx.Tasks {
+			taskByID[task.ID] = task
+		}
+		for _, id := range expectedIDs {
+			if _, ok := taskByID[id]; !ok {
+				t.Fatalf("task %s missing from index.json", id)
+			}
+		}
 	})
 
 	t.Logf("E2E planning test completed successfully in %s", repoRoot)

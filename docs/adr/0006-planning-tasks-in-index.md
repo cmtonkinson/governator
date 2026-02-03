@@ -16,7 +16,7 @@ execution begins.
 We will:
 
 - add `Task.Kind` with explicit values `planning` and `execution`,
-- seed planning steps as `planning` tasks in `_governator/task-index.json`
+- seed planning steps as `planning` tasks in `_governator/index.json`
   during `init`, and
 - assign worktree-safe planning task IDs (for example,
   `planning-architecture-baseline`), and

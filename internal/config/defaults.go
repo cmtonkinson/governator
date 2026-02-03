@@ -8,8 +8,6 @@ const (
 	defaultConcurrencyDefaultRole = 1
 	defaultWorkerTimeoutSeconds   = 900
 	defaultRetriesMaxAttempts     = 2
-	defaultAutoRerunEnabled       = false
-	defaultAutoRerunCooldown      = 60
 	defaultBranchBase             = "main"
 )
 
@@ -30,8 +28,6 @@ var defaultWorkerCommand = []string{
 // - concurrency.roles: {}
 // - timeouts.worker_seconds: 900
 // - retries.max_attempts: 2
-// - auto_rerun.enabled: false
-// - auto_rerun.cooldown_seconds: 60
 func Defaults() Config {
 	return Config{
 		Workers: WorkersConfig{
@@ -50,10 +46,6 @@ func Defaults() Config {
 		},
 		Retries: RetriesConfig{
 			MaxAttempts: defaultRetriesMaxAttempts,
-		},
-		AutoRerun: AutoRerunConfig{
-			Enabled:         defaultAutoRerunEnabled,
-			CooldownSeconds: defaultAutoRerunCooldown,
 		},
 		Branches: BranchConfig{
 			Base: defaultBranchBase,
@@ -108,12 +100,6 @@ func ApplyDefaults(cfg Config, warn func(string)) Config {
 		cfg.Retries.MaxAttempts,
 		defaults.Retries.MaxAttempts,
 		"retries.max_attempts",
-		warn,
-	)
-	cfg.AutoRerun.CooldownSeconds = normalizePositiveInt(
-		cfg.AutoRerun.CooldownSeconds,
-		defaults.AutoRerun.CooldownSeconds,
-		"auto_rerun.cooldown_seconds",
 		warn,
 	)
 	cfg.Branches.Base = normalizeBranchBase(

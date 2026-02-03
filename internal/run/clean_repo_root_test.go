@@ -14,7 +14,7 @@ func TestEnsureCleanRepoRootIgnoresPlanningIndex(t *testing.T) {
 	if err := runGitInRepo(repoDir, "init"); err != nil {
 		t.Fatalf("init repo: %v", err)
 	}
-	taskIndexPath := filepath.Join(repoDir, "_governator", "task-index.json")
+	taskIndexPath := filepath.Join(repoDir, "_governator", "index.json")
 	if err := os.MkdirAll(filepath.Dir(taskIndexPath), 0o755); err != nil {
 		t.Fatalf("create task index dir: %v", err)
 	}

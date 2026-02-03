@@ -127,6 +127,11 @@ func (controller *planningController) Advance(step workstreamStep, collect works
 			return false, fmt.Errorf("planning completion requires at least one task file in _governator/tasks")
 		}
 
+		indexPath := filepath.Join(controller.runner.repoRoot, indexFilePath)
+		if err := index.Save(indexPath, *controller.idx); err != nil {
+			return false, fmt.Errorf("save task index: %w", err)
+		}
+
 		controller.runner.logf("Task inventory completed: added %d tasks to execution backlog", inventoryResult.TasksAdded)
 
 		// Clear planning state to indicate completion

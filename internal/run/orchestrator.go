@@ -22,13 +22,15 @@ import (
 
 const (
 	// indexFilePath is the relative path to the task index file.
-	indexFilePath = "_governator/task-index.json"
+	indexFilePath = "_governator/index.json"
 )
 
 // Options defines the configuration for a run execution.
 type Options struct {
 	Stdout io.Writer
 	Stderr io.Writer
+	// DisableDispatch prevents new work from dispatching while allowing in-flight collection.
+	DisableDispatch bool
 }
 
 // Result captures the outcome of a run execution.
@@ -108,23 +110,6 @@ func Run(repoRoot string, opts Options) (Result, error) {
 	auditor, err := audit.NewLogger(repoRoot, opts.Stderr)
 	if err != nil {
 		return Result{}, fmt.Errorf("create audit logger: %w", err)
-	}
-
-	var guard *SelfRunGuard
-	if cfg.AutoRerun.Enabled {
-		guard = newSelfRunGuard(repoRoot, cfg.AutoRerun, auditor)
-		guardOutcome, err := guard.EnsureAllowed()
-		if err != nil {
-			return Result{}, fmt.Errorf("run guard: %w", err)
-		}
-		if !guardOutcome.Allowed {
-			return Result{Message: guardOutcome.Message}, nil
-		}
-		defer func() {
-			if releaseErr := guard.Release(); releaseErr != nil {
-				fmt.Fprintf(opts.Stderr, "Warning: failed to release run guard: %v\n", releaseErr)
-			}
-		}()
 	}
 
 	// Detect resume candidates
@@ -405,6 +390,9 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 	}
 
 	adjustedCaps := adjustCapsForInFlight(caps, *idx, inFlight)
+	if opts.DisableDispatch {
+		return result, nil
+	}
 	selectedTasks, err := selectTasksForStage(*idx, adjustedCaps, inFlight, index.TaskStateTriaged)
 	if err != nil {
 		return result, fmt.Errorf("schedule work tasks: %w", err)
@@ -749,6 +737,9 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 	}
 
 	adjustedCaps := adjustCapsForInFlight(caps, *idx, inFlight)
+	if opts.DisableDispatch {
+		return result, nil
+	}
 	selectedTasks, err := selectTasksForStage(*idx, adjustedCaps, inFlight, index.TaskStateImplemented)
 	if err != nil {
 		return result, fmt.Errorf("schedule test tasks: %w", err)
@@ -1095,6 +1086,9 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 	}
 
 	adjustedCaps := adjustCapsForInFlight(caps, *idx, inFlight)
+	if opts.DisableDispatch {
+		return result, nil
+	}
 	selectedTasks, err := selectTasksForStage(*idx, adjustedCaps, inFlight, index.TaskStateTested)
 	if err != nil {
 		return result, fmt.Errorf("schedule review tasks: %w", err)
@@ -1384,6 +1378,9 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 	}
 
 	adjustedCaps := adjustCapsForInFlight(caps, *idx, inFlight)
+	if opts.DisableDispatch {
+		return result, nil
+	}
 	selectedTasks, err := selectTasksForStage(*idx, adjustedCaps, inFlight, index.TaskStateConflict)
 	if err != nil {
 		return result, fmt.Errorf("schedule conflict resolution tasks: %w", err)
@@ -1986,6 +1983,9 @@ type BranchStageResult struct {
 // EnsureBranchesForOpenTasks creates branches for tasks in the open state.
 func EnsureBranchesForOpenTasks(repoRoot string, idx *index.Index, auditor *audit.Logger, opts Options, baseBranch string) (BranchStageResult, error) {
 	result := BranchStageResult{}
+	if opts.DisableDispatch {
+		return result, nil
+	}
 
 	// Find tasks in open state
 	var openTasks []index.Task

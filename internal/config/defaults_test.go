@@ -24,12 +24,6 @@ func TestDefaultsDocumentedValues(t *testing.T) {
 	if got, want := cfg.Retries.MaxAttempts, defaultRetriesMaxAttempts; got != want {
 		t.Fatalf("retries.max_attempts = %d, want %d", got, want)
 	}
-	if got, want := cfg.AutoRerun.CooldownSeconds, defaultAutoRerunCooldown; got != want {
-		t.Fatalf("auto_rerun.cooldown_seconds = %d, want %d", got, want)
-	}
-	if cfg.AutoRerun.Enabled != defaultAutoRerunEnabled {
-		t.Fatalf("auto_rerun.enabled = %v, want %v", cfg.AutoRerun.Enabled, defaultAutoRerunEnabled)
-	}
 	if len(cfg.Workers.Commands.Default) == 0 {
 		t.Fatal("workers.commands.default should not be empty")
 	}
@@ -84,10 +78,6 @@ func TestApplyDefaultsInvalidValues(t *testing.T) {
 		Retries: RetriesConfig{
 			MaxAttempts: -1,
 		},
-		AutoRerun: AutoRerunConfig{
-			Enabled:         true,
-			CooldownSeconds: -5,
-		},
 		Branches: BranchConfig{
 			Base: "",
 		},
@@ -127,9 +117,6 @@ func TestApplyDefaultsInvalidValues(t *testing.T) {
 	if normalized.Retries.MaxAttempts != defaultRetriesMaxAttempts {
 		t.Fatal("retries.max_attempts should fall back to default")
 	}
-	if normalized.AutoRerun.CooldownSeconds != defaultAutoRerunCooldown {
-		t.Fatal("auto_rerun.cooldown_seconds should fall back to default")
-	}
 	if len(warnings) == 0 {
 		t.Fatal("expected warnings for invalid values")
 	}
@@ -142,9 +129,6 @@ func TestApplyDefaultsInvalidValues(t *testing.T) {
 	if !warningsContain(warnings, "concurrency.global") {
 		t.Fatal("expected warning for concurrency.global")
 	}
-	if !warningsContain(warnings, "auto_rerun.cooldown_seconds") {
-		t.Fatal("expected warning for auto_rerun.cooldown_seconds")
-	}
 	if !warningsContain(warnings, "branches.base") {
 		t.Fatal("expected warning for branches.base")
 	}
@@ -155,9 +139,7 @@ func configsEqual(left Config, right Config) bool {
 	if left.Concurrency.Global != right.Concurrency.Global ||
 		left.Concurrency.DefaultRole != right.Concurrency.DefaultRole ||
 		left.Timeouts.WorkerSeconds != right.Timeouts.WorkerSeconds ||
-		left.Retries.MaxAttempts != right.Retries.MaxAttempts ||
-		left.AutoRerun.Enabled != right.AutoRerun.Enabled ||
-		left.AutoRerun.CooldownSeconds != right.AutoRerun.CooldownSeconds {
+		left.Retries.MaxAttempts != right.Retries.MaxAttempts {
 		return false
 	}
 	if left.Branches.Base != right.Branches.Base {

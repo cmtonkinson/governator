@@ -47,7 +47,7 @@ func TestRunHappyPathWithResume(t *testing.T) {
 	}
 
 	// Save the index
-	indexPath := filepath.Join(repoRoot, "_governator/task-index.json")
+	indexPath := filepath.Join(repoRoot, "_governator/index.json")
 	if err := index.Save(indexPath, idx); err != nil {
 		t.Fatalf("save index: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestRunBlocksTasksExceedingRetryLimit(t *testing.T) {
 	}
 
 	// Save the index
-	indexPath := filepath.Join(repoRoot, "_governator/task-index.json")
+	indexPath := filepath.Join(repoRoot, "_governator/index.json")
 	if err := index.Save(indexPath, idx); err != nil {
 		t.Fatalf("save index: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestRunNoResumeCandidates(t *testing.T) {
 	}
 
 	// Save the index
-	indexPath := filepath.Join(repoRoot, "_governator/task-index.json")
+	indexPath := filepath.Join(repoRoot, "_governator/index.json")
 	if err := index.Save(indexPath, idx); err != nil {
 		t.Fatalf("save index: %v", err)
 	}
@@ -263,7 +263,7 @@ func TestRunPlanningDriftMessage(t *testing.T) {
 		Tasks:         mergedPlanningTasks(t, repoRoot),
 	}
 
-	indexPath := filepath.Join(repoRoot, "_governator/task-index.json")
+	indexPath := filepath.Join(repoRoot, "_governator/index.json")
 	if err := index.Save(indexPath, idx); err != nil {
 		t.Fatalf("save index: %v", err)
 	}
@@ -366,10 +366,6 @@ func setupTestRepoWithConfig(t *testing.T) string {
 		},
 		"retries": {
 			"max_attempts": 3
-		},
-		"auto_rerun": {
-			"enabled": false,
-			"cooldown_seconds": 60
 		}
 	}`
 

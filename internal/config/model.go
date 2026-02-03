@@ -9,7 +9,6 @@ type Config struct {
 	Concurrency    ConcurrencyConfig     `json:"concurrency"`
 	Timeouts       TimeoutsConfig        `json:"timeouts"`
 	Retries        RetriesConfig         `json:"retries"`
-	AutoRerun      AutoRerunConfig       `json:"auto_rerun"`
 	Branches       BranchConfig          `json:"branches"`
 	ReasoningEffort ReasoningEffortConfig `json:"reasoning_effort"`
 }
@@ -40,12 +39,6 @@ type TimeoutsConfig struct {
 // RetriesConfig defines retry limits.
 type RetriesConfig struct {
 	MaxAttempts int `json:"max_attempts"`
-}
-
-// AutoRerunConfig defines safeguards for repeated runs.
-type AutoRerunConfig struct {
-	Enabled         bool `json:"enabled"`
-	CooldownSeconds int  `json:"cooldown_seconds"`
 }
 
 // BranchConfig describes how branches should be created for tasks.

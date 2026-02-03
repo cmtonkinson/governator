@@ -371,7 +371,7 @@ func ensureCleanRepoRoot(repoRoot string) error {
 		if strings.HasPrefix(path, "_governator/_local-state") {
 			continue
 		}
-		if strings.HasPrefix(path, "_governator/task-index.json") {
+		if strings.HasPrefix(path, "_governator/index.json") {
 			continue
 		}
 		return fmt.Errorf("repository has uncommitted changes: %s", line)

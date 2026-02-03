@@ -2,6 +2,17 @@
 # Maps prompt patterns (regex) to deterministic file actions
 
 rules:
+  # Execution triage: DAG ordering
+  - pattern: '_local-state/dag.json'
+    actions:
+      - write:
+          path: '_governator/_local-state/dag.json'
+          content: |
+            {
+              "task-02": ["task-01"],
+              "task-01": []
+            }
+
   # Planning: Epic generation
   - pattern: 'planning.*epic|epic.*planning'
     actions:

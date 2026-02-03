@@ -49,7 +49,7 @@ func TestGetSummaryReportsMissingIndexError(t *testing.T) {
 	repo := testrepos.New(t)
 	repo.ApplyFixture(t, "single-task-flow")
 
-	indexPath := filepath.Join(repo.Root, "_governator", "task-index.json")
+	indexPath := filepath.Join(repo.Root, "_governator", "index.json")
 	if err := os.Remove(indexPath); err != nil {
 		t.Fatalf("remove fixture index: %v", err)
 	}

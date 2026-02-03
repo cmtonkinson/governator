@@ -23,5 +23,5 @@ The new intent is to run four independent agents (baseline, gap, roadmap, taskin
 ## Consequences
 
 - The plan phase is no longer machine-validated; mistakes in the Markdown output must be caught by human reviewers or downstream automation that reads the docs. The new templates must therefore stay precise and be updated when expectations change.
-- The planning templates still produce the Power Six docs and prompts, but the CLI intentionally leaves `_governator/task-index.json` and `_governator/tasks` untouched; those files must be created by the task planning agent or subsequent tooling.
+- The planning templates still produce the Power Six docs and prompts, but the CLI intentionally leaves `_governator/index.json` and `_governator/tasks` untouched; those files must be created by the task planning agent or subsequent tooling.
 - Removing the JSON parser eliminates a significant chunk of code, simplifying maintenance, but it also means the CLI no longer enforces schema versions for planning artifacts. The responsibility for structural integrity shifts to the agent prompts, the Markdown templates, and the human reviewers who run the agents.

@@ -165,10 +165,6 @@ func decodeConfig(raw map[string]any) Config {
 	retries := toConfigMap(raw["retries"])
 	cfg.Retries.MaxAttempts = parseInt(retries["max_attempts"])
 
-	autoRerun := toConfigMap(raw["auto_rerun"])
-	cfg.AutoRerun.Enabled = parseBool(autoRerun["enabled"])
-	cfg.AutoRerun.CooldownSeconds = parseInt(autoRerun["cooldown_seconds"])
-
 	branches := toConfigMap(raw["branches"])
 	cfg.Branches.Base = parseString(branches["base"])
 

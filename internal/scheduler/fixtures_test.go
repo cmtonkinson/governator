@@ -15,7 +15,7 @@ func TestSchedulerOrderingHonorsDependencyChainAndOverlap(t *testing.T) {
 	repo := testrepos.New(t)
 	repo.ApplyFixture(t, "dependency-chain-overlap")
 
-	indexPath := filepath.Join(repo.Root, "_governator", "task-index.json")
+	indexPath := filepath.Join(repo.Root, "_governator", "index.json")
 	idx, err := index.Load(indexPath)
 	if err != nil {
 		t.Fatalf("load fixture index: %v", err)
