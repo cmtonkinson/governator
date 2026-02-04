@@ -65,10 +65,24 @@ func finalizeStageSuccess(worktreePath string, workerStateDir string, task index
 	if err != nil {
 		return worker.IngestResult{}, err
 	}
+
+	// Read metrics from exit.json if available
+	var metrics index.ExecutionMetrics
+	exitStatus, found, err := worker.ReadExitStatus(workerStateDir, task.ID, stage)
+	if err == nil && found {
+		metrics = index.ExecutionMetrics{
+			DurationMs:     exitStatus.DurationMs,
+			TokensPrompt:   exitStatus.TokensPrompt,
+			TokensResponse: exitStatus.TokensResponse,
+			TokensTotal:    exitStatus.TokensTotal,
+		}
+	}
+
 	return worker.IngestResult{
 		Success:   true,
 		NewState:  stageToSuccessState(stage),
 		HasCommit: hasCommit,
+		Metrics:   metrics,
 	}, nil
 }
 

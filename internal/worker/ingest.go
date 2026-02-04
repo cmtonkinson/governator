@@ -20,6 +20,7 @@ type IngestInput struct {
 	WorktreePath string
 	Stage        roles.Stage
 	ExecResult   ExecResult
+	ExitStatus   *ExitStatus // Optional: exit status from exit.json for metrics tracking
 	Warn         func(string)
 }
 
@@ -33,6 +34,7 @@ type IngestResult struct {
 	HasMarker    bool
 	MarkerPath   string
 	MarkerExists bool
+	Metrics      index.ExecutionMetrics // Metrics captured from this execution stage
 }
 
 // IngestWorkerResult processes worker execution results and determines task state changes.
@@ -73,6 +75,17 @@ func IngestWorkerResult(input IngestInput) (IngestResult, error) {
 		return IngestResult{}, fmt.Errorf("check for marker file: %w", err)
 	}
 
+	// Extract metrics from exit status if available
+	var metrics index.ExecutionMetrics
+	if input.ExitStatus != nil {
+		metrics = index.ExecutionMetrics{
+			DurationMs:     input.ExitStatus.DurationMs,
+			TokensPrompt:   input.ExitStatus.TokensPrompt,
+			TokensResponse: input.ExitStatus.TokensResponse,
+			TokensTotal:    input.ExitStatus.TokensTotal,
+		}
+	}
+
 	// Completion now hinges on process exit success; commit/marker are recorded for observability.
 	return IngestResult{
 		Success:      true,
@@ -81,6 +94,7 @@ func IngestWorkerResult(input IngestInput) (IngestResult, error) {
 		HasMarker:    hasMarker,
 		MarkerPath:   repoRelativePath(input.WorktreePath, markerPath),
 		MarkerExists: hasMarker,
+		Metrics:      metrics,
 	}, nil
 }
 

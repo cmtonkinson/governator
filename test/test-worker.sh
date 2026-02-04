@@ -153,13 +153,18 @@ echo "[test-worker] Completed successfully (matched ${#matched_rules[@]} rule(s)
 
 # Write exit.json for governator worker protocol
 # This file is expected by the worker dispatcher to signal completion
+# Optional fields: duration_ms, tokens_prompt, tokens_response, tokens_total
 if [ -n "${GOVERNATOR_WORKER_STATE_DIR:-}" ]; then
     exit_json="$GOVERNATOR_WORKER_STATE_DIR/exit.json"
     cat > "$exit_json" <<EOF
 {
   "exit_code": 0,
   "finished_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-  "pid": $$
+  "pid": $$,
+  "duration_ms": 1234,
+  "tokens_prompt": 500,
+  "tokens_response": 200,
+  "tokens_total": 700
 }
 EOF
     echo "[test-worker] Wrote exit status to $exit_json" >&2

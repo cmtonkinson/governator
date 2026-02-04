@@ -31,6 +31,7 @@ type Task struct {
 	Dependencies  []string        `json:"dependencies"`
 	Retries       RetryPolicy     `json:"retries"`
 	Attempts      AttemptCounters `json:"attempts"`
+	Metrics       ExecutionMetrics `json:"metrics,omitempty"`
 	Order         int             `json:"order"`
 	Overlap       []string        `json:"overlap"`
 }
@@ -87,4 +88,12 @@ type RetryPolicy struct {
 type AttemptCounters struct {
 	Total  int `json:"total"`
 	Failed int `json:"failed"`
+}
+
+// ExecutionMetrics captures execution statistics for retrospective analysis.
+type ExecutionMetrics struct {
+	DurationMs     int64 `json:"duration_ms,omitempty"`      // Total wall time in milliseconds across all stages
+	TokensPrompt   int   `json:"tokens_prompt,omitempty"`    // Total input tokens consumed
+	TokensResponse int   `json:"tokens_response,omitempty"`  // Total output tokens generated
+	TokensTotal    int   `json:"tokens_total,omitempty"`     // Total tokens (prompt + response)
 }

@@ -609,6 +609,11 @@ func UpdateTaskStateFromWorkResult(idx *index.Index, taskID string, workResult w
 		if workResult.Success {
 			task.BlockedReason = ""
 			task.MergeConflict = false
+			// Accumulate metrics from this stage
+			task.Metrics.DurationMs += workResult.Metrics.DurationMs
+			task.Metrics.TokensPrompt += workResult.Metrics.TokensPrompt
+			task.Metrics.TokensResponse += workResult.Metrics.TokensResponse
+			task.Metrics.TokensTotal += workResult.Metrics.TokensTotal
 		} else {
 			task.BlockedReason = workResult.BlockReason
 		}

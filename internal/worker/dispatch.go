@@ -58,9 +58,13 @@ type dispatchMetadata struct {
 
 // ExitStatus records the terminal status of a worker process.
 type ExitStatus struct {
-	ExitCode   int       `json:"exit_code"`
-	FinishedAt time.Time `json:"finished_at"`
-	PID        int       `json:"pid,omitempty"`
+	ExitCode       int       `json:"exit_code"`
+	FinishedAt     time.Time `json:"finished_at"`
+	PID            int       `json:"pid,omitempty"`
+	DurationMs     int64     `json:"duration_ms,omitempty"`      // Wall time in milliseconds
+	TokensPrompt   int       `json:"tokens_prompt,omitempty"`    // Input tokens consumed
+	TokensResponse int       `json:"tokens_response,omitempty"`  // Output tokens generated
+	TokensTotal    int       `json:"tokens_total,omitempty"`     // Total tokens (prompt + response)
 }
 
 // DispatchWorker launches a worker process in the background using nohup.
