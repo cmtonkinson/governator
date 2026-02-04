@@ -40,12 +40,17 @@ Governator is a Git-native, deterministic engineer orchestration system. The ope
 
 ## Configuration & Prompts
 - `_governator/_durable-state/config.json` stores the canonical config. Key sections are:
-  - `workers.commands`: default command plus per-role overrides; every command must contain `{task_path}` (or `{prompt_path}` with a prompt file available).
+  - `workers.cli`: Select which AI CLI to use. Built-in support for:
+    - **`"codex"`** (default): Uses `codex exec --sandbox=workspace-write {prompt_path}`
+    - **`"claude"`**: Uses `claude --print {prompt_path}`
+    - **`"gemini"`**: Uses `gemini {prompt_path}`
+    - Set `workers.cli.default` for the default CLI and `workers.cli.roles` for per-role overrides
+  - `workers.commands`: Optional custom command overrides (advanced usage). If set, takes precedence over `workers.cli`. Every command must contain `{task_path}` or `{prompt_path}`.
   - `concurrency`: `global`, `default_role`, and `roles` caps to control parallelism.
   - `timeouts.worker_seconds`: how long a worker can run before timing out and blocking the task.
   - `retries.max_attempts`: how many automatic attempts before a task is blocked.
   - `branches.base`: the branch that new worktrees merge into (`main` by default).
-  - `reasoning_effort`: default level plus optional per-role overrides (e.g., `low`, `medium`, `high`). Reasoning prompts live under `_governator/reasoning/`.
+  - `reasoning_effort`: default level plus optional per-role overrides (e.g., `low`, `medium`, `high`). Codex uses CLI flags (`--config model_reasoning_effort="high|low"`), while Claude Code and Gemini use reasoning prompt files from `_governator/reasoning/`.
 - Prompt assets and templates:
   - Architecture and planning templates (ASR, arc42, personas, Wardley, C4, ADR, milestones, epics, etc.) live under `_governator/templates` and are populated at init.
   - Role prompts (`architect.md`, `default.md`, `planner.md`) plus optional custom prompts `_global.md` and per-role overrides let you inject guardrails or extra instructions.

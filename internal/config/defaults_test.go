@@ -24,11 +24,14 @@ func TestDefaultsDocumentedValues(t *testing.T) {
 	if got, want := cfg.Retries.MaxAttempts, defaultRetriesMaxAttempts; got != want {
 		t.Fatalf("retries.max_attempts = %d, want %d", got, want)
 	}
-	if len(cfg.Workers.Commands.Default) == 0 {
-		t.Fatal("workers.commands.default should not be empty")
+	if got, want := cfg.Workers.CLI.Default, defaultWorkerCLI; got != want {
+		t.Fatalf("workers.cli.default = %q, want %q", got, want)
 	}
-	if !containsTaskOrPromptToken(cfg.Workers.Commands.Default) {
-		t.Fatal("workers.commands.default should include {task_path} or {prompt_path}")
+	if cfg.Workers.CLI.Roles == nil || len(cfg.Workers.CLI.Roles) != 0 {
+		t.Fatal("workers.cli.roles should default to empty map")
+	}
+	if cfg.Workers.Commands.Default != nil {
+		t.Fatal("workers.commands.default should be nil (uses CLI built-in)")
 	}
 	if cfg.Workers.Commands.Roles == nil || len(cfg.Workers.Commands.Roles) != 0 {
 		t.Fatal("workers.commands.roles should default to empty map")
@@ -56,11 +59,18 @@ func TestApplyDefaultsInvalidValues(t *testing.T) {
 
 	cfg := Config{
 		Workers: WorkersConfig{
+			CLI: WorkerCLI{
+				Default: "invalid-cli",
+				Roles: map[string]string{
+					"planner": "also-invalid",
+					"worker":  "claude",
+				},
+			},
 			Commands: WorkerCommands{
 				Default: []string{"echo", "no-task-path"},
 				Roles: map[string][]string{
-					"planner": {"echo", "{repo_root}"},
-					"worker":  {"bash", "-lc", "cat {task_path}"},
+					"architect": {"echo", "{repo_root}"},
+					"devops":    {"bash", "-lc", "cat {task_path}"},
 				},
 			},
 		},
@@ -90,14 +100,29 @@ func TestApplyDefaultsInvalidValues(t *testing.T) {
 
 	normalized := ApplyDefaults(cfg, warn)
 
-	if !containsTaskOrPromptToken(normalized.Workers.Commands.Default) {
-		t.Fatal("workers.commands.default should fall back to default command")
+	// Invalid CLI should fall back to default
+	if normalized.Workers.CLI.Default != defaultWorkerCLI {
+		t.Fatal("workers.cli.default should fall back to default")
 	}
-	if _, ok := normalized.Workers.Commands.Roles["planner"]; ok {
-		t.Fatal("invalid workers.commands.roles.planner should be removed")
+	// Invalid role CLI should be removed
+	if _, ok := normalized.Workers.CLI.Roles["planner"]; ok {
+		t.Fatal("invalid workers.cli.roles.planner should be removed")
 	}
-	if _, ok := normalized.Workers.Commands.Roles["worker"]; !ok {
-		t.Fatal("valid workers.commands.roles.worker should be preserved")
+	// Valid role CLI should be preserved
+	if cli, ok := normalized.Workers.CLI.Roles["worker"]; !ok || cli != "claude" {
+		t.Fatal("valid workers.cli.roles.worker should be preserved")
+	}
+	// Invalid command override should be cleared
+	if normalized.Workers.Commands.Default != nil {
+		t.Fatal("invalid workers.commands.default should be cleared")
+	}
+	// Invalid role command should be removed
+	if _, ok := normalized.Workers.Commands.Roles["architect"]; ok {
+		t.Fatal("invalid workers.commands.roles.architect should be removed")
+	}
+	// Valid role command should be preserved
+	if _, ok := normalized.Workers.Commands.Roles["devops"]; !ok {
+		t.Fatal("valid workers.commands.roles.devops should be preserved")
 	}
 	if normalized.Concurrency.Global != defaultConcurrencyGlobal {
 		t.Fatal("concurrency.global should fall back to default")
@@ -120,11 +145,17 @@ func TestApplyDefaultsInvalidValues(t *testing.T) {
 	if len(warnings) == 0 {
 		t.Fatal("expected warnings for invalid values")
 	}
+	if !warningsContain(warnings, "workers.cli.default") {
+		t.Fatal("expected warning for workers.cli.default")
+	}
+	if !warningsContain(warnings, "workers.cli.roles.planner") {
+		t.Fatal("expected warning for workers.cli.roles.planner")
+	}
 	if !warningsContain(warnings, "workers.commands.default") {
 		t.Fatal("expected warning for workers.commands.default")
 	}
-	if !warningsContain(warnings, "workers.commands.roles.planner") {
-		t.Fatal("expected warning for workers.commands.roles.planner")
+	if !warningsContain(warnings, "workers.commands.roles.architect") {
+		t.Fatal("expected warning for workers.commands.roles.architect")
 	}
 	if !warningsContain(warnings, "concurrency.global") {
 		t.Fatal("expected warning for concurrency.global")
@@ -146,6 +177,21 @@ func configsEqual(left Config, right Config) bool {
 		return false
 	}
 
+	// Compare CLI settings
+	if left.Workers.CLI.Default != right.Workers.CLI.Default {
+		return false
+	}
+	if len(left.Workers.CLI.Roles) != len(right.Workers.CLI.Roles) {
+		return false
+	}
+	for role, cli := range left.Workers.CLI.Roles {
+		other, ok := right.Workers.CLI.Roles[role]
+		if !ok || cli != other {
+			return false
+		}
+	}
+
+	// Compare command overrides
 	if !stringSlicesEqual(left.Workers.Commands.Default, right.Workers.Commands.Default) {
 		return false
 	}
@@ -200,4 +246,110 @@ func containsTaskOrPromptToken(command []string) bool {
 		}
 	}
 	return false
+}
+
+// TestBuiltInCommand verifies all built-in CLI commands are defined correctly.
+func TestBuiltInCommand(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		cli       string
+		wantValid bool
+		wantLen   int
+	}{
+		{
+			name:      "codex",
+			cli:       "codex",
+			wantValid: true,
+			wantLen:   4, // ["codex", "exec", "--sandbox=workspace-write", "{prompt_path}"]
+		},
+		{
+			name:      "claude",
+			cli:       "claude",
+			wantValid: true,
+			wantLen:   3, // ["claude", "--print", "{prompt_path}"]
+		},
+		{
+			name:      "gemini",
+			cli:       "gemini",
+			wantValid: true,
+			wantLen:   2, // ["gemini", "{prompt_path}"]
+		},
+		{
+			name:      "invalid",
+			cli:       "invalid",
+			wantValid: false,
+			wantLen:   0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd, ok := BuiltInCommand(tt.cli)
+			if ok != tt.wantValid {
+				t.Fatalf("BuiltInCommand(%q) validity = %v, want %v", tt.cli, ok, tt.wantValid)
+			}
+			if ok {
+				if len(cmd) != tt.wantLen {
+					t.Fatalf("BuiltInCommand(%q) length = %d, want %d", tt.cli, len(cmd), tt.wantLen)
+				}
+				if !containsTaskOrPromptToken(cmd) {
+					t.Fatalf("BuiltInCommand(%q) should contain {task_path} or {prompt_path}", tt.cli)
+				}
+			}
+		})
+	}
+}
+
+// TestIsValidCLI verifies CLI name validation.
+func TestIsValidCLI(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		cli  string
+		want bool
+	}{
+		{name: "codex", cli: "codex", want: true},
+		{name: "claude", cli: "claude", want: true},
+		{name: "gemini", cli: "gemini", want: true},
+		{name: "invalid", cli: "invalid", want: false},
+		{name: "empty", cli: "", want: false},
+		{name: "spaces", cli: "  ", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsValidCLI(tt.cli)
+			if got != tt.want {
+				t.Fatalf("IsValidCLI(%q) = %v, want %v", tt.cli, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestApplyDefaultsWithCLI verifies CLI-based configuration works correctly.
+func TestApplyDefaultsWithCLI(t *testing.T) {
+	t.Parallel()
+
+	cfg := Config{
+		Workers: WorkersConfig{
+			CLI: WorkerCLI{
+				Default: "claude",
+				Roles: map[string]string{
+					"architect": "gemini",
+				},
+			},
+		},
+	}
+
+	normalized := ApplyDefaults(cfg, nil)
+
+	if normalized.Workers.CLI.Default != "claude" {
+		t.Fatalf("workers.cli.default = %q, want %q", normalized.Workers.CLI.Default, "claude")
+	}
+	if cli, ok := normalized.Workers.CLI.Roles["architect"]; !ok || cli != "gemini" {
+		t.Fatalf("workers.cli.roles.architect = %q, want %q", cli, "gemini")
+	}
 }

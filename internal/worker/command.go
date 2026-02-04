@@ -31,18 +31,39 @@ func ResolveCommand(cfg config.Config, role index.Role, taskPath string, repoRoo
 
 // selectCommandTemplate chooses the worker command template for the supplied role.
 func selectCommandTemplate(cfg config.Config, role index.Role) ([]string, error) {
+	// Priority 1: Role-specific command override
 	if role != "" {
 		if command, ok := cfg.Workers.Commands.Roles[string(role)]; ok && len(command) > 0 {
 			return cloneStrings(command), nil
 		}
 	}
-	if len(cfg.Workers.Commands.Default) == 0 {
-		if role != "" {
-			return nil, fmt.Errorf("worker command missing for role %q and no default command configured", role)
+
+	// Priority 2: Role-specific CLI selection
+	if role != "" {
+		if cli, ok := cfg.Workers.CLI.Roles[string(role)]; ok && cli != "" {
+			if template, ok := config.BuiltInCommand(cli); ok {
+				return cloneStrings(template), nil
+			}
 		}
-		return nil, errors.New("worker default command is required")
 	}
-	return cloneStrings(cfg.Workers.Commands.Default), nil
+
+	// Priority 3: Default command override
+	if len(cfg.Workers.Commands.Default) > 0 {
+		return cloneStrings(cfg.Workers.Commands.Default), nil
+	}
+
+	// Priority 4: Default CLI selection
+	if cfg.Workers.CLI.Default != "" {
+		if template, ok := config.BuiltInCommand(cfg.Workers.CLI.Default); ok {
+			return cloneStrings(template), nil
+		}
+	}
+
+	// No command found
+	if role != "" {
+		return nil, fmt.Errorf("worker command missing for role %q and no default configured", role)
+	}
+	return nil, errors.New("worker command is required")
 }
 
 // applyTemplate substitutes supported tokens in the command template.

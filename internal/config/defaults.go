@@ -9,19 +9,15 @@ const (
 	defaultWorkerTimeoutSeconds   = 900
 	defaultRetriesMaxAttempts     = 2
 	defaultBranchBase             = "main"
+	defaultWorkerCLI              = CLICodex
 )
-
-var defaultWorkerCommand = []string{
-	"codex",
-	"exec",
-	"--sandbox=danger-full-access",
-	"{prompt_path}",
-}
 
 // Defaults returns the documented configuration defaults.
 //
 // Defaults:
-// - workers.commands.default: ["codex", "exec", "--sandbox=danger-full-access", "{prompt_path}"]
+// - workers.cli.default: "codex"
+// - workers.cli.roles: {}
+// - workers.commands.default: null (uses built-in CLI command)
 // - workers.commands.roles: {}
 // - concurrency.global: 1
 // - concurrency.default_role: 1
@@ -31,8 +27,12 @@ var defaultWorkerCommand = []string{
 func Defaults() Config {
 	return Config{
 		Workers: WorkersConfig{
+			CLI: WorkerCLI{
+				Default: defaultWorkerCLI,
+				Roles:   map[string]string{},
+			},
 			Commands: WorkerCommands{
-				Default: cloneStrings(defaultWorkerCommand),
+				Default: nil, // uses built-in CLI command
 				Roles:   map[string][]string{},
 			},
 		},
@@ -60,9 +60,23 @@ func Defaults() Config {
 // ApplyDefaults fills missing or invalid values with documented defaults.
 func ApplyDefaults(cfg Config, warn func(string)) Config {
 	defaults := Defaults()
-	cfg.Workers.Commands.Default = normalizeCommand(
+
+	// Normalize CLI settings
+	cfg.Workers.CLI.Default = normalizeCLI(
+		cfg.Workers.CLI.Default,
+		defaults.Workers.CLI.Default,
+		"workers.cli.default",
+		warn,
+	)
+	cfg.Workers.CLI.Roles = normalizeRoleCLIs(
+		cfg.Workers.CLI.Roles,
+		"workers.cli.roles",
+		warn,
+	)
+
+	// Normalize command overrides (optional)
+	cfg.Workers.Commands.Default = normalizeCommandOverride(
 		cfg.Workers.Commands.Default,
-		defaults.Workers.Commands.Default,
 		"workers.commands.default",
 		warn,
 	)
@@ -113,6 +127,9 @@ func ApplyDefaults(cfg Config, warn func(string)) Config {
 	}
 	if strings.TrimSpace(cfg.ReasoningEffort.Default) == "" {
 		cfg.ReasoningEffort.Default = defaults.ReasoningEffort.Default
+	}
+	if cfg.Workers.CLI.Roles == nil {
+		cfg.Workers.CLI.Roles = map[string]string{}
 	}
 	if cfg.Workers.Commands.Roles == nil {
 		cfg.Workers.Commands.Roles = map[string][]string{}
@@ -201,6 +218,45 @@ func normalizeBranchBase(value string, fallback string, key string, warn func(st
 		return fallback
 	}
 	return trimmed
+}
+
+// normalizeCLI validates and defaults the CLI selection.
+func normalizeCLI(value string, fallback string, key string, warn func(string)) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" || !IsValidCLI(trimmed) {
+		emitWarning(warn, "invalid "+key+"; using default CLI")
+		return fallback
+	}
+	return trimmed
+}
+
+// normalizeRoleCLIs filters invalid role CLI selections.
+func normalizeRoleCLIs(values map[string]string, keyPrefix string, warn func(string)) map[string]string {
+	if values == nil {
+		return map[string]string{}
+	}
+	normalized := make(map[string]string, len(values))
+	for role, cli := range values {
+		trimmed := strings.TrimSpace(cli)
+		if trimmed == "" || !IsValidCLI(trimmed) {
+			emitWarning(warn, "invalid "+keyPrefix+"."+role+"; falling back to default CLI")
+			continue
+		}
+		normalized[role] = trimmed
+	}
+	return normalized
+}
+
+// normalizeCommandOverride validates command overrides (allows empty).
+func normalizeCommandOverride(value []string, key string, warn func(string)) []string {
+	if len(value) == 0 {
+		return nil // empty is valid - means use built-in CLI command
+	}
+	if !containsTaskPathToken(value) {
+		emitWarning(warn, "invalid "+key+"; must contain {task_path} or {prompt_path}")
+		return nil
+	}
+	return cloneStrings(value)
 }
 
 // emitWarning forwards warnings to the provided sink.
