@@ -11,6 +11,9 @@ import (
 // PlanningCompleteState marks the planning task as completed in the task index.
 const PlanningCompleteState = "governator_planning_complete"
 
+// PlanningNotStartedState marks the planning task as not yet started in the task index.
+const PlanningNotStartedState = "governator_planning_not_started"
+
 // currentPlanningStep returns the current planning step based on the planning state.
 func currentPlanningStep(idx index.Index, planning planningTask) (workstreamStep, bool, error) {
 	stateID, err := planningTaskState(idx)
@@ -19,6 +22,13 @@ func currentPlanningStep(idx index.Index, planning planningTask) (workstreamStep
 	}
 	if stateID == "" || stateID == PlanningCompleteState {
 		return workstreamStep{}, false, nil
+	}
+	if stateID == PlanningNotStartedState {
+		// Planning hasn't started yet - return the first step
+		if len(planning.ordered) == 0 {
+			return workstreamStep{}, false, fmt.Errorf("planning spec requires at least one step")
+		}
+		return planning.ordered[0], true, nil
 	}
 	if step, ok := planning.stepForID(stateID); ok {
 		return step, true, nil

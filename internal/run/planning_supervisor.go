@@ -159,12 +159,8 @@ func maybeCompletePlanningFromTasks(repoRoot string, planning planningTask, idx 
 	if err != nil {
 		return false, err
 	}
-	firstStepID, ok := firstPlanningStepID(planning)
-	if !ok {
-		return false, fmt.Errorf("planning spec requires at least one step")
-	}
 
-	notStarted := stateID == firstStepID && !inFlight.Contains(planningIndexTaskID)
+	notStarted := stateID == PlanningNotStartedState && !inFlight.Contains(planningIndexTaskID)
 	alreadyComplete := stateID == PlanningCompleteState
 	if !notStarted && !alreadyComplete {
 		return false, nil

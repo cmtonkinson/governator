@@ -253,3 +253,208 @@ func TestGetSummarySupervisorFiltering(t *testing.T) {
 		}
 	})
 }
+
+// TestPlanningStepSummary_NotStartedState ensures no planning steps are shown when state is PlanningNotStartedState.
+func TestPlanningStepSummary_NotStartedState(t *testing.T) {
+	t.Parallel()
+	repoRoot := t.TempDir()
+	stateDir := filepath.Join(repoRoot, "_governator")
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatalf("create state dir: %v", err)
+	}
+
+	// Create planning spec
+	planningSpecPath := filepath.Join(repoRoot, "_governator", "planning.json")
+	planningSpec := `{
+		"version": 2,
+		"steps": [
+			{
+				"id": "architecture-baseline",
+				"name": "Architecture Baseline",
+				"prompt": "_governator/prompts/architecture-baseline.md",
+				"role": "architect"
+			},
+			{
+				"id": "gap-analysis",
+				"name": "Gap Analysis",
+				"prompt": "_governator/prompts/gap-analysis.md",
+				"role": "default"
+			}
+		]
+	}`
+	if err := os.WriteFile(planningSpecPath, []byte(planningSpec), 0o644); err != nil {
+		t.Fatalf("write planning spec: %v", err)
+	}
+
+	// Create index with PlanningNotStartedState
+	testIndex := index.Index{
+		SchemaVersion: 1,
+		Tasks: []index.Task{
+			{
+				ID:    "planning",
+				Kind:  index.TaskKindPlanning,
+				State: "governator_planning_not_started",
+			},
+		},
+	}
+
+	indexPath := filepath.Join(repoRoot, "_governator", "index.json")
+	if err := index.Save(indexPath, testIndex); err != nil {
+		t.Fatalf("save index: %v", err)
+	}
+
+	summary, err := GetSummary(repoRoot)
+	if err != nil {
+		t.Fatalf("GetSummary() failed: %v", err)
+	}
+
+	// Should NOT show any planning steps when state is PlanningNotStartedState
+	if len(summary.PlanningSteps) != 0 {
+		t.Fatalf("expected 0 planning steps for PlanningNotStartedState, got %d", len(summary.PlanningSteps))
+	}
+
+	output := summary.String()
+	if strings.Contains(output, "planning-steps") {
+		t.Fatalf("output should not contain planning-steps header: %q", output)
+	}
+}
+
+// TestPlanningStepSummary_InProgress ensures planning steps are shown when state is an actual step ID.
+func TestPlanningStepSummary_InProgress(t *testing.T) {
+	t.Parallel()
+	repoRoot := t.TempDir()
+	stateDir := filepath.Join(repoRoot, "_governator")
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatalf("create state dir: %v", err)
+	}
+
+	// Create planning spec
+	planningSpecPath := filepath.Join(repoRoot, "_governator", "planning.json")
+	planningSpec := `{
+		"version": 2,
+		"steps": [
+			{
+				"id": "architecture-baseline",
+				"name": "Architecture Baseline",
+				"prompt": "_governator/prompts/architecture-baseline.md",
+				"role": "architect"
+			},
+			{
+				"id": "gap-analysis",
+				"name": "Gap Analysis",
+				"prompt": "_governator/prompts/gap-analysis.md",
+				"role": "default"
+			}
+		]
+	}`
+	if err := os.WriteFile(planningSpecPath, []byte(planningSpec), 0o644); err != nil {
+		t.Fatalf("write planning spec: %v", err)
+	}
+
+	// Create index with gap-analysis as current step (second step)
+	testIndex := index.Index{
+		SchemaVersion: 1,
+		Tasks: []index.Task{
+			{
+				ID:    "planning",
+				Kind:  index.TaskKindPlanning,
+				State: "gap-analysis",
+			},
+		},
+	}
+
+	indexPath := filepath.Join(repoRoot, "_governator", "index.json")
+	if err := index.Save(indexPath, testIndex); err != nil {
+		t.Fatalf("save index: %v", err)
+	}
+
+	summary, err := GetSummary(repoRoot)
+	if err != nil {
+		t.Fatalf("GetSummary() failed: %v", err)
+	}
+
+	// Should show planning steps when state is an actual step ID
+	if len(summary.PlanningSteps) != 2 {
+		t.Fatalf("expected 2 planning steps, got %d", len(summary.PlanningSteps))
+	}
+
+	// First step should be complete
+	if summary.PlanningSteps[0].ID != "architecture-baseline" {
+		t.Fatalf("first step ID = %q, want architecture-baseline", summary.PlanningSteps[0].ID)
+	}
+	if summary.PlanningSteps[0].Status != "complete" {
+		t.Fatalf("first step status = %q, want complete", summary.PlanningSteps[0].Status)
+	}
+
+	// Second step should be in-progress
+	if summary.PlanningSteps[1].ID != "gap-analysis" {
+		t.Fatalf("second step ID = %q, want gap-analysis", summary.PlanningSteps[1].ID)
+	}
+	if summary.PlanningSteps[1].Status != "in-progress" {
+		t.Fatalf("second step status = %q, want in-progress", summary.PlanningSteps[1].Status)
+	}
+
+	output := summary.String()
+	if !strings.Contains(output, "planning-steps=2") {
+		t.Fatalf("output should contain planning-steps=2: %q", output)
+	}
+}
+
+// TestPlanningStepSummary_Complete ensures no planning steps are shown when planning is complete.
+func TestPlanningStepSummary_Complete(t *testing.T) {
+	t.Parallel()
+	repoRoot := t.TempDir()
+	stateDir := filepath.Join(repoRoot, "_governator")
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatalf("create state dir: %v", err)
+	}
+
+	// Create planning spec
+	planningSpecPath := filepath.Join(repoRoot, "_governator", "planning.json")
+	planningSpec := `{
+		"version": 2,
+		"steps": [
+			{
+				"id": "architecture-baseline",
+				"name": "Architecture Baseline",
+				"prompt": "_governator/prompts/architecture-baseline.md",
+				"role": "architect"
+			}
+		]
+	}`
+	if err := os.WriteFile(planningSpecPath, []byte(planningSpec), 0o644); err != nil {
+		t.Fatalf("write planning spec: %v", err)
+	}
+
+	// Create index with PlanningCompleteState
+	testIndex := index.Index{
+		SchemaVersion: 1,
+		Tasks: []index.Task{
+			{
+				ID:    "planning",
+				Kind:  index.TaskKindPlanning,
+				State: "governator_planning_complete",
+			},
+		},
+	}
+
+	indexPath := filepath.Join(repoRoot, "_governator", "index.json")
+	if err := index.Save(indexPath, testIndex); err != nil {
+		t.Fatalf("save index: %v", err)
+	}
+
+	summary, err := GetSummary(repoRoot)
+	if err != nil {
+		t.Fatalf("GetSummary() failed: %v", err)
+	}
+
+	// Should NOT show any planning steps when planning is complete
+	if len(summary.PlanningSteps) != 0 {
+		t.Fatalf("expected 0 planning steps for PlanningCompleteState, got %d", len(summary.PlanningSteps))
+	}
+
+	output := summary.String()
+	if strings.Contains(output, "planning-steps") {
+		t.Fatalf("output should not contain planning-steps header: %q", output)
+	}
+}

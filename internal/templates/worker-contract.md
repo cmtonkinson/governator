@@ -30,8 +30,11 @@ You MUST NOT:
 If the task is underspecified or ambiguous, do not guess.
 
 ## 4. Prohibitions
-NEVER make ANY changes within the `_governator/` directory, except for under
-`docs/` or `tasks/`, and only if/as instructed.
+NEVER make ANY changes within the `_governator/` directory, except:
+- if explicitly instructed
+- or to `_local-state/dag.json`
+- or in the `docs/` directory
+- or in the `tasks/` directory
 
 ## 5. Blocking Conditions
 You must block the task if you cannot proceed safely and correctly. Blocking

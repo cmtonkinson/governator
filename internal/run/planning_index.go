@@ -62,7 +62,7 @@ func SeedPlanningIndex(repoRoot string) error {
 		Digests:       digestsMap,
 		Tasks:         tasks,
 	}
-	updatePlanningTaskState(&idx, firstStepID)
+	updatePlanningTaskState(&idx, PlanningNotStartedState)
 	if err := index.Save(indexPath, idx); err != nil {
 		return fmt.Errorf("save task index: %w", err)
 	}

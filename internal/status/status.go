@@ -332,7 +332,7 @@ func planningStepSummary(repoRoot string, idx index.Index) ([]PlanningStepSummar
 	if !found {
 		return nil, nil
 	}
-	if stateID == "" || stateID == run.PlanningCompleteState {
+	if stateID == "" || stateID == run.PlanningCompleteState || stateID == run.PlanningNotStartedState {
 		return nil, nil
 	}
 	spec, err := run.LoadPlanningSpec(repoRoot)
