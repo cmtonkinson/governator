@@ -116,3 +116,37 @@ func digestForString(content string) string {
 	sum := sha256.Sum256([]byte(content))
 	return fmt.Sprintf("sha256:%x", sum)
 }
+
+func TestCompute_IgnoresPlanningNotes(t *testing.T) {
+	t.Parallel()
+	repoRoot := t.TempDir()
+
+	// Create docs dir with planning-notes.md
+	docsDir := filepath.Join(repoRoot, "_governator", "docs")
+	if err := os.MkdirAll(docsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	planningNotes := filepath.Join(docsDir, "planning-notes.md")
+	if err := os.WriteFile(planningNotes, []byte("test content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Also create GOVERNATOR.md to make Compute happy
+	if err := os.WriteFile(filepath.Join(repoRoot, "GOVERNATOR.md"), []byte("test"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Compute digests
+	digests, err := Compute(repoRoot)
+	if err != nil {
+		t.Fatalf("Compute() failed: %v", err)
+	}
+
+	// planning-notes.md should NOT be in the digests map
+	for path := range digests.PlanningDocs {
+		if strings.Contains(path, "planning-notes.md") {
+			t.Errorf("planning-notes.md should be excluded from digests, but found: %s", path)
+		}
+	}
+}

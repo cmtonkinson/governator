@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const usageMessage = "usage: governator [-v|--verbose] <init|plan|execute|run|status|stop|restart|reset|version>"
+const usageMessage = "usage: governator [-v|--verbose] <init|plan|execute|run|status|stop|restart|reset|tail|version>"
 
 func TestCLICommands(t *testing.T) {
 	// Build the CLI binary for testing
@@ -275,7 +275,7 @@ func TestStatusCommand(t *testing.T) {
 		}
 
 		outputStr := strings.TrimSpace(string(output))
-		expected := "tasks backlog=0 merged=0 in-progress=0"
+		expected := "backlog=0 merged=0 in-progress=0"
 		if outputStr != expected {
 			t.Errorf("Expected %q, got %q", expected, outputStr)
 		}
@@ -287,13 +287,13 @@ func TestStatusCommand(t *testing.T) {
 		populatedIndex := `{
 				"schema_version": 1,
 				"tasks": [
-					{"id": "T-001", "kind": "execution", "state": "done"},
-					{"id": "T-002", "kind": "execution", "state": "done"},
-					{"id": "T-003", "kind": "execution", "state": "open"},
-					{"id": "T-004", "kind": "execution", "state": "open"},
-					{"id": "T-005", "kind": "execution", "state": "blocked"},
-					{"id": "T-006", "kind": "execution", "state": "worked"},
-					{"id": "T-007", "kind": "execution", "state": "conflict"}
+					{"id": "001-done-task", "kind": "execution", "state": "done"},
+					{"id": "002-done-task", "kind": "execution", "state": "done"},
+					{"id": "003-open-task", "kind": "execution", "state": "open"},
+					{"id": "004-open-task", "kind": "execution", "state": "open"},
+					{"id": "005-blocked-task", "kind": "execution", "state": "blocked"},
+					{"id": "006-worked-task", "kind": "execution", "state": "worked"},
+					{"id": "007-conflict-task", "kind": "execution", "state": "conflict"}
 				]
 			}`
 		if err := os.WriteFile(indexPath, []byte(populatedIndex), 0644); err != nil {
@@ -308,13 +308,14 @@ func TestStatusCommand(t *testing.T) {
 		}
 
 		outputStr := strings.TrimSpace(string(output))
-		if !strings.Contains(outputStr, "tasks backlog=0 merged=2 in-progress=5") {
+		if !strings.Contains(outputStr, "backlog=0 merged=2 in-progress=5") {
 			t.Fatalf("expected counts line in output, got %q", outputStr)
 		}
 		if !strings.Contains(outputStr, "id             state") {
 			t.Fatalf("expected table header, got %q", outputStr)
 		}
-		for _, id := range []string{"T-003", "T-004", "T-005", "T-006", "T-007"} {
+		// Check for numeric prefixes (not full task IDs)
+		for _, id := range []string{"003", "004", "005", "006", "007"} {
 			if !strings.Contains(outputStr, id) {
 				t.Fatalf("expected task %s in output, got %q", id, outputStr)
 			}

@@ -67,7 +67,7 @@ func docsDigests(repoRoot string) (map[string]string, error) {
 		if !entry.Type().IsRegular() {
 			return nil
 		}
-		if entry.Name() == ".keep" {
+		if entry.Name() == ".keep" || entry.Name() == "planning-notes.md" {
 			return nil
 		}
 

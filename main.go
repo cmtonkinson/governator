@@ -2,24 +2,32 @@
 package main
 
 import (
+	"bufio"
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/cmtonkinson/governator/internal/buildinfo"
 	"github.com/cmtonkinson/governator/internal/config"
+	"github.com/cmtonkinson/governator/internal/inflight"
 	"github.com/cmtonkinson/governator/internal/repo"
 	"github.com/cmtonkinson/governator/internal/run"
 	"github.com/cmtonkinson/governator/internal/status"
 	"github.com/cmtonkinson/governator/internal/supervisor"
+	"github.com/cmtonkinson/governator/internal/tui"
 	"github.com/cmtonkinson/governator/internal/supervisorlock"
 )
 
-const usageLine = "usage: governator [-v|--verbose] <init|plan|execute|run|status|stop|restart|reset|version>"
+const usageLine = "usage: governator [-v|--verbose] <init|plan|execute|run|status|stop|restart|reset|tail|version>"
 
 func main() {
 	verbose := false
@@ -51,13 +59,15 @@ flagLoop:
 	case "run":
 		runRun()
 	case "status":
-		runStatus()
+		runStatus(args[1:])
 	case "stop":
 		runStop(args[1:])
 	case "restart":
 		runRestart(args[1:])
 	case "reset":
 		runReset(args[1:])
+	case "tail":
+		runTail(args[1:])
 	case "version":
 		runVersion()
 	default:
@@ -446,13 +456,32 @@ func parseWorkerFlag(args []string) (bool, error) {
 	return stopWorker, nil
 }
 
-func runStatus() {
+func runStatus(args []string) {
+	// Parse flags
+	watchMode := false
+	for _, arg := range args {
+		if arg == "--watch" || arg == "-w" {
+			watchMode = true
+		}
+	}
+
 	repoRoot, err := repo.DiscoverRootFromCWD()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		emitUsage()
 		os.Exit(2)
 	}
+
+	if watchMode {
+		// Interactive mode
+		if err := tui.Run(repoRoot); err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+		return
+	}
+
+	// Static mode (existing implementation)
 	summary, err := status.GetSummary(repoRoot)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
@@ -463,6 +492,125 @@ func runStatus() {
 
 func runVersion() {
 	fmt.Println(buildinfo.String())
+}
+
+func runTail(args []string) {
+	// Parse flags (--stdout to include stdout, --both for both streams)
+	includeStdout := false
+	for _, arg := range args {
+		if arg == "--stdout" {
+			includeStdout = true
+		} else if arg == "--both" {
+			includeStdout = true
+		} else {
+			fmt.Fprintf(os.Stderr, "unknown flag: %s\n", arg)
+			emitUsage()
+			os.Exit(2)
+		}
+	}
+
+	repoRoot, err := repo.DiscoverRootFromCWD()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	store, err := inflight.NewStore(repoRoot)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	inFlight, err := store.Load()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	if inFlight == nil || len(inFlight) == 0 {
+		fmt.Println("no active agents")
+		return
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Setup signal handling
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		cancel()
+	}()
+
+	// Periodically check if agents are still active
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				currentInFlight, err := store.Load()
+				if err != nil {
+					continue
+				}
+				if currentInFlight == nil || len(currentInFlight) == 0 {
+					fmt.Fprintln(os.Stderr, "\nall agents completed")
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+
+	var wg sync.WaitGroup
+	for _, entry := range inFlight {
+		stderrPath := filepath.Join(entry.WorkerStateDir, "stderr.log")
+		wg.Add(1)
+		go func(id, path string) {
+			defer wg.Done()
+			tailLogFile(ctx, id, "stderr", path, os.Stdout)
+		}(entry.ID, stderrPath)
+
+		if includeStdout {
+			stdoutPath := filepath.Join(entry.WorkerStateDir, "stdout.log")
+			wg.Add(1)
+			go func(id, path string) {
+				defer wg.Done()
+				tailLogFile(ctx, id, "stdout", path, os.Stdout)
+			}(entry.ID, stdoutPath)
+		}
+	}
+
+	wg.Wait()
+}
+
+func tailLogFile(ctx context.Context, taskID string, stream string, path string, out io.Writer) {
+	// Check if file exists
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return
+	}
+
+	cmd := exec.CommandContext(ctx, "tail", "-f", "-n", "+1", path)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return
+	}
+
+	if err := cmd.Start(); err != nil {
+		return
+	}
+
+	scanner := bufio.NewScanner(stdout)
+	prefix := fmt.Sprintf("[%s:%s]", taskID, stream)
+	for scanner.Scan() {
+		fmt.Fprintf(out, "%s %s\n", prefix, scanner.Text())
+	}
+
+	cmd.Wait()
 }
 
 func emitUsage() {

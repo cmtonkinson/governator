@@ -13,7 +13,7 @@ import (
 
 func TestSummaryString(t *testing.T) {
 	empty := Summary{}
-	if got := empty.String(); got != "tasks backlog=0 merged=0 in-progress=0" {
+	if got := empty.String(); got != "backlog=0 merged=0 in-progress=0" {
 		t.Fatalf("empty summary string = %q", got)
 	}
 
@@ -26,7 +26,7 @@ func TestSummaryString(t *testing.T) {
 		},
 	}
 	result := withRows.String()
-	if !strings.Contains(result, "tasks backlog=1 merged=1 in-progress=1") {
+	if !strings.Contains(result, "backlog=1 merged=1 in-progress=1") {
 		t.Fatalf("summary header missing counts: %q", result)
 	}
 	if !strings.Contains(result, "id") || !strings.Contains(result, "state") {
@@ -50,16 +50,16 @@ func TestGetSummary(t *testing.T) {
 	testIndex := index.Index{
 		SchemaVersion: 1,
 		Tasks: []index.Task{
-			{ID: "T-backlog", Kind: index.TaskKindExecution, State: index.TaskStateBacklog},
-			{ID: "T-triaged", Kind: index.TaskKindExecution, State: index.TaskStateTriaged, Role: "dev", AssignedRole: "dev"},
-			{ID: "T-implemented", Kind: index.TaskKindExecution, State: index.TaskStateImplemented, Role: "dev"},
-			{ID: "T-tested", Kind: index.TaskKindExecution, State: index.TaskStateTested, Role: "dev"},
-			{ID: "T-reviewed", Kind: index.TaskKindExecution, State: index.TaskStateReviewed, Role: "dev"},
-			{ID: "T-mergeable", Kind: index.TaskKindExecution, State: index.TaskStateMergeable, Role: "dev"},
-			{ID: "T-merged", Kind: index.TaskKindExecution, State: index.TaskStateMerged, Role: "dev"},
-			{ID: "T-blocked", Kind: index.TaskKindExecution, State: index.TaskStateBlocked, Role: "dev", BlockedReason: "blocked"},
-			{ID: "T-conflict", Kind: index.TaskKindExecution, State: index.TaskStateConflict, Role: "dev", MergeConflict: true},
-			{ID: "T-resolved", Kind: index.TaskKindExecution, State: index.TaskStateResolved, Role: "dev", Title: longTitle},
+			{ID: "001-backlog-task", Kind: index.TaskKindExecution, State: index.TaskStateBacklog},
+			{ID: "002-triaged-task", Kind: index.TaskKindExecution, State: index.TaskStateTriaged, Role: "dev", AssignedRole: "dev"},
+			{ID: "003-implemented-task", Kind: index.TaskKindExecution, State: index.TaskStateImplemented, Role: "dev"},
+			{ID: "004-tested-task", Kind: index.TaskKindExecution, State: index.TaskStateTested, Role: "dev"},
+			{ID: "005-reviewed-task", Kind: index.TaskKindExecution, State: index.TaskStateReviewed, Role: "dev"},
+			{ID: "006-mergeable-task", Kind: index.TaskKindExecution, State: index.TaskStateMergeable, Role: "dev"},
+			{ID: "007-merged-task", Kind: index.TaskKindExecution, State: index.TaskStateMerged, Role: "dev"},
+			{ID: "008-blocked-task", Kind: index.TaskKindExecution, State: index.TaskStateBlocked, Role: "dev", BlockedReason: "blocked"},
+			{ID: "009-conflict-task", Kind: index.TaskKindExecution, State: index.TaskStateConflict, Role: "dev", MergeConflict: true},
+			{ID: "010-resolved-task", Kind: index.TaskKindExecution, State: index.TaskStateResolved, Role: "dev", Title: longTitle},
 		},
 	}
 
@@ -96,7 +96,7 @@ func TestGetSummary(t *testing.T) {
 
 	foundAttrs := false
 	for _, row := range summary.Rows {
-		if row.id == "T-blocked" && row.attrs == "blocked" {
+		if row.id == "008" && row.attrs == "blocked" {
 			foundAttrs = true
 		}
 	}

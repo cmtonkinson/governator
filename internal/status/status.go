@@ -3,14 +3,17 @@ package status
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/cmtonkinson/governator/internal/index"
 	"github.com/cmtonkinson/governator/internal/run"
 	"github.com/cmtonkinson/governator/internal/supervisor"
+	"golang.org/x/term"
 )
 
 const (
@@ -22,6 +25,27 @@ const (
 	titleMaxWidth       = 40
 	planningIDWidth     = 24
 	planningStatusWidth = 12
+)
+
+var (
+	headerStyle = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("12")).
+		Align(lipgloss.Left)
+
+	cellStyle = lipgloss.NewStyle().
+		Align(lipgloss.Left)
+
+	tableStyle = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		Padding(0, 1)
+
+	separatorStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240"))
+
+	countsStyle = lipgloss.NewStyle().
+			Bold(true)
 )
 
 var statusStateOrder = map[index.TaskState]int{
@@ -53,6 +77,14 @@ type statusRow struct {
 	order int
 }
 
+// Accessor methods for statusRow (used by TUI package)
+func (r statusRow) ID() string    { return r.id }
+func (r statusRow) State() string { return r.state }
+func (r statusRow) PID() string   { return r.pid }
+func (r statusRow) Role() string  { return r.role }
+func (r statusRow) Attrs() string { return r.attrs }
+func (r statusRow) Title() string { return r.title }
+
 // SupervisorSummary captures the status output for a supervisor.
 type SupervisorSummary struct {
 	Phase          string
@@ -76,7 +108,20 @@ type PlanningStepSummary struct {
 }
 
 // String returns the formatted status output per flow.md.
+// Uses styled output for TTY, plain output for pipes/redirects.
 func (s Summary) String() string {
+	// Check if output is a TTY
+	isTTY := term.IsTerminal(int(os.Stdout.Fd()))
+
+	if !isTTY {
+		return s.plainString()
+	}
+
+	return s.styledString()
+}
+
+// plainString returns plain text output for pipes/redirects.
+func (s Summary) plainString() string {
 	var b strings.Builder
 	if len(s.Supervisors) > 0 {
 		fmt.Fprintln(&b, "supervisors")
@@ -116,7 +161,7 @@ func (s Summary) String() string {
 			)
 		}
 	}
-	fmt.Fprintf(&b, "tasks backlog=%d merged=%d in-progress=%d\n", s.Backlog, s.Merged, s.InProgress)
+	fmt.Fprintf(&b, "backlog=%d merged=%d in-progress=%d\n", s.Backlog, s.Merged, s.InProgress)
 	if s.InProgress == 0 {
 		return strings.TrimSpace(b.String())
 	}
@@ -138,6 +183,48 @@ func (s Summary) String() string {
 			row.title,
 		)
 	}
+	return strings.TrimSpace(b.String())
+}
+
+// styledString returns lipgloss-styled output for interactive terminals.
+func (s Summary) styledString() string {
+	var b strings.Builder
+
+	// Get terminal width for responsive layout
+	width, _, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil || width <= 0 {
+		width = 120 // fallback
+	}
+
+	// Supervisors section
+	if len(s.Supervisors) > 0 {
+		b.WriteString(headerStyle.Render("Supervisors"))
+		b.WriteString("\n")
+		supervisorTable := renderSupervisorTable(s.Supervisors, width)
+		b.WriteString(tableStyle.Render(supervisorTable))
+		b.WriteString("\n\n")
+	}
+
+	// Planning steps section
+	if len(s.PlanningSteps) > 0 {
+		b.WriteString(headerStyle.Render(fmt.Sprintf("Planning Steps (%d)", len(s.PlanningSteps))))
+		b.WriteString("\n")
+		planningTable := renderPlanningTable(s.PlanningSteps, width)
+		b.WriteString(tableStyle.Render(planningTable))
+		b.WriteString("\n\n")
+	}
+
+	// Task counts
+	b.WriteString(countsStyle.Render(fmt.Sprintf("backlog=%d merged=%d in-progress=%d",
+		s.Backlog, s.Merged, s.InProgress)))
+	b.WriteString("\n")
+
+	// Task table
+	if s.InProgress > 0 {
+		taskTable := renderTaskTable(s.Rows, width)
+		b.WriteString(tableStyle.Render(taskTable))
+	}
+
 	return strings.TrimSpace(b.String())
 }
 
@@ -255,7 +342,7 @@ func GetSummary(repoRoot string) (Summary, error) {
 		}
 
 		row := statusRow{
-			id:    task.ID,
+			id:    extractNumericPrefix(task.ID),
 			state: string(task.State),
 			pid:   formatPID(task.PID),
 			role:  resolveAssignedRole(task),
@@ -325,6 +412,15 @@ func truncateTitle(title string, maxLen int) string {
 		return title[:maxLen]
 	}
 	return title[:maxLen-3] + "..."
+}
+
+func extractNumericPrefix(taskID string) string {
+	// Extract numeric prefix from task ID (e.g., "001-task-name" -> "001")
+	parts := strings.SplitN(taskID, "-", 2)
+	if len(parts) > 0 {
+		return parts[0]
+	}
+	return taskID
 }
 
 func planningStepSummary(repoRoot string, idx index.Index) ([]PlanningStepSummary, error) {
@@ -398,4 +494,245 @@ func normalizeToken(value string) string {
 		return "unknown"
 	}
 	return value
+}
+
+// renderTaskTable renders the task table with lipgloss styling.
+func renderTaskTable(rows []statusRow, maxWidth int) string {
+	if len(rows) == 0 {
+		return ""
+	}
+
+	var buf strings.Builder
+
+	// Calculate column widths
+	// Start with minimum widths for fixed columns
+	minWidths := []int{
+		6,  // ID - minimum to fit "ID" header and "001"
+		12, // State - minimum to fit "implemented"
+		6,  // PID - minimum to fit "12345"
+		12, // Role - minimum to fit role names
+		18, // Attrs - minimum to fit "blocked,merge_conflict"
+		20, // Title - minimum viable
+	}
+
+	// Calculate space used by fixed columns
+	totalFixed := minWidths[0] + minWidths[1] + minWidths[2] + minWidths[3] + minWidths[4]
+
+	// Account for table borders and padding (lipgloss rounded border + padding)
+	// Border adds ~4 chars (left/right), padding adds 2*2=4 chars
+	overhead := 8
+
+	// Calculate available space for title column
+	availableForTitle := maxWidth - totalFixed - overhead
+
+	// Set title width between minimum and maximum
+	titleWidth := minWidths[5] // start with minimum
+	if availableForTitle > titleWidth {
+		titleWidth = availableForTitle
+		if titleWidth > 80 { // cap at reasonable maximum
+			titleWidth = 80
+		}
+	}
+
+	widths := []int{
+		minWidths[0],
+		minWidths[1],
+		minWidths[2],
+		minWidths[3],
+		minWidths[4],
+		titleWidth,
+	}
+
+	// Header row
+	headers := []string{"ID", "State", "PID", "Role", "Attrs", "Title"}
+	headerCells := make([]string, len(headers))
+	for i, h := range headers {
+		headerCells[i] = headerStyle.Width(widths[i]).Render(h)
+	}
+	buf.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, headerCells...))
+	buf.WriteString("\n")
+
+	// Separator
+	totalWidth := 0
+	for _, w := range widths {
+		totalWidth += w
+	}
+	separator := separatorStyle.Render(strings.Repeat("─", totalWidth))
+	buf.WriteString(separator)
+	buf.WriteString("\n")
+
+	// Data rows
+	for _, row := range rows {
+		cells := []string{
+			row.id,
+			row.state,
+			row.pid,
+			row.role,
+			row.attrs,
+			row.title,
+		}
+		renderedCells := make([]string, len(cells))
+		for i, cell := range cells {
+			// Use MaxWidth to truncate with ellipsis if needed
+			style := cellStyle.Width(widths[i]).MaxWidth(widths[i])
+			renderedCells[i] = style.Render(cell)
+		}
+		buf.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, renderedCells...))
+		buf.WriteString("\n")
+	}
+
+	return strings.TrimRight(buf.String(), "\n")
+}
+
+// renderSupervisorTable renders the supervisor table with lipgloss styling.
+func renderSupervisorTable(supervisors []SupervisorSummary, maxWidth int) string {
+	if len(supervisors) == 0 {
+		return ""
+	}
+
+	var buf strings.Builder
+
+	// Column widths - calculate step name dynamically
+	minWidths := []int{10, 8, 6, 8, 14, 20}
+	totalFixed := minWidths[0] + minWidths[1] + minWidths[2] + minWidths[3] + minWidths[4]
+	overhead := 8
+	availableForStepName := maxWidth - totalFixed - overhead
+	stepNameWidth := minWidths[5]
+	if availableForStepName > stepNameWidth {
+		stepNameWidth = availableForStepName
+		if stepNameWidth > 60 {
+			stepNameWidth = 60
+		}
+	}
+
+	widths := []int{
+		minWidths[0],
+		minWidths[1],
+		minWidths[2],
+		minWidths[3],
+		minWidths[4],
+		stepNameWidth,
+	}
+
+	// Header row
+	headers := []string{"Phase", "State", "PID", "Runtime", "Step ID", "Step Name"}
+	headerCells := make([]string, len(headers))
+	for i, h := range headers {
+		headerCells[i] = headerStyle.Width(widths[i]).Render(h)
+	}
+	buf.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, headerCells...))
+	buf.WriteString("\n")
+
+	// Separator
+	totalWidth := 0
+	for _, w := range widths {
+		totalWidth += w
+	}
+	separator := separatorStyle.Render(strings.Repeat("─", totalWidth))
+	buf.WriteString(separator)
+	buf.WriteString("\n")
+
+	// Data rows
+	for _, supervisor := range supervisors {
+		cells := []string{
+			normalizeToken(supervisor.Phase),
+			normalizeToken(supervisor.State),
+			formatPID(supervisor.PID),
+			formatSupervisorRuntime(supervisor.StartedAt),
+			normalizeToken(supervisor.StepID),
+			normalizeToken(supervisor.StepName),
+		}
+		renderedCells := make([]string, len(cells))
+		for i, cell := range cells {
+			style := cellStyle.Width(widths[i]).MaxWidth(widths[i])
+			renderedCells[i] = style.Render(cell)
+		}
+		buf.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, renderedCells...))
+		buf.WriteString("\n")
+
+		// Additional info lines - let these wrap naturally
+		totalTableWidth := 0
+		for _, w := range widths {
+			totalTableWidth += w
+		}
+		infoStyle := cellStyle.MaxWidth(totalTableWidth)
+		buf.WriteString(infoStyle.Render(fmt.Sprintf("worker_pid=%s validation_pid=%s",
+			formatPID(supervisor.WorkerPID),
+			formatPID(supervisor.ValidationPID),
+		)))
+		buf.WriteString("\n")
+		buf.WriteString(infoStyle.Render(fmt.Sprintf("started_at=%s last_transition=%s",
+			formatTime(supervisor.StartedAt),
+			formatTime(supervisor.LastTransition),
+		)))
+		buf.WriteString("\n")
+		buf.WriteString(infoStyle.Render(fmt.Sprintf("log=%s", normalizeToken(supervisor.LogPath))))
+		buf.WriteString("\n")
+	}
+
+	return strings.TrimRight(buf.String(), "\n")
+}
+
+// renderPlanningTable renders the planning steps table with lipgloss styling.
+func renderPlanningTable(steps []PlanningStepSummary, maxWidth int) string {
+	if len(steps) == 0 {
+		return ""
+	}
+
+	var buf strings.Builder
+
+	// Column widths - calculate name dynamically
+	minWidths := []int{planningIDWidth, planningStatusWidth, 30}
+	totalFixed := minWidths[0] + minWidths[1]
+	overhead := 8
+	availableForName := maxWidth - totalFixed - overhead
+	nameWidth := minWidths[2]
+	if availableForName > nameWidth {
+		nameWidth = availableForName
+		if nameWidth > 80 {
+			nameWidth = 80
+		}
+	}
+
+	widths := []int{
+		minWidths[0],
+		minWidths[1],
+		nameWidth,
+	}
+
+	// Header row
+	headers := []string{"ID", "Status", "Name"}
+	headerCells := make([]string, len(headers))
+	for i, h := range headers {
+		headerCells[i] = headerStyle.Width(widths[i]).Render(h)
+	}
+	buf.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, headerCells...))
+	buf.WriteString("\n")
+
+	// Separator
+	totalWidth := 0
+	for _, w := range widths {
+		totalWidth += w
+	}
+	separator := separatorStyle.Render(strings.Repeat("─", totalWidth))
+	buf.WriteString(separator)
+	buf.WriteString("\n")
+
+	// Data rows
+	for _, step := range steps {
+		cells := []string{
+			step.ID,
+			step.Status,
+			step.Name,
+		}
+		renderedCells := make([]string, len(cells))
+		for i, cell := range cells {
+			style := cellStyle.Width(widths[i]).MaxWidth(widths[i])
+			renderedCells[i] = style.Render(cell)
+		}
+		buf.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, renderedCells...))
+		buf.WriteString("\n")
+	}
+
+	return strings.TrimRight(buf.String(), "\n")
 }
