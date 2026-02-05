@@ -114,6 +114,55 @@ func TestLoggerRejectsMissingFields(t *testing.T) {
 	}
 }
 
+// TestLoggerSystemLevelEvents ensures system events without TaskID/Role are accepted.
+func TestLoggerSystemLevelEvents(t *testing.T) {
+	repoRoot := t.TempDir()
+	logPath := filepath.Join(repoRoot, localStateDirName, auditLogFileName)
+	if err := os.MkdirAll(filepath.Dir(logPath), auditLogDirMode); err != nil {
+		t.Fatalf("create audit log dir: %v", err)
+	}
+	if err := os.WriteFile(logPath, []byte(""), auditLogFileMode); err != nil {
+		t.Fatalf("create audit log file: %v", err)
+	}
+
+	var warnings bytes.Buffer
+	logger, err := NewLogger(repoRoot, &warnings)
+	if err != nil {
+		t.Fatalf("new logger: %v", err)
+	}
+	fixedTime := time.Date(2025, 1, 14, 20, 10, 0, 0, time.UTC)
+	logger.now = func() time.Time {
+		return fixedTime
+	}
+
+	// Log a system-level event without TaskID or Role
+	if err := logger.Log(Entry{
+		Event: "branch.prepare.warning",
+		Fields: []Field{
+			{Key: "message", Value: "failed to pull main: connection refused"},
+		},
+	}); err != nil {
+		t.Fatalf("log system event: %v", err)
+	}
+
+	if warnings.Len() != 0 {
+		t.Fatalf("expected no warnings, got %q", warnings.String())
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 audit log line, got %d", len(lines))
+	}
+	expected := `ts=2025-01-14T20:10:00Z event=branch.prepare.warning message="failed to pull main: connection refused"`
+	if lines[0] != expected {
+		t.Fatalf("expected audit line %q, got %q", expected, lines[0])
+	}
+}
+
 // TestLogWorkerTimeout ensures worker timeout events are logged correctly.
 func TestLogWorkerTimeout(t *testing.T) {
 	repoRoot := t.TempDir()

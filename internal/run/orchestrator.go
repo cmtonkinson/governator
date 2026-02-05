@@ -465,8 +465,6 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 			}
 		}
 
-		emitTaskStart(opts.Stdout, task.ID, string(task.Role), string(roles.StageWork))
-
 		stageInput := newWorkerStageInput(
 			repoRoot,
 			worktreePath,
@@ -527,6 +525,8 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 		if err := recordTaskDispatch(idx, task.ID, dispatchResult.PID, string(task.Role)); err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to record dispatch metadata for task %s: %v\n", task.ID, err)
 		}
+
+		emitTaskStart(opts.Stdout, task.ID, string(task.Role), string(roles.StageWork))
 
 		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath, dispatchResult.WorkerStateDir, string(roles.StageWork), string(task.Role)); err == nil {
 			result.InFlightUpdated = true
@@ -764,8 +764,6 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 			}
 		}
 
-		emitTaskStart(opts.Stdout, task.ID, string(task.Role), string(roles.StageTest))
-
 		stageInput := newWorkerStageInput(
 			repoRoot,
 			worktreePath,
@@ -827,6 +825,8 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 		if err := recordTaskDispatch(idx, task.ID, dispatchResult.PID, string(task.Role)); err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to record dispatch metadata for task %s: %v\n", task.ID, err)
 		}
+
+		emitTaskStart(opts.Stdout, task.ID, string(task.Role), string(roles.StageTest))
 
 		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath, dispatchResult.WorkerStateDir, string(roles.StageTest), string(task.Role)); err == nil {
 			result.InFlightUpdated = true
@@ -1110,8 +1110,6 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 			continue
 		}
 
-		emitTaskStart(opts.Stdout, task.ID, string(task.Role), string(roles.StageReview))
-
 		stageInput := newWorkerStageInput(
 			repoRoot,
 			worktreePath,
@@ -1167,6 +1165,8 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 		if err := recordTaskDispatch(idx, task.ID, dispatchResult.PID, string(task.Role)); err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to record dispatch metadata for task %s: %v\n", task.ID, err)
 		}
+
+		emitTaskStart(opts.Stdout, task.ID, string(task.Role), string(roles.StageReview))
 
 		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath, dispatchResult.WorkerStateDir, string(roles.StageReview), string(task.Role)); err == nil {
 			result.InFlightUpdated = true
@@ -1423,7 +1423,6 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 		}
 
 		roleForLogs := resolveRoleForLogs(roleResult.Role, task.Role)
-		emitTaskStart(opts.Stdout, task.ID, roleForLogs, string(roles.StageResolve))
 
 		stageInput := newWorkerStageInput(
 			repoRoot,
@@ -1486,6 +1485,9 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 		if err := recordTaskDispatch(idx, task.ID, dispatchResult.PID, string(roleResult.Role)); err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to record dispatch metadata for task %s: %v\n", task.ID, err)
 		}
+
+		emitTaskStart(opts.Stdout, task.ID, roleForLogs, string(roles.StageResolve))
+
 		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath, dispatchResult.WorkerStateDir, string(roles.StageResolve), string(roleResult.Role)); err == nil {
 			result.InFlightUpdated = true
 		}

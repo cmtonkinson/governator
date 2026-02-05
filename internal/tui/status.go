@@ -39,16 +39,18 @@ var (
 
 // Model represents the interactive status TUI state.
 type Model struct {
-	table        table.Model
-	repoRoot     string
-	lastUpdate   time.Time
-	err          error
-	quitting     bool
-	backlog      int
-	merged       int
-	inProgress   int
-	supervisors  int
-	planningSteps int
+	table          table.Model
+	planningTable  table.Model
+	supervisorTable table.Model
+	repoRoot       string
+	lastUpdate     time.Time
+	err            error
+	quitting       bool
+	backlog        int
+	merged         int
+	inProgress     int
+	supervisors    []status.SupervisorSummary
+	planningSteps  []status.PlanningStepSummary
 }
 
 type tickMsg time.Time
@@ -65,7 +67,8 @@ func tickCmd() tea.Cmd {
 
 // New creates a new interactive status TUI model.
 func New(repoRoot string) Model {
-	columns := []table.Column{
+	// Task table
+	taskColumns := []table.Column{
 		{Title: "ID", Width: 6},
 		{Title: "State", Width: 12},
 		{Title: "PID", Width: 6},
@@ -74,8 +77,8 @@ func New(repoRoot string) Model {
 		{Title: "Title", Width: 50},
 	}
 
-	t := table.New(
-		table.WithColumns(columns),
+	taskTable := table.New(
+		table.WithColumns(taskColumns),
 		table.WithFocused(true),
 		table.WithHeight(20),
 	)
@@ -91,11 +94,44 @@ func New(repoRoot string) Model {
 		Foreground(lipgloss.Color("229")).
 		Background(lipgloss.Color("57")).
 		Bold(false)
-	t.SetStyles(s)
+	taskTable.SetStyles(s)
+
+	// Planning steps table
+	planningColumns := []table.Column{
+		{Title: "ID", Width: 24},
+		{Title: "Status", Width: 12},
+		{Title: "Name", Width: 60},
+	}
+
+	planningTable := table.New(
+		table.WithColumns(planningColumns),
+		table.WithFocused(false),
+		table.WithHeight(5),
+	)
+	planningTable.SetStyles(s)
+
+	// Supervisor table
+	supervisorColumns := []table.Column{
+		{Title: "Phase", Width: 10},
+		{Title: "State", Width: 8},
+		{Title: "PID", Width: 6},
+		{Title: "Runtime", Width: 8},
+		{Title: "Step ID", Width: 22},
+		{Title: "Step Name", Width: 40},
+	}
+
+	supervisorTable := table.New(
+		table.WithColumns(supervisorColumns),
+		table.WithFocused(false),
+		table.WithHeight(3),
+	)
+	supervisorTable.SetStyles(s)
 
 	return Model{
-		table:    t,
-		repoRoot: repoRoot,
+		table:           taskTable,
+		planningTable:   planningTable,
+		supervisorTable: supervisorTable,
+		repoRoot:        repoRoot,
 	}
 }
 
@@ -139,8 +175,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.backlog = msg.summary.Backlog
 		m.merged = msg.summary.Merged
 		m.inProgress = msg.summary.InProgress
-		m.supervisors = len(msg.summary.Supervisors)
-		m.planningSteps = len(msg.summary.PlanningSteps)
+		m.supervisors = msg.summary.Supervisors
+		m.planningSteps = msg.summary.PlanningSteps
+
+		// Convert supervisor summaries to table rows
+		supervisorRows := make([]table.Row, len(msg.summary.Supervisors))
+		for i, sup := range msg.summary.Supervisors {
+			runtime := formatRuntime(sup.StartedAt)
+			supervisorRows[i] = table.Row{
+				sup.Phase,
+				sup.State,
+				formatPID(sup.PID),
+				runtime,
+				sup.StepID,
+				sup.StepName,
+			}
+		}
+		m.supervisorTable.SetRows(supervisorRows)
 
 		// Convert summary rows to table rows
 		rows := make([]table.Row, len(msg.summary.Rows))
@@ -155,6 +206,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.table.SetRows(rows)
+
+		// Convert planning steps to table rows
+		planningRows := make([]table.Row, len(msg.summary.PlanningSteps))
+		for i, step := range msg.summary.PlanningSteps {
+			planningRows[i] = table.Row{
+				step.ID,
+				step.Status,
+				step.Name,
+			}
+		}
+		m.planningTable.SetRows(planningRows)
+
 		return m, nil
 
 	case errMsg:
@@ -187,15 +250,44 @@ func (m Model) View() string {
 	b.WriteString(header)
 	b.WriteString("\n\n")
 
+	// Supervisors table (if any)
+	if len(m.supervisors) > 0 {
+		supervisorTitle := titleStyle.Render(fmt.Sprintf("Supervisors (%d)", len(m.supervisors)))
+		b.WriteString(supervisorTitle)
+		b.WriteString("\n")
+		b.WriteString(m.supervisorTable.View())
+		b.WriteString("\n")
+
+		// Show additional supervisor details
+		for _, sup := range m.supervisors {
+			details := fmt.Sprintf("  worker_pid=%s validation_pid=%s",
+				formatPID(sup.WorkerPID),
+				formatPID(sup.ValidationPID),
+			)
+			b.WriteString(timestampStyle.Render(details))
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+	}
+
+	// Planning steps table (if in planning phase)
+	if len(m.planningSteps) > 0 {
+		planningTitle := titleStyle.Render(fmt.Sprintf("Planning Steps (%d)", len(m.planningSteps)))
+		b.WriteString(planningTitle)
+		b.WriteString("\n")
+		b.WriteString(m.planningTable.View())
+		b.WriteString("\n\n")
+	}
+
 	// Counts summary
 	counts := countsStyle.Render(fmt.Sprintf(
-		"Tasks: backlog=%d merged=%d in-progress=%d | Supervisors: %d | Planning steps: %d",
-		m.backlog, m.merged, m.inProgress, m.supervisors, m.planningSteps,
+		"Tasks: backlog=%d merged=%d in-progress=%d",
+		m.backlog, m.merged, m.inProgress,
 	))
 	b.WriteString(counts)
 	b.WriteString("\n")
 
-	// Table
+	// Task table
 	b.WriteString(m.table.View())
 	b.WriteString("\n")
 
@@ -231,4 +323,35 @@ func Run(repoRoot string) error {
 
 	_, err := p.Run()
 	return err
+}
+
+// formatPID formats a PID for display, returning empty string for zero/negative values.
+func formatPID(pid int) string {
+	if pid <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d", pid)
+}
+
+// formatRuntime formats the runtime duration since the given start time.
+func formatRuntime(startedAt time.Time) string {
+	if startedAt.IsZero() {
+		return ""
+	}
+	d := time.Since(startedAt)
+	if d < 0 {
+		d = 0
+	}
+	totalSeconds := int64(d.Seconds())
+	if totalSeconds < 60 {
+		return fmt.Sprintf("%ds", totalSeconds)
+	}
+	minutes := totalSeconds / 60
+	seconds := totalSeconds % 60
+	if minutes < 60 {
+		return fmt.Sprintf("%dm%ds", minutes, seconds)
+	}
+	hours := minutes / 60
+	minutes = minutes % 60
+	return fmt.Sprintf("%dh%dm%ds", hours, minutes, seconds)
 }

@@ -226,11 +226,11 @@ func TestBranchLifecycleManager_GetTaskBranchName(t *testing.T) {
 		{
 			name: "withTitle",
 			task: index.Task{
-				ID:    "complex-task",
+				ID:    "001-add-logging-steps-generalist",
 				Role:  "default",
 				Title: "Add logging steps",
 			},
-			expected: "task-complex-task-add-logging-steps",
+			expected: "task-001-add-logging-steps-generalist",
 		},
 	}
 

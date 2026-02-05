@@ -219,12 +219,6 @@ func (logger *Logger) LogWorkerTimeout(taskID string, role string, timeoutSecs i
 
 // formatEntry renders an audit entry in logfmt-style order.
 func (logger *Logger) formatEntry(entry Entry) (string, error) {
-	if entry.TaskID == "" {
-		return "", errors.New("task id is required")
-	}
-	if entry.Role == "" {
-		return "", errors.New("role is required")
-	}
 	if entry.Event == "" {
 		return "", errors.New("event is required")
 	}
@@ -236,10 +230,17 @@ func (logger *Logger) formatEntry(entry Entry) (string, error) {
 	ts := now().UTC().Format(time.RFC3339)
 	fields := []string{
 		formatField("ts", ts),
-		formatField("task_id", entry.TaskID),
-		formatField("role", entry.Role),
-		formatField("event", entry.Event),
 	}
+
+	// TaskID and Role are optional for system-level events
+	if entry.TaskID != "" {
+		fields = append(fields, formatField("task_id", entry.TaskID))
+	}
+	if entry.Role != "" {
+		fields = append(fields, formatField("role", entry.Role))
+	}
+
+	fields = append(fields, formatField("event", entry.Event))
 
 	for _, field := range entry.Fields {
 		if field.Value == "" {

@@ -31,7 +31,7 @@ type MergeFlowResult struct {
 }
 
 // ExecuteReviewMergeFlow performs the git rebase and merge operations for a reviewed task.
-// This implements the flow: rebase on main → squash commits → fast-forward merge → done
+// This implements the flow: rebase on main → squash in isolated worktree → update local main → done
 // On conflict: mark as conflict state for manual resolution.
 func ExecuteReviewMergeFlow(input MergeFlowInput) (MergeFlowResult, error) {
 	if strings.TrimSpace(input.RepoRoot) == "" {
@@ -138,6 +138,47 @@ func ExecuteReviewMergeFlow(input MergeFlowInput) (MergeFlowResult, error) {
 		lower := strings.ToLower(commitErr.Error())
 		if !strings.Contains(lower, "nothing to commit") && !strings.Contains(lower, "working tree clean") {
 			return MergeFlowResult{}, fmt.Errorf("commit squashed changes: %w", commitErr)
+		}
+	}
+
+	// Step 5a: Get the merge commit SHA from the merge worktree
+	mergeCommit, err := getWorktreeCommit(mergeWorktreePath)
+	if err != nil {
+		return MergeFlowResult{}, fmt.Errorf("get merge commit: %w", err)
+	}
+
+	// Step 5b: Check if main worktree has uncommitted changes that need preservation
+	hasUncommitted, err := hasUncommittedChanges(input.RepoRoot)
+	if err != nil {
+		return MergeFlowResult{}, fmt.Errorf("check uncommitted changes: %w", err)
+	}
+
+	// Step 5c: Stash uncommitted changes if present
+	if hasUncommitted {
+		if err := runGitInRepo(input.RepoRoot, "stash", "push", "-m", "governator merge: preserve execution state"); err != nil {
+			return MergeFlowResult{}, fmt.Errorf("stash uncommitted changes: %w", err)
+		}
+	}
+
+	// Step 5d: Update main worktree to the merge commit
+	if err := runGitInRepo(input.RepoRoot, "reset", "--hard", mergeCommit); err != nil {
+		return MergeFlowResult{}, fmt.Errorf("update main to merge commit: %w", err)
+	}
+
+	// Step 5e: Restore uncommitted changes if we stashed them
+	if hasUncommitted {
+		// Use stash pop, but don't fail the merge if there are conflicts
+		// The user can resolve stash conflicts manually
+		if err := runGitInRepo(input.RepoRoot, "stash", "pop"); err != nil {
+			// Log warning but don't fail - stash conflicts are user-recoverable
+			if input.Auditor != nil {
+				_ = input.Auditor.Log(audit.Entry{
+					TaskID: input.Task.ID,
+					Role:   string(input.Task.Role),
+					Event:  "merge.stash_pop.warning",
+					Fields: []audit.Field{{Key: "error", Value: err.Error()}},
+				})
+			}
 		}
 	}
 
@@ -352,6 +393,50 @@ func createMergeWorktree(repoRoot string, mainBranch string, taskID string) (str
 	}
 
 	return worktreePath, cleanup, nil
+}
+
+// getWorktreeCommit returns the current HEAD commit SHA of a worktree.
+func getWorktreeCommit(worktreePath string) (string, error) {
+	if strings.TrimSpace(worktreePath) == "" {
+		return "", fmt.Errorf("worktree path is required")
+	}
+
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = worktreePath
+
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("get worktree commit: %w", err)
+	}
+
+	return strings.TrimSpace(string(output)), nil
+}
+
+// hasUncommittedChanges checks if a worktree has any uncommitted changes.
+func hasUncommittedChanges(worktreePath string) (bool, error) {
+	if strings.TrimSpace(worktreePath) == "" {
+		return false, fmt.Errorf("worktree path is required")
+	}
+
+	cmd := exec.Command("git", "status", "--porcelain")
+	cmd.Dir = worktreePath
+	output, err := cmd.Output()
+	if err != nil {
+		return false, fmt.Errorf("check status: %w", err)
+	}
+
+	// Check if there are any changes outside of _governator/_local-state
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		if line == "" {
+			continue
+		}
+		path := strings.TrimSpace(line[3:])
+		if !strings.HasPrefix(path, "_governator/_local-state") {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // isRebaseConflict determines if a git error indicates a rebase conflict.
