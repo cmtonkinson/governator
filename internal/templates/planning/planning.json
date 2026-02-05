@@ -17,7 +17,7 @@
         },
         {
           "type": "file",
-          "path": "_governator/docs/adr/[Aa][Dd][Rr]-*.md"
+          "path": "_governator/docs/adr/*.md"
         }
       ]
     },

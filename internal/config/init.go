@@ -26,6 +26,7 @@ var v2DirectoryStructure = []string{
 	filepath.Join(repoDurableStateDir, "migrations"),
 	"_governator/docs",
 	filepath.Join("_governator", "docs", "adr"),
+	"_governator/tasks",
 	"_governator/roles",
 	"_governator/custom-prompts",
 	"_governator/prompts",
