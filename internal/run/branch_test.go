@@ -278,6 +278,188 @@ func TestBranchLifecycleManager_BranchExists(t *testing.T) {
 	})
 }
 
+func TestBranchLifecycleManager_PrepareBaseBranch(t *testing.T) {
+	repoRoot := setupBranchTestRepo(t)
+
+	// Create audit logger
+	auditor, err := audit.NewLogger(repoRoot, os.Stderr)
+	if err != nil {
+		t.Fatalf("Failed to create audit logger: %v", err)
+	}
+
+	// Create branch lifecycle manager
+	blm := NewBranchLifecycleManager(repoRoot, auditor)
+
+	t.Run("PrepareBaseBranch_Success", func(t *testing.T) {
+		// Create a test branch and switch to it first
+		runGitCmd(t, repoRoot, "checkout", "-b", "temp-branch")
+
+		// Prepare base branch
+		err := blm.PrepareBaseBranch("main")
+		if err != nil {
+			t.Fatalf("PrepareBaseBranch failed: %v", err)
+		}
+
+		// Verify we're on main branch
+		cmd := exec.Command("git", "branch", "--show-current")
+		cmd.Dir = repoRoot
+		output, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("Failed to get current branch: %v", err)
+		}
+		currentBranch := strings.TrimSpace(string(output))
+		if currentBranch != "main" {
+			t.Errorf("Expected to be on main branch, but on %s", currentBranch)
+		}
+	})
+
+	t.Run("PrepareBaseBranch_DefaultToMain", func(t *testing.T) {
+		// Test with empty string defaults to main
+		err := blm.PrepareBaseBranch("")
+		if err != nil {
+			t.Fatalf("PrepareBaseBranch with empty string failed: %v", err)
+		}
+
+		// Verify we're on main branch
+		cmd := exec.Command("git", "branch", "--show-current")
+		cmd.Dir = repoRoot
+		output, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("Failed to get current branch: %v", err)
+		}
+		currentBranch := strings.TrimSpace(string(output))
+		if currentBranch != "main" {
+			t.Errorf("Expected to be on main branch, but on %s", currentBranch)
+		}
+	})
+}
+
+func TestBranchLifecycleManager_CreateTaskBranchWithoutCheckout(t *testing.T) {
+	repoRoot := setupBranchTestRepo(t)
+
+	// Create audit logger
+	auditor, err := audit.NewLogger(repoRoot, os.Stderr)
+	if err != nil {
+		t.Fatalf("Failed to create audit logger: %v", err)
+	}
+
+	// Create branch lifecycle manager
+	blm := NewBranchLifecycleManager(repoRoot, auditor)
+
+	// Test task
+	task := index.Task{
+		ID:    "test-task-04",
+		Role:  "default",
+		Title: "Test No Checkout",
+	}
+
+	t.Run("CreateTaskBranchWithoutCheckout_Success", func(t *testing.T) {
+		// Ensure we're on main
+		runGitCmd(t, repoRoot, "checkout", "main")
+
+		// Create branch without checkout
+		err := blm.CreateTaskBranchWithoutCheckout(task, "main")
+		if err != nil {
+			t.Fatalf("CreateTaskBranchWithoutCheckout failed: %v", err)
+		}
+
+		// Verify branch was created
+		branchName := TaskBranchName(task)
+		exists, err := blm.BranchExists(branchName)
+		if err != nil {
+			t.Fatalf("Failed to check if branch exists: %v", err)
+		}
+		if !exists {
+			t.Errorf("Expected branch %s to exist", branchName)
+		}
+
+		// Verify we're still on main
+		cmd := exec.Command("git", "branch", "--show-current")
+		cmd.Dir = repoRoot
+		output, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("Failed to get current branch: %v", err)
+		}
+		currentBranch := strings.TrimSpace(string(output))
+		if currentBranch != "main" {
+			t.Errorf("Expected to remain on main branch, but on %s", currentBranch)
+		}
+	})
+
+	t.Run("CreateTaskBranchWithoutCheckout_AlreadyExists", func(t *testing.T) {
+		// Try to create the same branch again
+		err := blm.CreateTaskBranchWithoutCheckout(task, "main")
+		if err != nil {
+			t.Fatalf("CreateTaskBranchWithoutCheckout should not fail when branch already exists: %v", err)
+		}
+
+		// Verify we're still on main
+		cmd := exec.Command("git", "branch", "--show-current")
+		cmd.Dir = repoRoot
+		output, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("Failed to get current branch: %v", err)
+		}
+		currentBranch := strings.TrimSpace(string(output))
+		if currentBranch != "main" {
+			t.Errorf("Expected to remain on main branch, but on %s", currentBranch)
+		}
+	})
+
+	t.Run("CreateTaskBranchWithoutCheckout_EmptyTaskID", func(t *testing.T) {
+		emptyTask := index.Task{ID: "", Role: "default"}
+		err := blm.CreateTaskBranchWithoutCheckout(emptyTask, "main")
+		if err == nil {
+			t.Error("Expected error for empty task ID")
+		}
+	})
+}
+
+func TestBranchLifecycleManager_CheckoutBranch(t *testing.T) {
+	repoRoot := setupBranchTestRepo(t)
+
+	// Create branch lifecycle manager
+	blm := NewBranchLifecycleManager(repoRoot, nil)
+
+	t.Run("CheckoutBranch_Success", func(t *testing.T) {
+		// Create a test branch
+		runGitCmd(t, repoRoot, "checkout", "-b", "test-checkout-branch")
+		runGitCmd(t, repoRoot, "checkout", "main")
+
+		// Use CheckoutBranch to switch back
+		err := blm.CheckoutBranch("test-checkout-branch")
+		if err != nil {
+			t.Fatalf("CheckoutBranch failed: %v", err)
+		}
+
+		// Verify we're on the correct branch
+		cmd := exec.Command("git", "branch", "--show-current")
+		cmd.Dir = repoRoot
+		output, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("Failed to get current branch: %v", err)
+		}
+		currentBranch := strings.TrimSpace(string(output))
+		if currentBranch != "test-checkout-branch" {
+			t.Errorf("Expected to be on test-checkout-branch, but on %s", currentBranch)
+		}
+	})
+
+	t.Run("CheckoutBranch_EmptyBranchName", func(t *testing.T) {
+		err := blm.CheckoutBranch("")
+		if err == nil {
+			t.Error("Expected error for empty branch name")
+		}
+	})
+
+	t.Run("CheckoutBranch_NonExistentBranch", func(t *testing.T) {
+		err := blm.CheckoutBranch("non-existent-branch")
+		if err == nil {
+			t.Error("Expected error for non-existent branch")
+		}
+	})
+}
+
 // Helper function to run git commands in tests
 func runGitCmd(t *testing.T, dir string, args ...string) {
 	t.Helper()

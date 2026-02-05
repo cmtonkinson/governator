@@ -204,7 +204,7 @@ func TestTaskInventoryTitleExtraction(t *testing.T) {
 			name:      "h1_with_special_chars",
 			filename:  "006-special-chars.md",
 			content:   "# Task: Setup & Configure (v2.0)\n\nContent.",
-			wantTitle: "Task: Setup & Configure (v2.0)",
+			wantTitle: "Setup & Configure (v2.0)",
 		},
 		{
 			name:      "empty_file_uses_untitled",

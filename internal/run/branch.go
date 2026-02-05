@@ -77,6 +77,81 @@ func (blm *BranchLifecycleManager) CreateTaskBranch(task index.Task, baseBranch 
 	return nil
 }
 
+// PrepareBaseBranch checks out and updates the base branch.
+// This should be called before batch branch creation operations to ensure
+// all branches are created from the same consistent base.
+func (blm *BranchLifecycleManager) PrepareBaseBranch(baseBranch string) error {
+	if strings.TrimSpace(baseBranch) == "" {
+		baseBranch = "main"
+	}
+
+	// Checkout the base branch
+	if err := blm.runGit("checkout", baseBranch); err != nil {
+		return fmt.Errorf("checkout base branch %s: %w", baseBranch, err)
+	}
+
+	// Pull latest changes (non-fatal if offline)
+	if err := blm.runGit("pull", "origin", baseBranch); err != nil {
+		if blm.auditor != nil {
+			_ = blm.auditor.Log(audit.Entry{
+				Event: "branch.prepare.warning",
+				Fields: []audit.Field{
+					{Key: "message", Value: fmt.Sprintf("failed to pull %s: %v", baseBranch, err)},
+				},
+			})
+		}
+		// Continue anyway - might be working offline
+	}
+
+	return nil
+}
+
+// CreateTaskBranchWithoutCheckout creates a new branch for a task without checking it out.
+// The base branch must already be checked out and up-to-date before calling this method.
+// This is useful for batch branch creation where you want to create multiple branches
+// without repeatedly switching between them.
+//
+// Use PrepareBaseBranch() before calling this in a loop.
+func (blm *BranchLifecycleManager) CreateTaskBranchWithoutCheckout(task index.Task, baseBranch string) error {
+	if strings.TrimSpace(task.ID) == "" {
+		return fmt.Errorf("task ID is required")
+	}
+	if strings.TrimSpace(baseBranch) == "" {
+		baseBranch = "main"
+	}
+
+	branchName := TaskBranchName(task)
+
+	// Check if branch already exists
+	exists, err := blm.BranchExists(branchName)
+	if err != nil {
+		return fmt.Errorf("check if branch exists: %w", err)
+	}
+	if exists {
+		return nil
+	}
+
+	// Create branch without checkout: git branch <name> <base>
+	if err := blm.runGit("branch", branchName, baseBranch); err != nil {
+		return fmt.Errorf("create branch %s from %s: %w", branchName, baseBranch, err)
+	}
+
+	// Log branch creation
+	if blm.auditor != nil {
+		_ = blm.auditor.LogBranchCreate(task.ID, string(task.Role), branchName, baseBranch)
+	}
+
+	return nil
+}
+
+// CheckoutBranch checks out the specified branch.
+func (blm *BranchLifecycleManager) CheckoutBranch(branch string) error {
+	if strings.TrimSpace(branch) == "" {
+		return fmt.Errorf("branch name is required")
+	}
+	return blm.runGit("checkout", branch)
+}
+
 // CleanupTaskBranch removes a task branch after successful completion.
 // This should be called after the task has been successfully merged to main.
 func (blm *BranchLifecycleManager) CleanupTaskBranch(task index.Task) error {
@@ -119,6 +194,8 @@ func (blm *BranchLifecycleManager) CleanupTaskBranch(task index.Task) error {
 
 // EnsureTaskBranch ensures a task branch exists and is properly set up.
 // This is used during resume operations or when a task needs to be worked on.
+// NOTE: This method WILL checkout the task branch, leaving you on that branch.
+// For batch branch creation without checkout, use CreateTaskBranchWithoutCheckout.
 func (blm *BranchLifecycleManager) EnsureTaskBranch(task index.Task, baseBranch string) error {
 	if strings.TrimSpace(task.ID) == "" {
 		return fmt.Errorf("task ID is required")

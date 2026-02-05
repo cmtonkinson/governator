@@ -129,7 +129,10 @@ func extractTitleFromMarkdown(content string) string {
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "# ") {
-			return strings.TrimPrefix(trimmed, "# ")
+			title := strings.TrimPrefix(trimmed, "# ")
+			// Strip redundant "Task: " prefix that's common in markdown headers
+			title = strings.TrimPrefix(title, "Task: ")
+			return title
 		}
 	}
 	return "Untitled Task"

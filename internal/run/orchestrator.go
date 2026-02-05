@@ -2015,6 +2015,11 @@ func EnsureBranchesForOpenTasks(repoRoot string, idx *index.Index, auditor *audi
 	// Create branch lifecycle manager
 	branchManager := NewBranchLifecycleManager(repoRoot, auditor)
 
+	// Prepare base branch once before creating all task branches
+	if err := branchManager.PrepareBaseBranch(effectiveBranch); err != nil {
+		return result, fmt.Errorf("prepare base branch %s: %w", effectiveBranch, err)
+	}
+
 	// Process each open task to ensure it has a branch
 	for _, task := range openTasks {
 		// Check if branch already exists
@@ -2031,13 +2036,18 @@ func EnsureBranchesForOpenTasks(repoRoot string, idx *index.Index, auditor *audi
 		}
 
 		// Create branch for the task
-		if err := branchManager.CreateTaskBranch(task, effectiveBranch); err != nil {
+		if err := branchManager.CreateTaskBranchWithoutCheckout(task, effectiveBranch); err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to create branch for task %s: %v\n", task.ID, err)
 			continue
 		}
 
 		result.BranchesCreated++
 		fmt.Fprintf(opts.Stdout, "Created branch %s for task %s\n", branchName, task.ID)
+	}
+
+	// Ensure we're still on the base branch (for predictability)
+	if err := branchManager.CheckoutBranch(effectiveBranch); err != nil {
+		fmt.Fprintf(opts.Stderr, "Warning: failed to ensure checkout of %s: %v\n", effectiveBranch, err)
 	}
 
 	return result, nil

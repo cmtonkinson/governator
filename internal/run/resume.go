@@ -119,6 +119,14 @@ func PrepareTaskForResume(idx *index.Index, taskID string, auditor index.Transit
 		return fmt.Errorf("transition task to open: %w", err)
 	}
 
+	// Clear the blocked reason now that the task is being resumed
+	for i := range idx.Tasks {
+		if idx.Tasks[i].ID == taskID {
+			idx.Tasks[i].BlockedReason = ""
+			break
+		}
+	}
+
 	return nil
 }
 

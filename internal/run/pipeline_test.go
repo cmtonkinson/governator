@@ -308,3 +308,134 @@ func execGitCommand(dir string, args ...string) (string, error) {
 	}
 	return string(output), nil
 }
+
+// TestEnsureBranchesForOpenTasks_BatchCreation verifies batch branch creation logic.
+// This test ensures that:
+// - Multiple task branches are created efficiently
+// - The repository remains on the main branch after creation
+// - All branches point to the same base commit
+func TestEnsureBranchesForOpenTasks_BatchCreation(t *testing.T) {
+	// Setup test repository
+	repo := testrepos.New(t)
+	repoRoot := repo.Root
+
+	// Initialize governator structure
+	if err := config.InitFullLayout(repoRoot, config.InitOptions{}); err != nil {
+		t.Fatalf("init layout: %v", err)
+	}
+
+	// Create multiple triaged tasks
+	tasks := []index.Task{
+		{
+			ID:    "test-001",
+			Role:  "default",
+			Title: "First test task",
+			Kind:  index.TaskKindExecution,
+			State: index.TaskStateTriaged,
+		},
+		{
+			ID:    "test-002",
+			Role:  "default",
+			Title: "Second test task",
+			Kind:  index.TaskKindExecution,
+			State: index.TaskStateTriaged,
+		},
+		{
+			ID:    "test-003",
+			Role:  "default",
+			Title: "Third test task",
+			Kind:  index.TaskKindExecution,
+			State: index.TaskStateTriaged,
+		},
+	}
+
+	// Create index with tasks
+	idx := index.Index{
+		Tasks: tasks,
+	}
+
+	// Save index
+	indexPath := filepath.Join(repoRoot, "_governator", "index.json")
+	if err := index.Save(indexPath, idx); err != nil {
+		t.Fatalf("save index: %v", err)
+	}
+
+	// Ensure branches
+	opts := Options{
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	result, err := EnsureBranchesForOpenTasks(repoRoot, &idx, nil, opts, "main")
+	if err != nil {
+		t.Fatalf("EnsureBranchesForOpenTasks failed: %v", err)
+	}
+
+	// Verify result counts
+	if result.BranchesCreated != 3 {
+		t.Errorf("Expected 3 branches created, got %d", result.BranchesCreated)
+	}
+	if result.BranchesSkipped != 0 {
+		t.Errorf("Expected 0 branches skipped, got %d", result.BranchesSkipped)
+	}
+
+	// Verify all branches exist
+	for _, task := range tasks {
+		branchName := TaskBranchName(task)
+		output, err := execGitCommand(repoRoot, "show-ref", "--verify", "--quiet", "refs/heads/"+branchName)
+		if err != nil {
+			t.Errorf("Branch %s should exist but got error: %v (output: %s)", branchName, err, output)
+		}
+	}
+
+	// Verify we're on main branch
+	currentBranch, err := execGitCommand(repoRoot, "branch", "--show-current")
+	if err != nil {
+		t.Fatalf("Failed to get current branch: %v", err)
+	}
+	currentBranch = strings.TrimSpace(currentBranch)
+	if currentBranch != "main" {
+		t.Errorf("Expected to be on main branch, but on %s", currentBranch)
+	}
+
+	// Verify all task branches point to main (same commit)
+	mainCommit, err := execGitCommand(repoRoot, "rev-parse", "main")
+	if err != nil {
+		t.Fatalf("Failed to get main commit: %v", err)
+	}
+	mainCommit = strings.TrimSpace(mainCommit)
+
+	for _, task := range tasks {
+		branchName := TaskBranchName(task)
+		branchCommit, err := execGitCommand(repoRoot, "rev-parse", branchName)
+		if err != nil {
+			t.Fatalf("Failed to get commit for branch %s: %v", branchName, err)
+		}
+		branchCommit = strings.TrimSpace(branchCommit)
+		if branchCommit != mainCommit {
+			t.Errorf("Branch %s commit %s doesn't match main commit %s", branchName, branchCommit, mainCommit)
+		}
+	}
+
+	// Test idempotency - calling again should skip all branches
+	result2, err := EnsureBranchesForOpenTasks(repoRoot, &idx, nil, opts, "main")
+	if err != nil {
+		t.Fatalf("Second EnsureBranchesForOpenTasks failed: %v", err)
+	}
+
+	if result2.BranchesCreated != 0 {
+		t.Errorf("Expected 0 branches created on second run, got %d", result2.BranchesCreated)
+	}
+	if result2.BranchesSkipped != 3 {
+		t.Errorf("Expected 3 branches skipped on second run, got %d", result2.BranchesSkipped)
+	}
+
+	// Verify still on main branch
+	currentBranch2, err := execGitCommand(repoRoot, "branch", "--show-current")
+	if err != nil {
+		t.Fatalf("Failed to get current branch after second run: %v", err)
+	}
+	currentBranch2 = strings.TrimSpace(currentBranch2)
+	if currentBranch2 != "main" {
+		t.Errorf("Expected to be on main branch after second run, but on %s", currentBranch2)
+	}
+}

@@ -268,8 +268,9 @@ func TestPrepareTaskForResumeHappyPath(t *testing.T) {
 	idx := &index.Index{
 		Tasks: []index.Task{
 			{
-				ID:    "T-001",
-				State: index.TaskStateBlocked,
+				ID:           "T-001",
+				State:        index.TaskStateBlocked,
+				BlockedReason: "worker timeout after 30s",
 				Attempts: index.AttemptCounters{
 					Total:  1,
 					Failed: 1,
@@ -292,6 +293,11 @@ func TestPrepareTaskForResumeHappyPath(t *testing.T) {
 	// Check that task state was transitioned to open
 	if task.State != index.TaskStateOpen {
 		t.Fatalf("task state = %q, want %q", task.State, index.TaskStateOpen)
+	}
+
+	// Check that blocked reason was cleared
+	if task.BlockedReason != "" {
+		t.Fatalf("task blocked reason = %q, want empty", task.BlockedReason)
 	}
 }
 
