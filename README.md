@@ -64,14 +64,13 @@ governator init
 # 3. Run the planning phase
 governator plan
 
-# 4. Monitor progress
-governator status --watch
-
-# 5. Execute the plan
+# 4. Execute the plan
 governator execute
 
-# 6. Stream agent logs
-governator tail
+# 5. During planning and execution, you may:
+governator status           # Show workers and tasks   
+governator status --watch   # Live view of workers and tasks (q to quit)
+governator tail             # Stream worker logs to your terminal (q to quit)
 ```
 
 ### Install
