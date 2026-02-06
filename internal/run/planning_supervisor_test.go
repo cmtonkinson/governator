@@ -47,6 +47,102 @@ func TestRunPlanningSupervisorClearsStateOnCompletion(t *testing.T) {
 	}
 }
 
+// TestCleanupPlanningBranch verifies the planning branch and worktree are cleaned up.
+func TestCleanupPlanningBranch(t *testing.T) {
+	t.Parallel()
+
+	repo := testrepos.New(t)
+	repoRoot := repo.Root
+
+	if err := config.InitFullLayout(repoRoot, config.InitOptions{}); err != nil {
+		t.Fatalf("init full layout: %v", err)
+	}
+
+	// Create a planning branch and worktree manually to simulate planning state
+	if err := runGitInRepo(repoRoot, "checkout", "-b", "planning"); err != nil {
+		t.Fatalf("create planning branch: %v", err)
+	}
+	if err := runGitInRepo(repoRoot, "checkout", "main"); err != nil {
+		t.Fatalf("checkout main: %v", err)
+	}
+
+	worktreePath := filepath.Join(repoRoot, "_governator", "_local-state", "task-planning")
+	if err := os.MkdirAll(filepath.Dir(worktreePath), 0o755); err != nil {
+		t.Fatalf("create worktree parent dir: %v", err)
+	}
+	if err := runGitInRepo(repoRoot, "worktree", "add", worktreePath, "planning"); err != nil {
+		t.Fatalf("create planning worktree: %v", err)
+	}
+
+	// Verify planning branch and worktree exist before cleanup
+	if err := runGitInRepo(repoRoot, "rev-parse", "--verify", "planning"); err != nil {
+		t.Fatalf("planning branch should exist before cleanup: %v", err)
+	}
+	if _, err := os.Stat(worktreePath); os.IsNotExist(err) {
+		t.Fatalf("planning worktree should exist before cleanup")
+	}
+
+	// Run cleanup
+	if err := cleanupPlanningBranch(repoRoot); err != nil {
+		t.Fatalf("cleanup planning branch: %v", err)
+	}
+
+	// Verify planning branch and worktree are removed after cleanup
+	if err := runGitInRepo(repoRoot, "rev-parse", "--verify", "planning"); err == nil {
+		t.Fatalf("planning branch should be deleted after cleanup")
+	}
+	if _, err := os.Stat(worktreePath); !os.IsNotExist(err) {
+		t.Fatalf("planning worktree should be removed after cleanup")
+	}
+}
+
+// TestCleanupPlanningBranch_NoWorktree verifies cleanup works when only branch exists.
+func TestCleanupPlanningBranch_NoWorktree(t *testing.T) {
+	t.Parallel()
+
+	repo := testrepos.New(t)
+	repoRoot := repo.Root
+
+	if err := config.InitFullLayout(repoRoot, config.InitOptions{}); err != nil {
+		t.Fatalf("init full layout: %v", err)
+	}
+
+	// Create only the planning branch (no worktree)
+	if err := runGitInRepo(repoRoot, "checkout", "-b", "planning"); err != nil {
+		t.Fatalf("create planning branch: %v", err)
+	}
+	if err := runGitInRepo(repoRoot, "checkout", "main"); err != nil {
+		t.Fatalf("checkout main: %v", err)
+	}
+
+	// Run cleanup - should not fail even if worktree doesn't exist
+	if err := cleanupPlanningBranch(repoRoot); err != nil {
+		t.Fatalf("cleanup planning branch: %v", err)
+	}
+
+	// Verify planning branch is removed
+	if err := runGitInRepo(repoRoot, "rev-parse", "--verify", "planning"); err == nil {
+		t.Fatalf("planning branch should be deleted after cleanup")
+	}
+}
+
+// TestCleanupPlanningBranch_NoBranch verifies cleanup is idempotent when nothing exists.
+func TestCleanupPlanningBranch_NoBranch(t *testing.T) {
+	t.Parallel()
+
+	repo := testrepos.New(t)
+	repoRoot := repo.Root
+
+	if err := config.InitFullLayout(repoRoot, config.InitOptions{}); err != nil {
+		t.Fatalf("init full layout: %v", err)
+	}
+
+	// Run cleanup when planning branch doesn't exist - should not fail
+	if err := cleanupPlanningBranch(repoRoot); err != nil {
+		t.Fatalf("cleanup planning branch should not fail when branch doesn't exist: %v", err)
+	}
+}
+
 // TestRunPlanningSupervisorRegistersExistingTasks verifies plan can complete from existing tasks.
 func TestRunPlanningSupervisorRegistersExistingTasks(t *testing.T) {
 	t.Parallel()

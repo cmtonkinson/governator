@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -300,6 +301,14 @@ func completePlanningSupervisor(repoRoot string, state *supervisor.PlanningSuper
 		}
 		return fmt.Errorf("clear planning supervisor state: %w", err)
 	}
+
+	// Clean up planning branch and worktree after state is cleared
+	if err := cleanupPlanningBranch(repoRoot); err != nil {
+		// Log to stderr but don't fail completion - cleanup is non-critical
+		// Planning state is already cleared, so completion succeeded
+		fmt.Fprintf(os.Stderr, "Warning: failed to cleanup planning branch: %v\n", err)
+	}
+
 	return nil
 }
 
@@ -344,4 +353,30 @@ func failPlanningSupervisor(repoRoot string, state *supervisor.PlanningSuperviso
 		return fmt.Errorf("%w; supervisor state save failed: %v", err, saveErr)
 	}
 	return err
+}
+
+// cleanupPlanningBranch removes the planning worktree and branch after planning completes.
+func cleanupPlanningBranch(repoRoot string) error {
+	planningBranch := planningIndexTaskID // "planning" constant
+	worktreePath := filepath.Join(repoRoot, "_governator", "_local-state", "task-planning")
+
+	// Step 1: Remove the planning worktree if it exists
+	if _, err := os.Stat(worktreePath); err == nil {
+		if err := runGitInRepo(repoRoot, "worktree", "remove", "--force", worktreePath); err != nil {
+			return fmt.Errorf("remove planning worktree: %w", err)
+		}
+	}
+
+	// Step 2: Delete the planning branch if it exists
+	// Check if branch exists first to avoid errors
+	checkCmd := exec.Command("git", "rev-parse", "--verify", planningBranch)
+	checkCmd.Dir = repoRoot
+	if checkCmd.Run() == nil {
+		// Branch exists, delete it
+		if err := runGitInRepo(repoRoot, "branch", "-D", planningBranch); err != nil {
+			return fmt.Errorf("delete planning branch: %w", err)
+		}
+	}
+
+	return nil
 }
