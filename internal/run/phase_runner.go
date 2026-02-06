@@ -136,19 +136,7 @@ func (runner *phaseRunner) dispatchPhase(step workstreamStep) error {
 	}
 
 	// Map step name to legacy phase for backward compatibility
-	var legacyPhase phase.Phase
-	switch step.name {
-	case "architecture-baseline":
-		legacyPhase = phase.PhaseArchitectureBaseline
-	case "gap-analysis":
-		legacyPhase = phase.PhaseGapAnalysis
-	case "project-planning":
-		legacyPhase = phase.PhaseProjectPlanning
-	case "task-planning":
-		legacyPhase = phase.PhaseTaskPlanning
-	default:
-		legacyPhase = phase.PhaseNew
-	}
+	legacyPhase := stepToPhase(step.name)
 
 	branchName := step.branchName()
 	baseBranch := strings.TrimSpace(runner.cfg.Branches.Base)
@@ -223,19 +211,7 @@ func (runner *phaseRunner) completePhase(step workstreamStep) error {
 	// In new architecture, this would be handled by planning state updates
 
 	// Map step name to legacy phase for backward compatibility
-	var legacyPhase phase.Phase
-	switch step.name {
-	case "architecture-baseline":
-		legacyPhase = phase.PhaseArchitectureBaseline
-	case "gap-analysis":
-		legacyPhase = phase.PhaseGapAnalysis
-	case "project-planning":
-		legacyPhase = phase.PhaseProjectPlanning
-	case "task-planning":
-		legacyPhase = phase.PhaseTaskPlanning
-	default:
-		legacyPhase = phase.PhaseNew
-	}
+	legacyPhase := stepToPhase(step.name)
 
 	runner.emitPhaseComplete(legacyPhase)
 	return nil

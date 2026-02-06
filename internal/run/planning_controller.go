@@ -7,7 +7,7 @@ import (
 
 	"github.com/cmtonkinson/governator/internal/digests"
 	"github.com/cmtonkinson/governator/internal/index"
-	"github.com/cmtonkinson/governator/internal/phase"
+
 	"github.com/cmtonkinson/governator/internal/roles"
 	"github.com/cmtonkinson/governator/internal/worker"
 )
@@ -170,38 +170,14 @@ func (controller *planningController) EmitRunning(step workstreamStep, pids []in
 		return
 	}
 	// Map step name to legacy phase for backward compatibility
-	var legacyPhase phase.Phase
-	switch step.name {
-	case "architecture-baseline":
-		legacyPhase = phase.PhaseArchitectureBaseline
-	case "gap-analysis":
-		legacyPhase = phase.PhaseGapAnalysis
-	case "project-planning":
-		legacyPhase = phase.PhaseProjectPlanning
-	case "task-planning":
-		legacyPhase = phase.PhaseTaskPlanning
-	default:
-		legacyPhase = phase.PhaseNew
-	}
+	legacyPhase := stepToPhase(step.name)
 	controller.runner.emitPhaseRunning(legacyPhase, pids[0])
 }
 
 // EmitAgentComplete logs that the phase worker has exited.
 func (controller *planningController) EmitAgentComplete(step workstreamStep, collect workstreamCollectResult) {
 	// Map step name to legacy phase for backward compatibility
-	var legacyPhase phase.Phase
-	switch step.name {
-	case "architecture-baseline":
-		legacyPhase = phase.PhaseArchitectureBaseline
-	case "gap-analysis":
-		legacyPhase = phase.PhaseGapAnalysis
-	case "project-planning":
-		legacyPhase = phase.PhaseProjectPlanning
-	case "task-planning":
-		legacyPhase = phase.PhaseTaskPlanning
-	default:
-		legacyPhase = phase.PhaseNew
-	}
+	legacyPhase := stepToPhase(step.name)
 	controller.runner.emitPhaseAgentComplete(legacyPhase, collect.CompletedPID)
 }
 
