@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const usageMessage = "usage: governator [-v|--verbose] <init|plan|execute|run|status|stop|restart|reset|tail|version>"
+const usageMessage = "USAGE:\n    governator [global options] <command> [command options]"
 
 func TestCLICommands(t *testing.T) {
 	// Build the CLI binary for testing

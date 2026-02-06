@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/cmtonkinson/governator/internal/digests"
 	"github.com/cmtonkinson/governator/internal/index"
 	"github.com/cmtonkinson/governator/internal/phase"
 	"github.com/cmtonkinson/governator/internal/roles"
@@ -218,6 +219,7 @@ func (controller *planningController) reloadIndex() error {
 	return nil
 }
 
+// persistPlanningState updates the planning state and refreshes planning digests in the task index.
 func (controller *planningController) persistPlanningState(nextStepID string) error {
 	if controller.idx == nil {
 		return fmt.Errorf("task index is required")
@@ -227,6 +229,11 @@ func (controller *planningController) persistPlanningState(nextStepID string) er
 	if err != nil {
 		return fmt.Errorf("reload task index: %w", err)
 	}
+	digestsMap, err := digests.Compute(controller.runner.repoRoot)
+	if err != nil {
+		return fmt.Errorf("compute digests: %w", err)
+	}
+	updated.Digests = digestsMap
 	updatePlanningState(&updated, nextStepID)
 	if err := index.Save(indexPath, updated); err != nil {
 		return fmt.Errorf("save task index: %w", err)

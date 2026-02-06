@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cmtonkinson/governator/internal/config"
+	"github.com/cmtonkinson/governator/internal/digests"
 	"github.com/cmtonkinson/governator/internal/index"
 	"github.com/cmtonkinson/governator/internal/worker"
 )
@@ -106,6 +107,96 @@ func TestRunBacklogTriageFinalizesMapping(t *testing.T) {
 	}
 	if !reflect.DeepEqual(idx.Tasks[1].Dependencies, []string{"task-01"}) {
 		t.Fatalf("unexpected deps for task-02: %#v", idx.Tasks[1].Dependencies)
+	}
+}
+
+// TestRunBacklogTriageRefreshesDigests ensures triage updates planning digests after applying changes.
+func TestRunBacklogTriageRefreshesDigests(t *testing.T) {
+	repoRoot := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(repoRoot, "GOVERNATOR.md"), []byte("governance v1"), 0o644); err != nil {
+		t.Fatalf("write GOVERNATOR.md: %v", err)
+	}
+	docsDir := filepath.Join(repoRoot, "_governator", "docs")
+	if err := os.MkdirAll(docsDir, 0o755); err != nil {
+		t.Fatalf("create docs dir: %v", err)
+	}
+	docPath := filepath.Join(docsDir, "arch-asr.md")
+	if err := os.WriteFile(docPath, []byte("planning v1"), 0o644); err != nil {
+		t.Fatalf("write planning doc: %v", err)
+	}
+
+	initialDigests, err := digests.Compute(repoRoot)
+	if err != nil {
+		t.Fatalf("compute initial digests: %v", err)
+	}
+
+	idx := index.Index{
+		Digests: initialDigests,
+		Tasks: []index.Task{
+			{ID: "task-01", Kind: index.TaskKindExecution, State: index.TaskStateBacklog},
+		},
+	}
+	if err := os.MkdirAll(filepath.Join(repoRoot, "_governator"), 0o755); err != nil {
+		t.Fatalf("create governator dir: %v", err)
+	}
+	if err := index.Save(filepath.Join(repoRoot, indexFilePath), idx); err != nil {
+		t.Fatalf("save index: %v", err)
+	}
+
+	if err := os.WriteFile(docPath, []byte("planning v2"), 0o644); err != nil {
+		t.Fatalf("update planning doc: %v", err)
+	}
+
+	outputPath := triageOutputPath(repoRoot)
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
+		t.Fatalf("create output dir: %v", err)
+	}
+	if err := os.WriteFile(outputPath, []byte("{\"task-01\": []}\n"), 0o644); err != nil {
+		t.Fatalf("write dag output: %v", err)
+	}
+
+	workerStateDir := filepath.Join(repoRoot, "_governator/_local-state/triage/test-worker")
+	if err := os.MkdirAll(workerStateDir, 0o755); err != nil {
+		t.Fatalf("create worker state dir: %v", err)
+	}
+	exitStatus := worker.ExitStatus{
+		ExitCode:   0,
+		FinishedAt: time.Now().UTC(),
+		PID:        4321,
+	}
+	exitData, err := json.Marshal(exitStatus)
+	if err != nil {
+		t.Fatalf("marshal exit status: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workerStateDir, "exit.json"), exitData, 0o644); err != nil {
+		t.Fatalf("write exit status: %v", err)
+	}
+
+	state := TriageState{
+		Attempt:        1,
+		RunningPID:     999999,
+		WorkerStateDir: workerStateDir,
+		LastAttemptAt:  time.Now().UTC(),
+	}
+	if err := SaveTriageState(repoRoot, state); err != nil {
+		t.Fatalf("save triage state: %v", err)
+	}
+
+	result, err := RunBacklogTriage(repoRoot, &idx, config.Defaults(), Options{Stdout: ioDiscard{}, Stderr: ioDiscard{}})
+	if err != nil {
+		t.Fatalf("run triage: %v", err)
+	}
+	if !result.Completed {
+		t.Fatalf("expected completed triage result")
+	}
+
+	currentDigests, err := digests.Compute(repoRoot)
+	if err != nil {
+		t.Fatalf("compute current digests: %v", err)
+	}
+	if !reflect.DeepEqual(idx.Digests, currentDigests) {
+		t.Fatalf("expected digests refreshed, got %#v want %#v", idx.Digests, currentDigests)
 	}
 }
 

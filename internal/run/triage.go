@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cmtonkinson/governator/internal/config"
+	"github.com/cmtonkinson/governator/internal/digests"
 	"github.com/cmtonkinson/governator/internal/index"
 	"github.com/cmtonkinson/governator/internal/roles"
 	"github.com/cmtonkinson/governator/internal/templates"
@@ -212,6 +213,12 @@ func finalizeTriageAttempt(repoRoot string, idx *index.Index, cfg config.Config,
 	for _, warning := range warnings {
 		fmt.Fprintf(opts.Stderr, "Warning: %s\n", warning)
 	}
+
+	digestsMap, err := digests.Compute(repoRoot)
+	if err != nil {
+		return failTriageAttempt(repoRoot, state, fmt.Errorf("compute digests: %w", err), opts)
+	}
+	idx.Digests = digestsMap
 
 	indexPath := filepath.Join(repoRoot, indexFilePath)
 	if err := index.Save(indexPath, *idx); err != nil {
