@@ -262,7 +262,7 @@ func TestBuiltInCommand(t *testing.T) {
 			name:      "codex",
 			cli:       "codex",
 			wantValid: true,
-			wantLen:   4, // ["codex", "exec", "--sandbox=workspace-write", "{prompt_path}"]
+			wantLen:   5, // ["codex", "exec", "--ask-for-approval=never", "--sandbox=workspace-write", "{prompt_path}"]
 		},
 		{
 			name:      "claude",

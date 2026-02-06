@@ -41,7 +41,7 @@ Governator is a Git-native, deterministic engineer orchestration system. The ope
 ## Configuration & Prompts
 - `_governator/_durable-state/config.json` stores the canonical config. Key sections are:
   - `workers.cli`: Select which AI CLI to use. Built-in support for:
-    - **`"codex"`** (default): Uses `codex exec --sandbox=workspace-write {prompt_path}`
+    - **`"codex"`** (default): Uses `codex --ask-for-approval=never --sandbox=workspace-write exec {prompt_path}`
     - **`"claude"`**: Uses `claude --print {prompt_path}`
     - **`"gemini"`**: Uses `gemini {prompt_path}`
     - Set `workers.cli.default` for the default CLI and `workers.cli.roles` for per-role overrides

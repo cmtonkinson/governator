@@ -72,7 +72,7 @@ const (
 func BuiltInCommand(cli string) ([]string, bool) {
 	switch cli {
 	case CLICodex:
-		return []string{"codex", "exec", "--sandbox=workspace-write", "{prompt_path}"}, true
+		return []string{"codex", "--ask-for-approval=never", "--sandbox=workspace-write", "exec", "{prompt_path}"}, true
 	case CLIClaude:
 		return []string{"claude", "--print", "{prompt_path}"}, true
 	case CLIGemini:
