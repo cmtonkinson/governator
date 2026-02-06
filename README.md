@@ -106,7 +106,16 @@ requirements, assumptions, and definition of done. Workers never modify it.
 
 ### Configuration
 
-After `governator init`, tweak `_governator/_durable-state/config.json`:
+Configure during initialization with `governator init` options (see `governator init -h` for full list and defaults):
+
+```bash
+governator init \
+  --agent claude \          # Agent CLI (codex, claude, gemini)
+  --concurrency 5 \         # Max concurrent workers
+  --reasoning-effort high \ # Reasoning level (low, medium, high)
+```
+
+Or edit `_governator/_durable-state/config.json` post-init:
 
 | Key | Default | Description |
 |-----|---------|-------------|
