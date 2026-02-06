@@ -41,6 +41,15 @@ type InitOptions struct {
 	Writer  io.Writer
 }
 
+// InitOverrides contains configuration values to override during initialization.
+type InitOverrides struct {
+	Agent           string // workers.cli.default
+	Concurrency     int    // concurrency.global and concurrency.default_role
+	ReasoningEffort string // reasoning_effort.default
+	Branch          string // branches.base
+	Timeout         int    // timeouts.worker_seconds
+}
+
 func (opts InitOptions) logf(format string, args ...interface{}) {
 	if !opts.Verbose {
 		return
@@ -409,4 +418,61 @@ func repoRelativePath(repoRoot, target string) string {
 		return filepath.ToSlash(target)
 	}
 	return filepath.ToSlash(rel)
+}
+
+// ApplyInitOverrides updates the config.json file with values from command-line flags.
+func ApplyInitOverrides(repoRoot string, overrides InitOverrides) error {
+	configPath := filepath.Join(repoRoot, repoDurableStateDir, repoConfigFileName)
+
+	// Read existing config
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("read config file %s: %w", configPath, err)
+	}
+
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return fmt.Errorf("parse config file %s: %w", configPath, err)
+	}
+
+	// Apply overrides
+	if overrides.Agent != "" {
+		if !IsValidCLI(overrides.Agent) {
+			return fmt.Errorf("invalid agent: %s (must be codex, claude, or gemini)", overrides.Agent)
+		}
+		cfg.Workers.CLI.Default = overrides.Agent
+	}
+
+	if overrides.Concurrency > 0 {
+		cfg.Concurrency.Global = overrides.Concurrency
+		cfg.Concurrency.DefaultRole = overrides.Concurrency
+	}
+
+	if overrides.ReasoningEffort != "" {
+		validEfforts := map[string]bool{"low": true, "medium": true, "high": true}
+		if !validEfforts[overrides.ReasoningEffort] {
+			return fmt.Errorf("invalid reasoning-effort: %s (must be low, medium, or high)", overrides.ReasoningEffort)
+		}
+		cfg.ReasoningEffort.Default = overrides.ReasoningEffort
+	}
+
+	if overrides.Branch != "" {
+		cfg.Branches.Base = overrides.Branch
+	}
+
+	if overrides.Timeout > 0 {
+		cfg.Timeouts.WorkerSeconds = overrides.Timeout
+	}
+
+	// Write updated config
+	updatedData, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+
+	if err := os.WriteFile(configPath, updatedData, 0644); err != nil {
+		return fmt.Errorf("write config file %s: %w", configPath, err)
+	}
+
+	return nil
 }

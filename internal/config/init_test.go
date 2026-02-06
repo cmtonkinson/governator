@@ -316,3 +316,134 @@ func TestInitFullLayout(t *testing.T) {
 		}
 	})
 }
+
+func TestApplyInitOverrides(t *testing.T) {
+	t.Run("applies all overrides correctly", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		// Create initial config
+		if err := InitRepoConfig(tempDir, InitOptions{}); err != nil {
+			t.Fatalf("InitRepoConfig failed: %v", err)
+		}
+
+		// Apply overrides
+		overrides := InitOverrides{
+			Agent:           "claude",
+			Concurrency:     5,
+			ReasoningEffort: "high",
+			Branch:          "develop",
+			Timeout:         1800,
+		}
+
+		if err := ApplyInitOverrides(tempDir, overrides); err != nil {
+			t.Fatalf("ApplyInitOverrides failed: %v", err)
+		}
+
+		// Read config and verify
+		configPath := filepath.Join(tempDir, repoDurableStateDir, repoConfigFileName)
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			t.Fatalf("Failed to read config: %v", err)
+		}
+
+		var cfg Config
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			t.Fatalf("Failed to parse config: %v", err)
+		}
+
+		if cfg.Workers.CLI.Default != "claude" {
+			t.Errorf("Agent override failed: got %s, want claude", cfg.Workers.CLI.Default)
+		}
+		if cfg.Concurrency.Global != 5 {
+			t.Errorf("Concurrency.Global override failed: got %d, want 5", cfg.Concurrency.Global)
+		}
+		if cfg.Concurrency.DefaultRole != 5 {
+			t.Errorf("Concurrency.DefaultRole override failed: got %d, want 5", cfg.Concurrency.DefaultRole)
+		}
+		if cfg.ReasoningEffort.Default != "high" {
+			t.Errorf("ReasoningEffort override failed: got %s, want high", cfg.ReasoningEffort.Default)
+		}
+		if cfg.Branches.Base != "develop" {
+			t.Errorf("Branch override failed: got %s, want develop", cfg.Branches.Base)
+		}
+		if cfg.Timeouts.WorkerSeconds != 1800 {
+			t.Errorf("Timeout override failed: got %d, want 1800", cfg.Timeouts.WorkerSeconds)
+		}
+	})
+
+	t.Run("applies partial overrides", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		if err := InitRepoConfig(tempDir, InitOptions{}); err != nil {
+			t.Fatalf("InitRepoConfig failed: %v", err)
+		}
+
+		// Only override agent
+		overrides := InitOverrides{
+			Agent: "gemini",
+		}
+
+		if err := ApplyInitOverrides(tempDir, overrides); err != nil {
+			t.Fatalf("ApplyInitOverrides failed: %v", err)
+		}
+
+		configPath := filepath.Join(tempDir, repoDurableStateDir, repoConfigFileName)
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			t.Fatalf("Failed to read config: %v", err)
+		}
+
+		var cfg Config
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			t.Fatalf("Failed to parse config: %v", err)
+		}
+
+		if cfg.Workers.CLI.Default != "gemini" {
+			t.Errorf("Agent override failed: got %s, want gemini", cfg.Workers.CLI.Default)
+		}
+		// Other values should remain at defaults
+		if cfg.Concurrency.Global != defaultConcurrencyGlobal {
+			t.Errorf("Concurrency.Global should remain default: got %d, want %d", cfg.Concurrency.Global, defaultConcurrencyGlobal)
+		}
+	})
+
+	t.Run("rejects invalid agent", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		if err := InitRepoConfig(tempDir, InitOptions{}); err != nil {
+			t.Fatalf("InitRepoConfig failed: %v", err)
+		}
+
+		overrides := InitOverrides{
+			Agent: "invalid-cli",
+		}
+
+		err := ApplyInitOverrides(tempDir, overrides)
+		if err == nil {
+			t.Fatal("Expected error for invalid agent, got nil")
+		}
+		if !bytes.Contains([]byte(err.Error()), []byte("invalid agent")) {
+			t.Errorf("Expected 'invalid agent' error, got: %v", err)
+		}
+	})
+
+	t.Run("rejects invalid reasoning effort", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		if err := InitRepoConfig(tempDir, InitOptions{}); err != nil {
+			t.Fatalf("InitRepoConfig failed: %v", err)
+		}
+
+		overrides := InitOverrides{
+			ReasoningEffort: "invalid-effort",
+		}
+
+		err := ApplyInitOverrides(tempDir, overrides)
+		if err == nil {
+			t.Fatal("Expected error for invalid reasoning effort, got nil")
+		}
+		if !bytes.Contains([]byte(err.Error()), []byte("invalid reasoning-effort")) {
+			t.Errorf("Expected 'invalid reasoning-effort' error, got: %v", err)
+		}
+	})
+}

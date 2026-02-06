@@ -121,9 +121,22 @@ func main() {
 
 func runInit(verbose bool, args []string) {
 	flags := flag.NewFlagSet("init", flag.ExitOnError)
+
+	// Configuration override flags
+	agent := flags.String("a", "", "")
+	agentLong := flags.String("agent", "", "")
+	concurrency := flags.Int("c", 0, "")
+	concurrencyLong := flags.Int("concurrency", 0, "")
+	reasoningEffort := flags.String("r", "", "")
+	reasoningEffortLong := flags.String("reasoning-effort", "", "")
+	branch := flags.String("b", "", "")
+	branchLong := flags.String("branch", "", "")
+	timeout := flags.Int("t", 0, "")
+	timeoutLong := flags.Int("timeout", 0, "")
+
 	flags.Usage = func() {
 		fmt.Fprint(os.Stderr, `USAGE:
-    governator init
+    governator init [options]
 
 DESCRIPTION:
     Initialize a new governator workspace in the current git repository.
@@ -131,7 +144,12 @@ DESCRIPTION:
     seeds the planning index, and commits the initialization.
 
 OPTIONS:
-    -h, --help    Show this help message
+    -a, --agent <cli>             Set default worker CLI (codex, claude, gemini)
+    -c, --concurrency <n>         Set global and default role concurrency limit
+    -r, --reasoning-effort <lvl>  Set default reasoning effort (low, medium, high)
+    -b, --branch <name>           Set base branch name (default: main)
+    -t, --timeout <seconds>       Set worker timeout in seconds (default: 900)
+    -h, --help                    Show this help message
 `)
 	}
 	flags.Parse(args)
@@ -142,15 +160,54 @@ OPTIONS:
 		os.Exit(2)
 	}
 
+	// Resolve flag values
+	agentValue := *agent
+	if *agentLong != "" {
+		agentValue = *agentLong
+	}
+	concurrencyValue := *concurrency
+	if *concurrencyLong != 0 {
+		concurrencyValue = *concurrencyLong
+	}
+	reasoningEffortValue := *reasoningEffort
+	if *reasoningEffortLong != "" {
+		reasoningEffortValue = *reasoningEffortLong
+	}
+	branchValue := *branch
+	if *branchLong != "" {
+		branchValue = *branchLong
+	}
+	timeoutValue := *timeout
+	if *timeoutLong != 0 {
+		timeoutValue = *timeoutLong
+	}
+
 	repoRoot, err := repo.DiscoverRootFromCWD()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(2)
 	}
+
+	// Create the layout with default config
 	if err := config.InitFullLayout(repoRoot, config.InitOptions{Verbose: verbose}); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
+
+	// Apply flag overrides to config if any were provided
+	if agentValue != "" || concurrencyValue != 0 || reasoningEffortValue != "" || branchValue != "" || timeoutValue != 0 {
+		if err := config.ApplyInitOverrides(repoRoot, config.InitOverrides{
+			Agent:           agentValue,
+			Concurrency:     concurrencyValue,
+			ReasoningEffort: reasoningEffortValue,
+			Branch:          branchValue,
+			Timeout:         timeoutValue,
+		}); err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+	}
+
 	if err := run.SeedPlanningIndex(repoRoot); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
