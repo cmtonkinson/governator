@@ -162,7 +162,8 @@ func (controller *executionController) Dispatch(step workstreamStep) (workstream
 func (controller *executionController) EmitRunning(step workstreamStep, pids []int) {}
 
 // EmitAgentComplete is a no-op for execution stages.
-func (controller *executionController) EmitAgentComplete(step workstreamStep, collect workstreamCollectResult) {}
+func (controller *executionController) EmitAgentComplete(step workstreamStep, collect workstreamCollectResult) {
+}
 
 // stageForStep resolves the execution stage encoded in the step name.
 func (controller *executionController) stageForStep(step workstreamStep) (executionStage, error) {

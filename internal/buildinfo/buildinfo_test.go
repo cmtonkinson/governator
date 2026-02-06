@@ -57,7 +57,7 @@ func TestString(t *testing.T) {
 
 func TestStringFormat(t *testing.T) {
 	result := String()
-	
+
 	// Check that it contains the expected format
 	if !strings.Contains(result, "version=") {
 		t.Error("String() should contain 'version='")
@@ -68,7 +68,7 @@ func TestStringFormat(t *testing.T) {
 	if !strings.Contains(result, "built_at=") {
 		t.Error("String() should contain 'built_at='")
 	}
-	
+
 	// Check that spaces separate the components
 	parts := strings.Split(result, " ")
 	if len(parts) != 3 {

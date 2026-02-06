@@ -18,22 +18,22 @@ type Digests struct {
 
 // Task captures a single task entry from the task index.
 type Task struct {
-	ID            string          `json:"id"`
-	Title         string          `json:"title,omitempty"`
-	Path          string          `json:"path"`
-	Kind          TaskKind        `json:"kind"`
-	State         TaskState       `json:"state"`
-	Role          Role            `json:"role"`
-	AssignedRole  string          `json:"assigned_role,omitempty"`
-	BlockedReason string          `json:"blocked,omitempty"`
-	MergeConflict bool            `json:"merge_conflict,omitempty"`
-	PID           int             `json:"pid,omitempty"`
-	Dependencies  []string        `json:"dependencies"`
-	Retries       RetryPolicy     `json:"retries"`
-	Attempts      AttemptCounters `json:"attempts"`
+	ID            string           `json:"id"`
+	Title         string           `json:"title,omitempty"`
+	Path          string           `json:"path"`
+	Kind          TaskKind         `json:"kind"`
+	State         TaskState        `json:"state"`
+	Role          Role             `json:"role"`
+	AssignedRole  string           `json:"assigned_role,omitempty"`
+	BlockedReason string           `json:"blocked,omitempty"`
+	MergeConflict bool             `json:"merge_conflict,omitempty"`
+	PID           int              `json:"pid,omitempty"`
+	Dependencies  []string         `json:"dependencies"`
+	Retries       RetryPolicy      `json:"retries"`
+	Attempts      AttemptCounters  `json:"attempts"`
 	Metrics       ExecutionMetrics `json:"metrics,omitempty"`
-	Order         int             `json:"order"`
-	Overlap       []string        `json:"overlap"`
+	Order         int              `json:"order"`
+	Overlap       []string         `json:"overlap"`
 }
 
 // TaskState labels the lifecycle state for a task.
@@ -92,8 +92,8 @@ type AttemptCounters struct {
 
 // ExecutionMetrics captures execution statistics for retrospective analysis.
 type ExecutionMetrics struct {
-	DurationMs     int64 `json:"duration_ms,omitempty"`      // Total wall time in milliseconds across all stages
-	TokensPrompt   int   `json:"tokens_prompt,omitempty"`    // Total input tokens consumed
-	TokensResponse int   `json:"tokens_response,omitempty"`  // Total output tokens generated
-	TokensTotal    int   `json:"tokens_total,omitempty"`     // Total tokens (prompt + response)
+	DurationMs     int64 `json:"duration_ms,omitempty"`     // Total wall time in milliseconds across all stages
+	TokensPrompt   int   `json:"tokens_prompt,omitempty"`   // Total input tokens consumed
+	TokensResponse int   `json:"tokens_response,omitempty"` // Total output tokens generated
+	TokensTotal    int   `json:"tokens_total,omitempty"`    // Total tokens (prompt + response)
 }

@@ -11,44 +11,44 @@ import (
 )
 
 const (
-	idColumnWidth    = 6
-	stateColumnWidth = 14
-	depsColumnWidth  = 20
+	idColumnWidth     = 6
+	stateColumnWidth  = 14
+	depsColumnWidth   = 20
 	blocksColumnWidth = 20
-	titleColumnWidth = 40
+	titleColumnWidth  = 40
 )
 
 var (
 	headerStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("12"))
+			Bold(true).
+			Foreground(lipgloss.Color("12"))
 
 	cellStyle = lipgloss.NewStyle()
 
 	separatorStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("240"))
+			Foreground(lipgloss.Color("240"))
 
 	summaryStyle = lipgloss.NewStyle().
-		Bold(true)
+			Bold(true)
 )
 
 // Summary represents the DAG visualization output.
 type Summary struct {
-	Tasks       []TaskRow
-	TotalTasks  int
-	InProgress  int
-	Merged      int
-	Backlog     int
+	Tasks      []TaskRow
+	TotalTasks int
+	InProgress int
+	Merged     int
+	Backlog    int
 }
 
 // TaskRow represents a single row in the DAG display.
 type TaskRow struct {
-	ID         string
-	State      string
-	DependsOn  string
-	Blocks     string
-	Title      string
-	Order      int
+	ID        string
+	State     string
+	DependsOn string
+	Blocks    string
+	Title     string
+	Order     int
 }
 
 // String returns the formatted DAG output.

@@ -1019,7 +1019,7 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 				logAgentOutcome(workerAuditor, task.ID, task.Role, roles.StageReview, statusFromIngestResult(failedResult), exitCodeForOutcome(-1, true), func(message string) {
 					fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
 				})
-				if _, err := UpdateTaskStateFromReviewResult(idx, task.ID,failedResult, transitionAuditor); err != nil {
+				if _, err := UpdateTaskStateFromReviewResult(idx, task.ID, failedResult, transitionAuditor); err != nil {
 					fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, err)
 				} else {
 					result.TasksBlocked++
@@ -1063,7 +1063,7 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 		})
 
 		if reviewResult.Success {
-			stageMetrics, err := UpdateTaskStateFromReviewResult(idx, task.ID,reviewResult, transitionAuditor)
+			stageMetrics, err := UpdateTaskStateFromReviewResult(idx, task.ID, reviewResult, transitionAuditor)
 			if err != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s after review: %v\n", task.ID, err)
 				continue
@@ -1122,7 +1122,7 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 				emitTaskFailure(opts.Stdout, task.ID, string(task.Role), mergeStageName, mergeResult.ConflictError)
 			}
 		} else {
-			if _, err := UpdateTaskStateFromReviewResult(idx, task.ID,reviewResult, transitionAuditor); err != nil {
+			if _, err := UpdateTaskStateFromReviewResult(idx, task.ID, reviewResult, transitionAuditor); err != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, err)
 			} else {
 				result.TasksBlocked++

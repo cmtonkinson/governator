@@ -58,7 +58,7 @@ func TestE2EPlanning(t *testing.T) {
 	cfg := &config.Config{
 		Workers: config.WorkersConfig{
 			Commands: config.WorkerCommands{
-				Default: []string{testWorkerPath, "{task_path}"},  // Must use {task_path} not {prompt_path}!
+				Default: []string{testWorkerPath, "{task_path}"}, // Must use {task_path} not {prompt_path}!
 				Roles:   map[string][]string{},
 			},
 		},

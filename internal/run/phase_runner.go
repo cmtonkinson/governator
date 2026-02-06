@@ -347,7 +347,6 @@ func commitPlanningIndexIfDirty(repoRoot string, stepTitle string) error {
 	}, "commit", "-m", message)
 }
 
-
 // ensureCleanRepoRoot verifies the repository root has no uncommitted changes (ignoring local-state).
 func ensureCleanRepoRoot(repoRoot string) error {
 	if strings.TrimSpace(repoRoot) == "" {

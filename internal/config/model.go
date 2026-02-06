@@ -5,11 +5,11 @@ import "strings"
 
 // Config defines the full configuration surface for Governator v2.
 type Config struct {
-	Workers        WorkersConfig         `json:"workers"`
-	Concurrency    ConcurrencyConfig     `json:"concurrency"`
-	Timeouts       TimeoutsConfig        `json:"timeouts"`
-	Retries        RetriesConfig         `json:"retries"`
-	Branches       BranchConfig          `json:"branches"`
+	Workers         WorkersConfig         `json:"workers"`
+	Concurrency     ConcurrencyConfig     `json:"concurrency"`
+	Timeouts        TimeoutsConfig        `json:"timeouts"`
+	Retries         RetriesConfig         `json:"retries"`
+	Branches        BranchConfig          `json:"branches"`
 	ReasoningEffort ReasoningEffortConfig `json:"reasoning_effort"`
 }
 

@@ -13,15 +13,15 @@ import (
 )
 
 const (
-	localStateDirName           = "_governator/_local-state"
-	planningSupervisorDirName   = "planning_supervisor"
-	planningSupervisorStateFile = "state.json"
-	planningSupervisorLogFile   = "supervisor.log"
+	localStateDirName            = "_governator/_local-state"
+	planningSupervisorDirName    = "planning_supervisor"
+	planningSupervisorStateFile  = "state.json"
+	planningSupervisorLogFile    = "supervisor.log"
 	executionSupervisorDirName   = "execution_supervisor"
 	executionSupervisorStateFile = "state.json"
 	executionSupervisorLogFile   = "supervisor.log"
-	planningSupervisorDirMode   = 0o755
-	planningSupervisorFileMode  = 0o644
+	planningSupervisorDirMode    = 0o755
+	planningSupervisorFileMode   = 0o644
 )
 
 const (

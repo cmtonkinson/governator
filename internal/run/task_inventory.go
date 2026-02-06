@@ -30,9 +30,9 @@ func NewTaskInventory(repoRoot string, idx *index.Index) *TaskInventory {
 // InventoryTasks scans the tasks directory and adds new tasks to the index.
 func (inventory *TaskInventory) InventoryTasks() (TaskInventoryResult, error) {
 	result := TaskInventoryResult{}
-	
+
 	tasksDir := filepath.Join(inventory.repoRoot, "_governator", "tasks")
-	
+
 	// Check if tasks directory exists
 	if _, err := os.Stat(tasksDir); err != nil {
 		if os.IsNotExist(err) {
@@ -40,13 +40,13 @@ func (inventory *TaskInventory) InventoryTasks() (TaskInventoryResult, error) {
 		}
 		return result, fmt.Errorf("stat tasks directory: %w", err)
 	}
-	
+
 	// Read all task files
 	entries, err := os.ReadDir(tasksDir)
 	if err != nil {
 		return result, fmt.Errorf("read tasks directory: %w", err)
 	}
-	
+
 	// Filter and process markdown files
 	var taskFiles []string
 	for _, entry := range entries {
@@ -57,22 +57,22 @@ func (inventory *TaskInventory) InventoryTasks() (TaskInventoryResult, error) {
 			taskFiles = append(taskFiles, entry.Name())
 		}
 	}
-	
+
 	if len(taskFiles) == 0 {
 		return result, fmt.Errorf("no task markdown files found in %s", tasksDir)
 	}
-	
+
 	// Process each task file
 	for _, filename := range taskFiles {
 		filePath := filepath.Join(tasksDir, filename)
-		
+
 		// Parse task metadata from markdown
 		task, err := inventory.parseTaskFile(filePath)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("parse task %s: %w", filename, err))
 			continue
 		}
-		
+
 		// Check if task already exists in index
 		exists := false
 		for _, existingTask := range inventory.idx.Tasks {
@@ -81,14 +81,14 @@ func (inventory *TaskInventory) InventoryTasks() (TaskInventoryResult, error) {
 				break
 			}
 		}
-		
+
 		if !exists {
 			// Add new task to index
 			inventory.idx.Tasks = append(inventory.idx.Tasks, task)
 			result.TasksAdded++
 		}
 	}
-	
+
 	return result, nil
 }
 
@@ -98,18 +98,18 @@ func (inventory *TaskInventory) parseTaskFile(filePath string) (index.Task, erro
 	if err != nil {
 		return index.Task{}, fmt.Errorf("read task file: %w", err)
 	}
-	
+
 	// Basic parsing - in a real implementation, this would parse frontend matter or
 	// specific markdown sections to extract title, dependencies, etc.
-	
+
 	// For now, we'll create a basic task with default values
 	relativePath, err := filepath.Rel(inventory.repoRoot, filePath)
 	if err != nil {
 		return index.Task{}, fmt.Errorf("compute relative path: %w", err)
 	}
-	
+
 	taskID := strings.TrimSuffix(filepath.Base(filePath), ".md")
-	
+
 	return index.Task{
 		ID:       taskID,
 		Title:    extractTitleFromMarkdown(string(content)),

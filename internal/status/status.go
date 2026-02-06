@@ -30,17 +30,17 @@ const (
 
 var (
 	headerStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("12")).
-		Align(lipgloss.Left)
+			Bold(true).
+			Foreground(lipgloss.Color("12")).
+			Align(lipgloss.Left)
 
 	cellStyle = lipgloss.NewStyle().
-		Align(lipgloss.Left)
+			Align(lipgloss.Left)
 
 	tableStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("240")).
-		Padding(0, 1)
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("240")).
+			Padding(0, 1)
 
 	separatorStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("240"))
@@ -68,8 +68,8 @@ type Summary struct {
 	Backlog       int
 	Merged        int
 	InProgress    int
-	Rows          []StatusRow       // Active (non-merged) tasks
-	MergedRows    []StatusRow       // Merged tasks (kept separate)
+	Rows          []StatusRow // Active (non-merged) tasks
+	MergedRows    []StatusRow // Merged tasks (kept separate)
 	Aggregates    AggregateMetrics
 }
 

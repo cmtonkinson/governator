@@ -268,8 +268,8 @@ func TestPrepareTaskForResumeHappyPath(t *testing.T) {
 	idx := &index.Index{
 		Tasks: []index.Task{
 			{
-				ID:           "T-001",
-				State:        index.TaskStateBlocked,
+				ID:            "T-001",
+				State:         index.TaskStateBlocked,
 				BlockedReason: "worker timeout after 30s",
 				Attempts: index.AttemptCounters{
 					Total:  1,

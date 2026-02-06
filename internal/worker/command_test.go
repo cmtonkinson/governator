@@ -113,10 +113,10 @@ func TestResolveCommandMissingTaskPathToken(t *testing.T) {
 // TestResolveCommandWithCLI verifies CLI-based command resolution.
 func TestResolveCommandWithCLI(t *testing.T) {
 	tests := []struct {
-		name    string
-		cfg     config.Config
-		role    index.Role
-		want    []string
+		name string
+		cfg  config.Config
+		role index.Role
+		want []string
 	}{
 		{
 			name: "codex-default",

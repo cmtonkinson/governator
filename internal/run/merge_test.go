@@ -45,7 +45,7 @@ func TestExecuteReviewMergeFlow_Success(t *testing.T) {
 	}
 	worktreeResult, err := manager.EnsureWorktree(worktree.Spec{
 		WorkstreamID: task.ID,
-	Branch:       branchName,
+		Branch:       branchName,
 		BaseBranch:   "main",
 	})
 	if err != nil {

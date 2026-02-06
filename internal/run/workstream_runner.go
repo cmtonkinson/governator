@@ -16,10 +16,10 @@ type workstreamController interface {
 
 // workstreamCollectResult captures the outcome of a collect pass for a step.
 type workstreamCollectResult struct {
-	RunningPIDs []int
+	RunningPIDs  []int
 	CompletedPID int
-	Completed   bool
-	Handled     bool
+	Completed    bool
+	Handled      bool
 }
 
 // workstreamDispatchResult captures the outcome of a dispatch pass for a step.

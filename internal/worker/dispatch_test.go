@@ -3,8 +3,8 @@ package worker
 import (
 	"os"
 	"path/filepath"
-	"time"
 	"testing"
+	"time"
 
 	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/index"
