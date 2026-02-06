@@ -209,6 +209,8 @@ _governator/
 
 ## Core Design
 
+Why did I build this? To get PoCs from zero to one. Plain and simple.
+
 **Determinism by design.** Governator intentionally avoids chat-based
 orchestration, shared agent memory, implicit context, and conversational state.
 If something matters, it exists as a file in git. This makes the system
