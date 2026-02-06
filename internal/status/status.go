@@ -11,6 +11,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/cmtonkinson/governator/internal/index"
+	"github.com/cmtonkinson/governator/internal/inflight"
 	"github.com/cmtonkinson/governator/internal/run"
 	"github.com/cmtonkinson/governator/internal/supervisor"
 	"golang.org/x/term"
@@ -68,22 +69,24 @@ type Summary struct {
 }
 
 type statusRow struct {
-	id    string
-	state string
-	pid   string
-	role  string
-	attrs string
-	title string
-	order int
+	id      string
+	state   string
+	pid     string
+	runtime string
+	role    string
+	attrs   string
+	title   string
+	order   int
 }
 
 // Accessor methods for statusRow (used by TUI package)
-func (r statusRow) ID() string    { return r.id }
-func (r statusRow) State() string { return r.state }
-func (r statusRow) PID() string   { return r.pid }
-func (r statusRow) Role() string  { return r.role }
-func (r statusRow) Attrs() string { return r.attrs }
-func (r statusRow) Title() string { return r.title }
+func (r statusRow) ID() string      { return r.id }
+func (r statusRow) State() string   { return r.state }
+func (r statusRow) PID() string     { return r.pid }
+func (r statusRow) Runtime() string { return r.runtime }
+func (r statusRow) Role() string    { return r.role }
+func (r statusRow) Attrs() string   { return r.attrs }
+func (r statusRow) Title() string   { return r.title }
 
 // SupervisorSummary captures the status output for a supervisor.
 type SupervisorSummary struct {
@@ -161,23 +164,26 @@ func (s Summary) plainString() string {
 			)
 		}
 	}
+	fmt.Fprintln(&b, "tasks")
 	fmt.Fprintf(&b, "backlog=%d merged=%d in-progress=%d\n", s.Backlog, s.Merged, s.InProgress)
 	if s.InProgress == 0 {
 		return strings.TrimSpace(b.String())
 	}
-	fmt.Fprintf(&b, "%-*s %-*s %-*s %-*s %-*s %s\n",
+	fmt.Fprintf(&b, "%-*s %-*s %-*s %-*s %-*s %-*s %s\n",
 		idColumnWidth, "id",
 		stateColumnWidth, "state",
 		pidColumnWidth, "pid",
+		8, "runtime",
 		roleColumnWidth, "role",
 		attrsColumnWidth, "attrs",
 		"title",
 	)
 	for _, row := range s.Rows {
-		fmt.Fprintf(&b, "%-*s %-*s %-*s %-*s %-*s %s\n",
+		fmt.Fprintf(&b, "%-*s %-*s %-*s %-*s %-*s %-*s %s\n",
 			idColumnWidth, row.id,
 			stateColumnWidth, row.state,
 			pidColumnWidth, row.pid,
+			8, row.runtime,
 			roleColumnWidth, row.role,
 			attrsColumnWidth, row.attrs,
 			row.title,
@@ -214,7 +220,9 @@ func (s Summary) styledString() string {
 		b.WriteString("\n\n")
 	}
 
-	// Task counts
+	// Tasks section
+	b.WriteString(headerStyle.Render("Tasks"))
+	b.WriteString("\n")
 	b.WriteString(countsStyle.Render(fmt.Sprintf("backlog=%d merged=%d in-progress=%d",
 		s.Backlog, s.Merged, s.InProgress)))
 	b.WriteString("\n")
@@ -253,6 +261,13 @@ func formatSupervisorRuntime(startedAt time.Time) string {
 	return formatDurationShort(time.Since(startedAt))
 }
 
+func formatTaskRuntime(startedAt time.Time) string {
+	if startedAt.IsZero() {
+		return "-"
+	}
+	return formatDurationShort(time.Since(startedAt))
+}
+
 // GetSummary reads the task index and returns a detailed summary.
 func GetSummary(repoRoot string) (Summary, error) {
 	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
@@ -260,6 +275,16 @@ func GetSummary(repoRoot string) (Summary, error) {
 	idx, err := index.Load(indexPath)
 	if err != nil {
 		return Summary{}, fmt.Errorf("load task index: %w", err)
+	}
+
+	// Load in-flight store to get task start times
+	inflightStore, err := inflight.NewStore(repoRoot)
+	if err != nil {
+		return Summary{}, fmt.Errorf("create in-flight store: %w", err)
+	}
+	inflightSet, err := inflightStore.Load()
+	if err != nil {
+		return Summary{}, fmt.Errorf("load in-flight data: %w", err)
 	}
 
 	var rows []statusRow
@@ -341,14 +366,23 @@ func GetSummary(repoRoot string) (Summary, error) {
 			summary.InProgress++
 		}
 
+		// Calculate runtime from in-flight store
+		var runtime string
+		if startedAt, ok := inflightSet.StartedAt(task.ID); ok {
+			runtime = formatTaskRuntime(startedAt)
+		} else {
+			runtime = "-"
+		}
+
 		row := statusRow{
-			id:    extractNumericPrefix(task.ID),
-			state: string(task.State),
-			pid:   formatPID(task.PID),
-			role:  resolveAssignedRole(task),
-			attrs: formatAttrs(task),
-			title: truncateTitle(task.Title, titleMaxWidth),
-			order: statusOrder(task.State),
+			id:      extractNumericPrefix(task.ID),
+			state:   string(task.State),
+			pid:     formatPID(task.PID),
+			runtime: runtime,
+			role:    resolveAssignedRole(task),
+			attrs:   formatAttrs(task),
+			title:   truncateTitle(task.Title, titleMaxWidth),
+			order:   statusOrder(task.State),
 		}
 		rows = append(rows, row)
 	}
@@ -510,13 +544,14 @@ func renderTaskTable(rows []statusRow, maxWidth int) string {
 		6,  // ID - minimum to fit "ID" header and "001"
 		12, // State - minimum to fit "implemented"
 		6,  // PID - minimum to fit "12345"
+		8,  // Runtime - minimum to fit "1h23m45s"
 		12, // Role - minimum to fit role names
 		18, // Attrs - minimum to fit "blocked,merge_conflict"
 		20, // Title - minimum viable
 	}
 
 	// Calculate space used by fixed columns
-	totalFixed := minWidths[0] + minWidths[1] + minWidths[2] + minWidths[3] + minWidths[4]
+	totalFixed := minWidths[0] + minWidths[1] + minWidths[2] + minWidths[3] + minWidths[4] + minWidths[5]
 
 	// Account for table borders and padding (lipgloss rounded border + padding)
 	// Border adds ~4 chars (left/right), padding adds 2*2=4 chars
@@ -526,7 +561,7 @@ func renderTaskTable(rows []statusRow, maxWidth int) string {
 	availableForTitle := maxWidth - totalFixed - overhead
 
 	// Set title width between minimum and maximum
-	titleWidth := minWidths[5] // start with minimum
+	titleWidth := minWidths[6] // start with minimum
 	if availableForTitle > titleWidth {
 		titleWidth = availableForTitle
 		if titleWidth > 80 { // cap at reasonable maximum
@@ -540,11 +575,12 @@ func renderTaskTable(rows []statusRow, maxWidth int) string {
 		minWidths[2],
 		minWidths[3],
 		minWidths[4],
+		minWidths[5],
 		titleWidth,
 	}
 
 	// Header row
-	headers := []string{"ID", "State", "PID", "Role", "Attrs", "Title"}
+	headers := []string{"ID", "State", "PID", "Runtime", "Role", "Attrs", "Title"}
 	headerCells := make([]string, len(headers))
 	for i, h := range headers {
 		headerCells[i] = headerStyle.Width(widths[i]).Render(h)
@@ -567,6 +603,7 @@ func renderTaskTable(rows []statusRow, maxWidth int) string {
 			row.id,
 			row.state,
 			row.pid,
+			row.runtime,
 			row.role,
 			row.attrs,
 			row.title,

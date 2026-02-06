@@ -72,6 +72,7 @@ func New(repoRoot string) Model {
 		{Title: "ID", Width: 6},
 		{Title: "State", Width: 12},
 		{Title: "PID", Width: 6},
+		{Title: "Runtime", Width: 8},
 		{Title: "Role", Width: 12},
 		{Title: "Attrs", Width: 18},
 		{Title: "Title", Width: 50},
@@ -200,6 +201,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				row.ID(),
 				row.State(),
 				row.PID(),
+				row.Runtime(),
 				row.Role(),
 				row.Attrs(),
 				row.Title(),
@@ -279,17 +281,24 @@ func (m Model) View() string {
 		b.WriteString("\n\n")
 	}
 
+	// Tasks section header
+	tasksTitle := titleStyle.Render("Tasks")
+	b.WriteString(tasksTitle)
+	b.WriteString("\n")
+
 	// Counts summary
 	counts := countsStyle.Render(fmt.Sprintf(
-		"Tasks: backlog=%d merged=%d in-progress=%d",
+		"backlog=%d merged=%d in-progress=%d",
 		m.backlog, m.merged, m.inProgress,
 	))
 	b.WriteString(counts)
 	b.WriteString("\n")
 
 	// Task table
-	b.WriteString(m.table.View())
-	b.WriteString("\n")
+	if m.inProgress > 0 {
+		b.WriteString(m.table.View())
+		b.WriteString("\n")
+	}
 
 	// Help footer
 	help := helpStyle.Render("↑/↓: navigate • r: refresh • q/esc: quit")
