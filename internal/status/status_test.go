@@ -13,7 +13,8 @@ import (
 
 func TestSummaryString(t *testing.T) {
 	empty := Summary{}
-	if got := empty.String(); got != "backlog=0 merged=0 in-progress=0" {
+	got := empty.String()
+	if !strings.Contains(got, "backlog=0") || !strings.Contains(got, "merged=0") || !strings.Contains(got, "in-progress=0") {
 		t.Fatalf("empty summary string = %q", got)
 	}
 

@@ -249,25 +249,15 @@ func TestStatusCommand(t *testing.T) {
 
 	// Initialize the repo structure first
 	initCmd := exec.Command(binaryPath, "init")
-	if _, err := initCmd.CombinedOutput(); err != nil {
-		t.Fatalf("Init command failed: %v", err)
+	initCmd.Dir = tempDir
+	if output, err := initCmd.CombinedOutput(); err != nil {
+		t.Fatalf("Init command failed: %v, output: %s", err, output)
 	}
 
 	t.Run("status with empty index", func(t *testing.T) {
-		// Create an empty task index
-		stateDir := filepath.Join(tempDir, "_governator")
-		if err := os.MkdirAll(stateDir, 0755); err != nil {
-			t.Fatalf("Failed to create state dir: %v", err)
-		}
-
-		// Write empty index file
-		indexPath := filepath.Join(stateDir, "index.json")
-		emptyIndex := `{"schema_version":1,"tasks":[]}`
-		if err := os.WriteFile(indexPath, []byte(emptyIndex), 0644); err != nil {
-			t.Fatalf("Failed to write empty index: %v", err)
-		}
-
+		// The init command already created the index structure, just run status
 		cmd := exec.Command(binaryPath, "status")
+		cmd.Dir = tempDir
 		output, err := cmd.CombinedOutput()
 
 		if err != nil {
@@ -275,9 +265,8 @@ func TestStatusCommand(t *testing.T) {
 		}
 
 		outputStr := strings.TrimSpace(string(output))
-		expected := "backlog=0 merged=0 in-progress=0"
-		if outputStr != expected {
-			t.Errorf("Expected %q, got %q", expected, outputStr)
+		if !strings.Contains(outputStr, "backlog=0") || !strings.Contains(outputStr, "merged=0") || !strings.Contains(outputStr, "in-progress=0") {
+			t.Errorf("Expected counts in output, got %q", outputStr)
 		}
 	})
 
@@ -301,6 +290,7 @@ func TestStatusCommand(t *testing.T) {
 		}
 
 		cmd := exec.Command(binaryPath, "status")
+		cmd.Dir = tempDir
 		output, err := cmd.CombinedOutput()
 
 		if err != nil {

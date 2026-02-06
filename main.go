@@ -24,8 +24,8 @@ import (
 	"github.com/cmtonkinson/governator/internal/run"
 	"github.com/cmtonkinson/governator/internal/status"
 	"github.com/cmtonkinson/governator/internal/supervisor"
-	"github.com/cmtonkinson/governator/internal/tui"
 	"github.com/cmtonkinson/governator/internal/supervisorlock"
+	"github.com/cmtonkinson/governator/internal/tui"
 )
 
 const usage = `governator - AI-powered task orchestration engine
@@ -40,7 +40,6 @@ COMMANDS:
     init             Bootstrap a new governator workspace in the current repository
     plan             Start the planning supervisor to analyze tasks and generate execution plan
     execute          Start the execution supervisor to run the generated plan
-    run              (Deprecated) Run planning and execution in sequence without supervision
     status           Display current supervisor and task status
     stop             Stop the running supervisor gracefully
     restart          Stop and restart the current supervisor phase
@@ -93,8 +92,6 @@ func main() {
 		runPlan(commandArgs)
 	case "execute":
 		runExecute(commandArgs)
-	case "run":
-		runRun(commandArgs)
 	case "status":
 		runStatus(commandArgs)
 	case "stop":
@@ -188,40 +185,6 @@ func commitInit(repoRoot string) error {
 		return fmt.Errorf("git diff --cached failed: %w", err)
 	}
 	return nil
-}
-
-func runRun(args []string) {
-	flags := flag.NewFlagSet("run", flag.ExitOnError)
-	flags.Usage = func() {
-		fmt.Fprint(os.Stderr, `USAGE:
-    governator run
-
-DESCRIPTION:
-    [DEPRECATED] Run planning and execution phases sequentially without supervision.
-    This command is deprecated; use 'governator plan' followed by 'governator execute'.
-
-OPTIONS:
-    -h, --help    Show this help message
-`)
-	}
-	flags.Parse(args)
-
-	if flags.NArg() > 0 {
-		fmt.Fprintf(os.Stderr, "governator run: unexpected arguments\n\n")
-		flags.Usage()
-		os.Exit(2)
-	}
-
-	repoRoot, err := repo.DiscoverRootFromCWD()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(2)
-	}
-	fmt.Fprintln(os.Stderr, "Warning: governator run is deprecated. Use `governator plan` followed by `governator execute`.")
-	if _, err := run.Run(repoRoot, run.Options{Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
 }
 
 func runPlan(args []string) {

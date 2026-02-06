@@ -21,13 +21,7 @@ Orchestrating agentic software development is Hard&trade; because
   the test to make it pass)
 
 In other words, you can only give a single agent so much scope at a time, or it
-starts to make really poor choices. The ceiling of capability seems to grow
-quarter after quarter as LLMs improve, but the core limitation isn't going away.
-
-I see a lot of effort going into "swarming" but I don't see the remedy there
-(yet); only high-order challenges of alignment, coordination, decision making,
-and too much "human in the loop" to control the chaos. Not to mention, a ton of
-noise as these systems attempt to direct inter-agent communication.
+starts to make really poor choices.
 
 In my opinion, multi-agent development is a perfect use-case for boring old
 traditional waterfall process. Sexy? Nope. Effective here? Hell yeah.
