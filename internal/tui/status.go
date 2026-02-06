@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/cmtonkinson/governator/internal/format" // Add this line
 	"github.com/cmtonkinson/governator/internal/status"
 )
 
@@ -198,7 +199,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		workersRows := make([]table.Row, len(msg.summary.Workers))
 		for i, worker := range msg.summary.Workers {
 			workersRows[i] = table.Row{
-				formatPID(worker.PID),
+				format.PID(worker.PID),
 				worker.Role,
 				formatRuntime(worker.StartedAt),
 			}
@@ -210,7 +211,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for i, step := range msg.summary.PlanningSteps {
 			planningRows[i] = table.Row{
 				step.Name,
-				formatPID(step.PID),
+				format.PID(step.PID),
 				formatRuntime(step.StartedAt),
 				step.Status,
 			}
@@ -346,78 +347,26 @@ func Run(repoRoot string) error {
 	return err
 }
 
-// formatPID formats a PID for display, returning empty string for zero/negative values.
-func formatPID(pid int) string {
-	if pid <= 0 {
-		return ""
-	}
-	return fmt.Sprintf("%d", pid)
-}
+
 
 // formatRuntime formats the runtime duration since the given start time.
 func formatRuntime(startedAt time.Time) string {
 	if startedAt.IsZero() {
 		return ""
 	}
-	d := time.Since(startedAt)
-	if d < 0 {
-		d = 0
-	}
-	totalSeconds := int64(d.Seconds())
-	if totalSeconds < 60 {
-		return fmt.Sprintf("%ds", totalSeconds)
-	}
-	minutes := totalSeconds / 60
-	seconds := totalSeconds % 60
-	if minutes < 60 {
-		return fmt.Sprintf("%dm%ds", minutes, seconds)
-	}
-	hours := minutes / 60
-	minutes = minutes % 60
-	return fmt.Sprintf("%dh%dm%ds", hours, minutes, seconds)
+	return format.DurationShort(time.Since(startedAt))
 }
 
-// formatDurationShort formats a duration in a compact form.
-func formatDurationShort(d time.Duration) string {
-	if d < 0 {
-		d = 0
-	}
-	totalSeconds := int64(d.Seconds())
-	if totalSeconds < 60 {
-		return fmt.Sprintf("%ds", totalSeconds)
-	}
-	minutes := totalSeconds / 60
-	seconds := totalSeconds % 60
-	if minutes < 60 {
-		return fmt.Sprintf("%dm%ds", minutes, seconds)
-	}
-	hours := minutes / 60
-	minutes = minutes % 60
-	return fmt.Sprintf("%dh%dm%ds", hours, minutes, seconds)
-}
 
-// formatTokens formats token count with thousand separators.
-func formatTokens(n int) string {
-	if n < 0 {
-		n = 0
-	}
-	s := fmt.Sprintf("%d", n)
-	var result strings.Builder
-	for i, c := range s {
-		if i > 0 && (len(s)-i)%3 == 0 {
-			result.WriteRune(',')
-		}
-		result.WriteRune(c)
-	}
-	return result.String()
-}
+
+
 
 // formatAggregateMetrics formats the aggregate metrics section.
 func formatAggregateMetrics(agg status.AggregateMetrics) string {
-	duration := formatDurationShort(time.Duration(agg.TotalDurationMs) * time.Millisecond)
-	totalTokens := formatTokens(agg.TotalTokens)
-	inputTokens := formatTokens(agg.TotalTokensPrompt)
-	outputTokens := formatTokens(agg.TotalTokensOutput)
+	duration := format.DurationShort(time.Duration(agg.TotalDurationMs) * time.Millisecond)
+	totalTokens := format.Tokens(agg.TotalTokens)
+	inputTokens := format.Tokens(agg.TotalTokensPrompt)
+	outputTokens := format.Tokens(agg.TotalTokensOutput)
 
 	return fmt.Sprintf("Total Runtime: %s | Total Tokens: %s (in: %s | out: %s)",
 		duration, totalTokens, inputTokens, outputTokens)
@@ -446,14 +395,14 @@ func renderSupervisorKV(sup status.SupervisorSummary) string {
 
 	renderKV("Phase", sup.Phase)
 	renderKV("State", sup.State)
-	renderKV("PID", formatPID(sup.PID))
+	renderKV("PID", format.PID(sup.PID))
 	renderKV("Runtime", formatRuntime(sup.StartedAt))
 
 	if sup.WorkerPID > 0 {
-		renderKV("Worker PID", formatPID(sup.WorkerPID))
+		renderKV("Worker PID", format.PID(sup.WorkerPID))
 	}
 	if sup.ValidationPID > 0 {
-		renderKV("Valid PID", formatPID(sup.ValidationPID))
+		renderKV("Valid PID", format.PID(sup.ValidationPID))
 	}
 
 	return b.String()

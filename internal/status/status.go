@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/cmtonkinson/governator/internal/format"
 	"github.com/cmtonkinson/governator/internal/index"
 	"github.com/cmtonkinson/governator/internal/inflight"
 	"github.com/cmtonkinson/governator/internal/run"
@@ -164,13 +165,13 @@ func (s Summary) plainString() string {
 		for _, supervisor := range s.Supervisors {
 			fmt.Fprintf(&b, "phase=%s\n", normalizeToken(supervisor.Phase))
 			fmt.Fprintf(&b, "state=%s\n", normalizeToken(supervisor.State))
-			fmt.Fprintf(&b, "pid=%s\n", formatPID(supervisor.PID))
+			fmt.Fprintf(&b, "pid=%s\n", format.PID(supervisor.PID))
 			fmt.Fprintf(&b, "runtime=%s\n", formatSupervisorRuntime(supervisor.StartedAt))
 			if supervisor.WorkerPID > 0 {
-				fmt.Fprintf(&b, "worker_pid=%s\n", formatPID(supervisor.WorkerPID))
+				fmt.Fprintf(&b, "worker_pid=%s\n", format.PID(supervisor.WorkerPID))
 			}
 			if supervisor.ValidationPID > 0 {
-				fmt.Fprintf(&b, "validation_pid=%s\n", formatPID(supervisor.ValidationPID))
+				fmt.Fprintf(&b, "validation_pid=%s\n", format.PID(supervisor.ValidationPID))
 			}
 			fmt.Fprintf(&b, "step_id=%s\n", normalizeToken(supervisor.StepID))
 			fmt.Fprintf(&b, "step_name=%s\n", normalizeToken(supervisor.StepName))
@@ -190,7 +191,7 @@ func (s Summary) plainString() string {
 		for _, step := range s.PlanningSteps {
 			fmt.Fprintf(&b, "%-40s %-6s %-8s %-*s\n",
 				step.Name,
-				formatPID(step.PID),
+				format.PID(step.PID),
 				formatSupervisorRuntime(step.StartedAt),
 				planningStatusWidth, step.Status,
 			)
@@ -285,60 +286,30 @@ func (s Summary) styledString() string {
 	return strings.TrimSpace(b.String())
 }
 
-func formatDurationShort(d time.Duration) string {
-	if d < 0 {
-		d = 0
-	}
-	totalSeconds := int64(d.Seconds())
-	if totalSeconds < 60 {
-		return fmt.Sprintf("%ds", totalSeconds)
-	}
-	minutes := totalSeconds / 60
-	seconds := totalSeconds % 60
-	if minutes < 60 {
-		return fmt.Sprintf("%dm%ds", minutes, seconds)
-	}
-	hours := minutes / 60
-	minutes = minutes % 60
-	return fmt.Sprintf("%dh%dm%ds", hours, minutes, seconds)
-}
+
 
 func formatSupervisorRuntime(startedAt time.Time) string {
 	if startedAt.IsZero() {
 		return "-"
 	}
-	return formatDurationShort(time.Since(startedAt))
+	return format.DurationShort(time.Since(startedAt))
 }
 
 func formatTaskRuntime(startedAt time.Time) string {
 	if startedAt.IsZero() {
 		return "-"
 	}
-	return formatDurationShort(time.Since(startedAt))
+	return format.DurationShort(time.Since(startedAt))
 }
 
-// formatTokens formats token count with thousand separators.
-func formatTokens(n int) string {
-	if n < 0 {
-		n = 0
-	}
-	s := fmt.Sprintf("%d", n)
-	var result strings.Builder
-	for i, c := range s {
-		if i > 0 && (len(s)-i)%3 == 0 {
-			result.WriteRune(',')
-		}
-		result.WriteRune(c)
-	}
-	return result.String()
-}
+
 
 // formatAggregateMetrics formats the aggregate metrics section.
 func formatAggregateMetrics(agg AggregateMetrics) string {
-	duration := formatDurationShort(time.Duration(agg.TotalDurationMs) * time.Millisecond)
-	totalTokens := formatTokens(agg.TotalTokens)
-	inputTokens := formatTokens(agg.TotalTokensPrompt)
-	outputTokens := formatTokens(agg.TotalTokensOutput)
+	duration := format.DurationShort(time.Duration(agg.TotalDurationMs) * time.Millisecond)
+	totalTokens := format.Tokens(agg.TotalTokens)
+	inputTokens := format.Tokens(agg.TotalTokensPrompt)
+	outputTokens := format.Tokens(agg.TotalTokensOutput)
 
 	return fmt.Sprintf("Total Runtime: %s | Total Tokens: %s (in: %s | out: %s)",
 		duration, totalTokens, inputTokens, outputTokens)
@@ -492,7 +463,7 @@ func GetSummary(repoRoot string) (Summary, error) {
 		row := StatusRow{
 			id:      extractNumericPrefix(task.ID),
 			state:   currentStatus(task),
-			pid:     formatPID(task.PID),
+			pid:     format.PID(task.PID),
 			runtime: runtime,
 			role:    resolveAssignedRole(task),
 			attrs:   formatAttrs(task),
@@ -540,12 +511,7 @@ func statusOrder(state index.TaskState) int {
 	return len(statusStateOrder)
 }
 
-func formatPID(pid int) string {
-	if pid <= 0 {
-		return ""
-	}
-	return fmt.Sprintf("%d", pid)
-}
+
 
 func resolveAssignedRole(task index.Task) string {
 	if role := strings.TrimSpace(task.AssignedRole); role != "" {
@@ -822,14 +788,14 @@ func renderSupervisorKV(supervisor SupervisorSummary) string {
 
 	renderKV("Phase", normalizeToken(supervisor.Phase))
 	renderKV("State", normalizeToken(supervisor.State))
-	renderKV("PID", formatPID(supervisor.PID))
+	renderKV("PID", format.PID(supervisor.PID))
 	renderKV("Runtime", formatSupervisorRuntime(supervisor.StartedAt))
 
 	if supervisor.WorkerPID > 0 {
-		renderKV("Worker PID", formatPID(supervisor.WorkerPID))
+		renderKV("Worker PID", format.PID(supervisor.WorkerPID))
 	}
 	if supervisor.ValidationPID > 0 {
-		renderKV("Validation PID", formatPID(supervisor.ValidationPID))
+		renderKV("Validation PID", format.PID(supervisor.ValidationPID))
 	}
 
 	renderKV("Step ID", normalizeToken(supervisor.StepID))
@@ -891,7 +857,7 @@ func renderPlanningTable(steps []PlanningStepSummary, maxWidth int) string {
 	for _, step := range steps {
 		cells := []string{
 			step.Name,
-			formatPID(step.PID),
+			format.PID(step.PID),
 			formatSupervisorRuntime(step.StartedAt),
 			step.Status,
 		}
@@ -939,7 +905,7 @@ func renderWorkersTable(workers []WorkerSummary, maxWidth int) string {
 	// Data rows
 	for _, worker := range workers {
 		cells := []string{
-			formatPID(worker.PID),
+			format.PID(worker.PID),
 			worker.Role,
 			formatSupervisorRuntime(worker.StartedAt),
 		}
