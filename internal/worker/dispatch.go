@@ -398,11 +398,12 @@ func buildClaudeCommandLine(command []string) (string, bool) {
 	// Build cat command with escaped path
 	catCmd := "cat " + shellEscapeArg(promptPath)
 
-	// Build Claude command (exclude prompt path, add --output-format=text)
-	claudeArgs := []string{command[0], "--print", "--output-format=text"}
+	// Build Claude command (exclude prompt path, add --output-format=text and --permission-mode)
+	claudeArgs := []string{command[0], "--print", "--output-format=text", "--permission-mode=bypassPermissions"}
 
 	// Preserve other flags, but skip duplicates
 	hasOutputFormat := false
+	hasPermissionMode := false
 	for i := 1; i < len(command); i++ {
 		arg := command[i]
 		if arg == promptPath || arg == "--print" {
@@ -414,12 +415,27 @@ func buildClaudeCommandLine(command []string) (string, bool) {
 			claudeArgs = append(claudeArgs, shellEscapeArg(arg))
 			continue
 		}
+		// Check if --permission-mode is already specified
+		if strings.HasPrefix(arg, "--permission-mode") {
+			hasPermissionMode = true
+			claudeArgs = append(claudeArgs, shellEscapeArg(arg))
+			continue
+		}
 		claudeArgs = append(claudeArgs, shellEscapeArg(arg))
 	}
 
-	// Remove the default --output-format=text if user specified one
-	if hasOutputFormat {
+	// Remove defaults if user specified their own
+	if hasOutputFormat || hasPermissionMode {
 		claudeArgs = claudeArgs[:2] // Keep just ["claude", "--print"]
+		// Add back --output-format=text if user didn't specify it
+		if !hasOutputFormat {
+			claudeArgs = append(claudeArgs, "--output-format=text")
+		}
+		// Add back --permission-mode=bypassPermissions if user didn't specify it
+		if !hasPermissionMode {
+			claudeArgs = append(claudeArgs, "--permission-mode=bypassPermissions")
+		}
+		// Add all other user flags
 		for i := 1; i < len(command); i++ {
 			arg := command[i]
 			if arg == promptPath || arg == "--print" {

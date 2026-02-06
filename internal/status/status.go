@@ -66,6 +66,15 @@ type Summary struct {
 	Merged        int
 	InProgress    int
 	Rows          []statusRow
+	Aggregates    AggregateMetrics
+}
+
+// AggregateMetrics holds cumulative metrics across all tasks.
+type AggregateMetrics struct {
+	TotalDurationMs   int64 // Sum of all DurationMs + elapsed time for in-flight
+	TotalTokensPrompt int   // Sum of TokensPrompt
+	TotalTokensOutput int   // Sum of TokensResponse
+	TotalTokens       int   // Sum of TokensTotal
 }
 
 type statusRow struct {
@@ -126,6 +135,11 @@ func (s Summary) String() string {
 // plainString returns plain text output for pipes/redirects.
 func (s Summary) plainString() string {
 	var b strings.Builder
+
+	// Overall metrics
+	fmt.Fprintln(&b, "overall")
+	fmt.Fprintln(&b, formatAggregateMetrics(s.Aggregates))
+
 	if len(s.Supervisors) > 0 {
 		fmt.Fprintln(&b, "supervisors")
 		fmt.Fprintf(&b, "%-10s %-8s %-6s %-8s %-14s %s\n", "phase", "state", "pid", "runtime", "step_id", "step_name")
@@ -202,6 +216,13 @@ func (s Summary) styledString() string {
 		width = 120 // fallback
 	}
 
+	// Overall metrics section
+	b.WriteString(headerStyle.Render("Overall Metrics"))
+	b.WriteString("\n")
+	aggregateStr := formatAggregateMetrics(s.Aggregates)
+	b.WriteString(countsStyle.Render(aggregateStr))
+	b.WriteString("\n\n")
+
 	// Supervisors section
 	if len(s.Supervisors) > 0 {
 		b.WriteString(headerStyle.Render("Supervisors"))
@@ -268,6 +289,33 @@ func formatTaskRuntime(startedAt time.Time) string {
 	return formatDurationShort(time.Since(startedAt))
 }
 
+// formatTokens formats token count with thousand separators.
+func formatTokens(n int) string {
+	if n < 0 {
+		n = 0
+	}
+	s := fmt.Sprintf("%d", n)
+	var result strings.Builder
+	for i, c := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			result.WriteRune(',')
+		}
+		result.WriteRune(c)
+	}
+	return result.String()
+}
+
+// formatAggregateMetrics formats the aggregate metrics section.
+func formatAggregateMetrics(agg AggregateMetrics) string {
+	duration := formatDurationShort(time.Duration(agg.TotalDurationMs) * time.Millisecond)
+	totalTokens := formatTokens(agg.TotalTokens)
+	inputTokens := formatTokens(agg.TotalTokensPrompt)
+	outputTokens := formatTokens(agg.TotalTokensOutput)
+
+	return fmt.Sprintf("Total Runtime: %s | Total Tokens: %s (in: %s | out: %s)",
+		duration, totalTokens, inputTokens, outputTokens)
+}
+
 // GetSummary reads the task index and returns a detailed summary.
 func GetSummary(repoRoot string) (Summary, error) {
 	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
@@ -289,6 +337,28 @@ func GetSummary(repoRoot string) (Summary, error) {
 
 	var rows []statusRow
 	summary := Summary{Total: len(idx.Tasks)}
+
+	// Calculate aggregate metrics
+	var aggregates AggregateMetrics
+	for _, task := range idx.Tasks {
+		if task.Kind != index.TaskKindExecution {
+			continue
+		}
+		// Add completed task metrics
+		aggregates.TotalDurationMs += task.Metrics.DurationMs
+		aggregates.TotalTokensPrompt += task.Metrics.TokensPrompt
+		aggregates.TotalTokensOutput += task.Metrics.TokensResponse
+		aggregates.TotalTokens += task.Metrics.TokensTotal
+
+		// Add elapsed time for in-flight tasks
+		if task.State != index.TaskStateBacklog && task.State != index.TaskStateMerged {
+			if startedAt, ok := inflightSet.StartedAt(task.ID); ok {
+				elapsed := time.Since(startedAt)
+				aggregates.TotalDurationMs += int64(elapsed / time.Millisecond)
+			}
+		}
+	}
+	summary.Aggregates = aggregates
 
 	if supervisorState, ok, err := supervisor.LoadPlanningState(repoRoot); err != nil {
 		return Summary{}, fmt.Errorf("load planning supervisor state: %w", err)

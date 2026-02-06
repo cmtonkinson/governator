@@ -51,6 +51,7 @@ type Model struct {
 	inProgress     int
 	supervisors    []status.SupervisorSummary
 	planningSteps  []status.PlanningStepSummary
+	aggregates     status.AggregateMetrics
 }
 
 type tickMsg time.Time
@@ -114,11 +115,12 @@ func New(repoRoot string) Model {
 	// Supervisor table
 	supervisorColumns := []table.Column{
 		{Title: "Phase", Width: 10},
+		{Title: "Step Name", Width: 50},
 		{Title: "State", Width: 8},
 		{Title: "PID", Width: 6},
 		{Title: "Runtime", Width: 8},
-		{Title: "Step ID", Width: 22},
-		{Title: "Step Name", Width: 40},
+		{Title: "Worker", Width: 7},
+		{Title: "Valid", Width: 6},
 	}
 
 	supervisorTable := table.New(
@@ -178,6 +180,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.inProgress = msg.summary.InProgress
 		m.supervisors = msg.summary.Supervisors
 		m.planningSteps = msg.summary.PlanningSteps
+		m.aggregates = msg.summary.Aggregates
 
 		// Convert supervisor summaries to table rows
 		supervisorRows := make([]table.Row, len(msg.summary.Supervisors))
@@ -185,11 +188,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			runtime := formatRuntime(sup.StartedAt)
 			supervisorRows[i] = table.Row{
 				sup.Phase,
+				sup.StepName,
 				sup.State,
 				formatPID(sup.PID),
 				runtime,
-				sup.StepID,
-				sup.StepName,
+				formatPID(sup.WorkerPID),
+				formatPID(sup.ValidationPID),
 			}
 		}
 		m.supervisorTable.SetRows(supervisorRows)
@@ -252,24 +256,21 @@ func (m Model) View() string {
 	b.WriteString(header)
 	b.WriteString("\n\n")
 
+	// Overall metrics section
+	overallTitle := titleStyle.Render("Overall Metrics")
+	b.WriteString(overallTitle)
+	b.WriteString("\n")
+	aggregateStr := formatAggregateMetrics(m.aggregates)
+	b.WriteString(countsStyle.Render(aggregateStr))
+	b.WriteString("\n\n")
+
 	// Supervisors table (if any)
 	if len(m.supervisors) > 0 {
 		supervisorTitle := titleStyle.Render(fmt.Sprintf("Supervisors (%d)", len(m.supervisors)))
 		b.WriteString(supervisorTitle)
 		b.WriteString("\n")
 		b.WriteString(m.supervisorTable.View())
-		b.WriteString("\n")
-
-		// Show additional supervisor details
-		for _, sup := range m.supervisors {
-			details := fmt.Sprintf("  worker_pid=%s validation_pid=%s",
-				formatPID(sup.WorkerPID),
-				formatPID(sup.ValidationPID),
-			)
-			b.WriteString(timestampStyle.Render(details))
-			b.WriteString("\n")
-		}
-		b.WriteString("\n")
+		b.WriteString("\n\n")
 	}
 
 	// Planning steps table (if in planning phase)
@@ -363,4 +364,50 @@ func formatRuntime(startedAt time.Time) string {
 	hours := minutes / 60
 	minutes = minutes % 60
 	return fmt.Sprintf("%dh%dm%ds", hours, minutes, seconds)
+}
+
+// formatDurationShort formats a duration in a compact form.
+func formatDurationShort(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	totalSeconds := int64(d.Seconds())
+	if totalSeconds < 60 {
+		return fmt.Sprintf("%ds", totalSeconds)
+	}
+	minutes := totalSeconds / 60
+	seconds := totalSeconds % 60
+	if minutes < 60 {
+		return fmt.Sprintf("%dm%ds", minutes, seconds)
+	}
+	hours := minutes / 60
+	minutes = minutes % 60
+	return fmt.Sprintf("%dh%dm%ds", hours, minutes, seconds)
+}
+
+// formatTokens formats token count with thousand separators.
+func formatTokens(n int) string {
+	if n < 0 {
+		n = 0
+	}
+	s := fmt.Sprintf("%d", n)
+	var result strings.Builder
+	for i, c := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			result.WriteRune(',')
+		}
+		result.WriteRune(c)
+	}
+	return result.String()
+}
+
+// formatAggregateMetrics formats the aggregate metrics section.
+func formatAggregateMetrics(agg status.AggregateMetrics) string {
+	duration := formatDurationShort(time.Duration(agg.TotalDurationMs) * time.Millisecond)
+	totalTokens := formatTokens(agg.TotalTokens)
+	inputTokens := formatTokens(agg.TotalTokensPrompt)
+	outputTokens := formatTokens(agg.TotalTokensOutput)
+
+	return fmt.Sprintf("Total Runtime: %s | Total Tokens: %s (in: %s | out: %s)",
+		duration, totalTokens, inputTokens, outputTokens)
 }
