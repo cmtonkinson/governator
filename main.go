@@ -19,6 +19,8 @@ import (
 
 	"github.com/cmtonkinson/governator/internal/buildinfo"
 	"github.com/cmtonkinson/governator/internal/config"
+	"github.com/cmtonkinson/governator/internal/dag"
+	"github.com/cmtonkinson/governator/internal/index"
 	"github.com/cmtonkinson/governator/internal/inflight"
 	"github.com/cmtonkinson/governator/internal/repo"
 	"github.com/cmtonkinson/governator/internal/run"
@@ -41,6 +43,7 @@ COMMANDS:
     plan             Start the planning supervisor to analyze tasks and generate execution plan
     execute          Start the execution supervisor to run the generated plan
     status           Display current supervisor and task status
+    dag              Display task dependency graph (DAG)
     stop             Stop the running supervisor gracefully
     restart          Stop and restart the current supervisor phase
     reset            Stop supervisor and clear all state (nuclear option)
@@ -94,6 +97,8 @@ func main() {
 		runExecute(commandArgs)
 	case "status":
 		runStatus(commandArgs)
+	case "dag":
+		runDAG(commandArgs)
 	case "stop":
 		runStop(commandArgs)
 	case "restart":
@@ -594,24 +599,24 @@ func ensureNoSupervisorLocks(repoRoot string) error {
 
 func runStatus(args []string) {
 	flags := flag.NewFlagSet("status", flag.ExitOnError)
-	watch := flags.Bool("watch", false, "Enable interactive watch mode with live updates")
-	watchShort := flags.Bool("w", false, "")
+	interactive := flags.Bool("interactive", false, "Enable interactive mode with live updates")
+	interactiveShort := flags.Bool("i", false, "")
 	flags.Usage = func() {
 		fmt.Fprint(os.Stderr, `USAGE:
     governator status [options]
 
 DESCRIPTION:
     Display current supervisor status and task progress.
-    Default mode shows a static snapshot; watch mode provides live updates.
+    Default mode shows a static snapshot; interactive mode provides live updates.
 
 OPTIONS:
-    -w, --watch    Enable interactive watch mode with live task updates
-    -h, --help     Show this help message
+    -i, --interactive    Enable interactive mode with live task updates
+    -h, --help           Show this help message
 `)
 	}
 	flags.Parse(args)
 
-	watchMode := *watch || *watchShort
+	interactiveMode := *interactive || *interactiveShort
 
 	if flags.NArg() > 0 {
 		fmt.Fprintf(os.Stderr, "governator status: unexpected arguments\n\n")
@@ -625,7 +630,7 @@ OPTIONS:
 		os.Exit(2)
 	}
 
-	if watchMode {
+	if interactiveMode {
 		// Interactive mode
 		if err := tui.Run(repoRoot); err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
@@ -641,6 +646,56 @@ OPTIONS:
 		os.Exit(1)
 	}
 	fmt.Println(summary.String())
+}
+
+func runDAG(args []string) {
+	flags := flag.NewFlagSet("dag", flag.ExitOnError)
+	interactive := flags.Bool("interactive", false, "Enable interactive mode (not yet implemented)")
+	interactiveShort := flags.Bool("i", false, "")
+	flags.Usage = func() {
+		fmt.Fprint(os.Stderr, `USAGE:
+    governator dag [options]
+
+DESCRIPTION:
+    Display the task dependency graph (DAG).
+    Shows dependencies (what a task needs) and blocks (what depends on this task).
+    Tasks are ordered by execution order, making it easy to see parallelization opportunities.
+
+OPTIONS:
+    -i, --interactive    Enable interactive mode with navigation (not yet implemented)
+    -h, --help           Show this help message
+`)
+	}
+	flags.Parse(args)
+
+	interactiveMode := *interactive || *interactiveShort
+
+	if flags.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "governator dag: unexpected arguments\n\n")
+		flags.Usage()
+		os.Exit(2)
+	}
+
+	if interactiveMode {
+		fmt.Fprintln(os.Stderr, "interactive mode not yet implemented")
+		os.Exit(1)
+	}
+
+	repoRoot, err := repo.DiscoverRootFromCWD()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(2)
+	}
+
+	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	idx, err := index.Load(indexPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	dagSummary := dag.GetSummary(idx)
+	fmt.Println(dagSummary.String())
 }
 
 func runVersion() {

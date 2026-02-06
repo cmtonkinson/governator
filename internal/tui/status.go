@@ -43,12 +43,16 @@ type Model struct {
 	planningTable table.Model
 	workersTable  table.Model
 	repoRoot      string
+	windowHeight  int
 	lastUpdate    time.Time
 	err           error
 	quitting      bool
+	showMerged    bool // Toggle for showing merged tasks
 	backlog       int
 	merged        int
 	inProgress    int
+	activeRows    []status.StatusRow // Non-merged tasks
+	mergedRows    []status.StatusRow // Merged tasks
 	supervisors   []status.SupervisorSummary
 	workers       []status.WorkerSummary
 	planningSteps []status.PlanningStepSummary
@@ -157,12 +161,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			// Manual refresh
 			return m, m.updateStatus()
+		case "m":
+			// Toggle merged tasks visibility
+			m.showMerged = !m.showMerged
+			m.updateTableRows()
+			return m, nil
 		}
 
 	case tea.WindowSizeMsg:
-		// Adjust table height based on window size
-		// Reserve space for header, footer, counts
-		m.table.SetHeight(msg.Height - 10)
+		m.windowHeight = msg.Height
+		m.updateTableHeight()
 		return m, nil
 
 	case tickMsg:
@@ -180,22 +188,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.workers = msg.summary.Workers
 		m.planningSteps = msg.summary.PlanningSteps
 		m.aggregates = msg.summary.Aggregates
+		m.activeRows = msg.summary.Rows
+		m.mergedRows = msg.summary.MergedRows
 
-
-		// Convert summary rows to table rows
-		rows := make([]table.Row, len(msg.summary.Rows))
-		for i, row := range msg.summary.Rows {
-			rows[i] = table.Row{
-				row.ID(),
-				row.State(),
-				row.PID(),
-				row.Runtime(),
-				row.Role(),
-				row.Attrs(),
-				row.Title(),
-			}
-		}
-		m.table.SetRows(rows)
+		// Update table rows based on showMerged toggle
+		m.updateTableRows()
 
 		// Convert workers to table rows
 		workersRows := make([]table.Row, len(msg.summary.Workers))
@@ -219,6 +216,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.planningTable.SetRows(planningRows)
+
+		// Recalculate table height based on new data
+		m.updateTableHeight()
 
 		return m, nil
 
@@ -309,7 +309,11 @@ func (m Model) View() string {
 	}
 
 	// Help footer
-	help := helpStyle.Render("↑/↓: navigate • r: refresh • q/esc: quit")
+	mergedToggle := "show"
+	if m.showMerged {
+		mergedToggle = "hide"
+	}
+	help := helpStyle.Render(fmt.Sprintf("↑/↓: navigate • r: refresh • m: %s merged • q/esc: quit", mergedToggle))
 	b.WriteString(help)
 
 	// Error display
@@ -453,4 +457,82 @@ func renderSupervisorKV(sup status.SupervisorSummary) string {
 	}
 
 	return b.String()
+}
+
+// updateTableHeight dynamically adjusts the task table height based on window size and visible sections.
+func (m *Model) updateTableHeight() {
+	if m.windowHeight == 0 {
+		return // No window size info yet
+	}
+
+	// Calculate dynamic overhead based on visible sections
+	overhead := 8 // Base: header (3) + overall metrics (3) + tasks section title/counts (2) + help (2)
+
+	if len(m.supervisors) > 0 {
+		// Supervisor section: title (1) + KV pairs (4-6 lines) + spacing (1)
+		overhead += 7
+	}
+	if len(m.workers) > 0 {
+		// Workers section: title (1) + table header (2) + rows + spacing (1)
+		overhead += 4 + len(m.workers)
+	}
+	if len(m.planningSteps) > 0 {
+		// Planning section: title (1) + table header (2) + rows + spacing (1)
+		overhead += 4 + len(m.planningSteps)
+	}
+
+	// Calculate table height, ensuring minimum of 5 lines
+	tableHeight := m.windowHeight - overhead
+	if tableHeight < 5 {
+		tableHeight = 5
+	}
+	m.table.SetHeight(tableHeight)
+}
+
+// updateTableRows rebuilds the table rows based on showMerged toggle.
+func (m *Model) updateTableRows() {
+	var allRows []status.StatusRow
+
+	// Start with active (non-merged) tasks
+	allRows = append(allRows, m.activeRows...)
+
+	// Add merged tasks if toggle is enabled
+	if m.showMerged && len(m.mergedRows) > 0 {
+		// Add separator row (empty row with special formatting)
+		separatorRow := status.StatusRow{}
+		allRows = append(allRows, separatorRow)
+
+		// Add merged tasks
+		allRows = append(allRows, m.mergedRows...)
+	}
+
+	// Convert to table rows
+	rows := make([]table.Row, 0, len(allRows))
+	for _, row := range allRows {
+		// Check if this is the separator (all fields empty)
+		if row.ID() == "" && row.State() == "" && row.Title() == "" {
+			// Add visual separator
+			rows = append(rows, table.Row{
+				"─────",
+				"─────────────",
+				"────",
+				"────────",
+				"────────────",
+				"──────────────────",
+				"──────────── merged tasks below ────────────",
+			})
+		} else {
+			rows = append(rows, table.Row{
+				row.ID(),
+				row.State(),
+				row.PID(),
+				row.Runtime(),
+				row.Role(),
+				row.Attrs(),
+				row.Title(),
+			})
+		}
+	}
+
+	m.table.SetRows(rows)
 }

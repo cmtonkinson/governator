@@ -49,12 +49,14 @@ var (
 			Bold(true)
 )
 
+// statusStateOrder prioritizes tasks closer to completion.
+// Lower numbers = higher priority (sorted first).
 var statusStateOrder = map[index.TaskState]int{
-	index.TaskStateTriaged:     0,
-	index.TaskStateImplemented: 1,
+	index.TaskStateMergeable:   0, // Highest priority - ready to merge
+	index.TaskStateReviewed:    1,
 	index.TaskStateTested:      2,
-	index.TaskStateReviewed:    3,
-	index.TaskStateMergeable:   4,
+	index.TaskStateImplemented: 3,
+	index.TaskStateTriaged:     4, // Lowest priority - just started
 }
 
 // Summary represents task counts and the in-progress table.
@@ -66,7 +68,8 @@ type Summary struct {
 	Backlog       int
 	Merged        int
 	InProgress    int
-	Rows          []statusRow
+	Rows          []StatusRow       // Active (non-merged) tasks
+	MergedRows    []StatusRow       // Merged tasks (kept separate)
 	Aggregates    AggregateMetrics
 }
 
@@ -78,7 +81,8 @@ type AggregateMetrics struct {
 	TotalTokens       int   // Sum of TokensTotal
 }
 
-type statusRow struct {
+// StatusRow represents a single task row in the status display.
+type StatusRow struct {
 	id      string
 	state   string
 	pid     string
@@ -89,14 +93,19 @@ type statusRow struct {
 	order   int
 }
 
-// Accessor methods for statusRow (used by TUI package)
-func (r statusRow) ID() string      { return r.id }
-func (r statusRow) State() string   { return r.state }
-func (r statusRow) PID() string     { return r.pid }
-func (r statusRow) Runtime() string { return r.runtime }
-func (r statusRow) Role() string    { return r.role }
-func (r statusRow) Attrs() string   { return r.attrs }
-func (r statusRow) Title() string   { return r.title }
+// Accessor methods for StatusRow (used by TUI package)
+func (r StatusRow) ID() string      { return r.id }
+func (r StatusRow) State() string   { return r.state }
+func (r StatusRow) PID() string     { return r.pid }
+func (r StatusRow) Runtime() string { return r.runtime }
+func (r StatusRow) Role() string    { return r.role }
+func (r StatusRow) Attrs() string   { return r.attrs }
+func (r StatusRow) Title() string   { return r.title }
+
+// NewSeparatorRow creates an empty row used as a visual separator.
+func NewSeparatorRow() StatusRow {
+	return StatusRow{}
+}
 
 // SupervisorSummary captures the status output for a supervisor.
 type SupervisorSummary struct {
@@ -354,7 +363,7 @@ func GetSummary(repoRoot string) (Summary, error) {
 		return Summary{}, fmt.Errorf("load in-flight data: %w", err)
 	}
 
-	var rows []statusRow
+	var rows []StatusRow
 	summary := Summary{Total: len(idx.Tasks)}
 
 	// Calculate aggregate metrics
@@ -448,32 +457,41 @@ func GetSummary(repoRoot string) (Summary, error) {
 		}
 	}
 
+	var mergedRows []StatusRow
 	for _, task := range idx.Tasks {
 		if task.Kind != index.TaskKindExecution {
 			continue
 		}
-		switch task.State {
-		case index.TaskStateBacklog:
+
+		// Track state counts and skip backlog tasks
+		if task.State == index.TaskStateBacklog {
 			summary.Backlog++
 			continue
-		case index.TaskStateMerged:
+		}
+
+		// Count merged vs in-progress
+		if task.State == index.TaskStateMerged {
 			summary.Merged++
-			continue
-		default:
+		} else {
 			summary.InProgress++
 		}
 
 		// Calculate runtime from in-flight store
+		// Only show runtime if there's an active worker PID
 		var runtime string
-		if startedAt, ok := inflightSet.StartedAt(task.ID); ok {
-			runtime = formatTaskRuntime(startedAt)
+		if task.PID > 0 {
+			if startedAt, ok := inflightSet.StartedAt(task.ID); ok {
+				runtime = formatTaskRuntime(startedAt)
+			} else {
+				runtime = "-"
+			}
 		} else {
 			runtime = "-"
 		}
 
-		row := statusRow{
+		row := StatusRow{
 			id:      extractNumericPrefix(task.ID),
-			state:   string(task.State),
+			state:   currentStatus(task),
 			pid:     formatPID(task.PID),
 			runtime: runtime,
 			role:    resolveAssignedRole(task),
@@ -481,9 +499,16 @@ func GetSummary(repoRoot string) (Summary, error) {
 			title:   truncateTitle(task.Title, titleMaxWidth),
 			order:   statusOrder(task.State),
 		}
-		rows = append(rows, row)
+
+		// Separate merged tasks from active tasks
+		if task.State == index.TaskStateMerged {
+			mergedRows = append(mergedRows, row)
+		} else {
+			rows = append(rows, row)
+		}
 	}
 
+	// Sort active tasks by priority (closer to done = higher)
 	sort.Slice(rows, func(i, j int) bool {
 		if rows[i].order != rows[j].order {
 			return rows[i].order < rows[j].order
@@ -491,7 +516,13 @@ func GetSummary(repoRoot string) (Summary, error) {
 		return rows[i].id < rows[j].id
 	})
 
+	// Sort merged tasks by ID
+	sort.Slice(mergedRows, func(i, j int) bool {
+		return mergedRows[i].id < mergedRows[j].id
+	})
+
 	summary.Rows = rows
+	summary.MergedRows = mergedRows
 	steps, err := planningStepSummary(repoRoot, idx, summary.Supervisors)
 	if err != nil {
 		return Summary{}, err
@@ -521,6 +552,36 @@ func resolveAssignedRole(task index.Task) string {
 		return role
 	}
 	return string(task.Role)
+}
+
+// currentStatus returns the current activity status of a task.
+// If a worker is actively working on the task (PID > 0), it shows what the worker is doing.
+// Otherwise, it shows the task's current state.
+func currentStatus(task index.Task) string {
+	// If no active worker, just show the state
+	if task.PID <= 0 {
+		return string(task.State)
+	}
+
+	// Active worker - derive status from state
+	switch task.State {
+	case index.TaskStateTriaged:
+		return "implementing"
+	case index.TaskStateImplemented:
+		return "testing"
+	case index.TaskStateTested:
+		return "reviewing"
+	case index.TaskStateReviewed:
+		// Could be resolving conflicts or ready for merge
+		if task.MergeConflict {
+			return "resolving"
+		}
+		return "reviewed" // Keep as-is when ready for merge
+	case index.TaskStateMergeable:
+		return "merging"
+	default:
+		return string(task.State)
+	}
 }
 
 func formatAttrs(task index.Task) string {
@@ -649,7 +710,7 @@ func normalizeToken(value string) string {
 }
 
 // renderTaskTable renders the task table with lipgloss styling.
-func renderTaskTable(rows []statusRow, maxWidth int) string {
+func renderTaskTable(rows []StatusRow, maxWidth int) string {
 	if len(rows) == 0 {
 		return ""
 	}

@@ -22,7 +22,7 @@ func TestSummaryString(t *testing.T) {
 		Backlog:    1,
 		Merged:     1,
 		InProgress: 1,
-		Rows: []statusRow{
+		Rows: []StatusRow{
 			{id: "T-100", state: "triaged", pid: "1234", role: "builder", attrs: "blocked", title: "A task", order: 0},
 		},
 	}
@@ -80,15 +80,22 @@ func TestGetSummary(t *testing.T) {
 	if summary.Merged != 1 {
 		t.Fatalf("expected 1 merged task, got %d", summary.Merged)
 	}
+	// 8 tasks in states other than backlog/merged
 	if summary.InProgress != 8 {
 		t.Fatalf("expected 8 in-progress tasks, got %d", summary.InProgress)
 	}
-	if len(summary.Rows) != summary.InProgress {
-		t.Fatalf("expected %d rows, got %d", summary.InProgress, len(summary.Rows))
+	// Active rows exclude merged tasks
+	if len(summary.Rows) != 8 {
+		t.Fatalf("expected 8 active rows (excluding merged), got %d", len(summary.Rows))
+	}
+	// Merged tasks go into separate collection
+	if len(summary.MergedRows) != 1 {
+		t.Fatalf("expected 1 merged row, got %d", len(summary.MergedRows))
 	}
 
-	if summary.Rows[0].state != string(index.TaskStateTriaged) {
-		t.Fatalf("expected first row state triaged, got %s", summary.Rows[0].state)
+	// With reversed ordering, highest priority (closest to done) should be first
+	if summary.Rows[0].state != string(index.TaskStateMergeable) {
+		t.Fatalf("expected first row state mergeable (highest priority), got %s", summary.Rows[0].state)
 	}
 	last := summary.Rows[len(summary.Rows)-1]
 	if !strings.HasSuffix(last.title, "...") {
