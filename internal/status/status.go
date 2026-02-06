@@ -60,6 +60,7 @@ var statusStateOrder = map[index.TaskState]int{
 // Summary represents task counts and the in-progress table.
 type Summary struct {
 	Supervisors   []SupervisorSummary
+	Workers       []WorkerSummary
 	PlanningSteps []PlanningStepSummary
 	Total         int
 	Backlog       int
@@ -109,6 +110,13 @@ type SupervisorSummary struct {
 	StartedAt      time.Time
 	LastTransition time.Time
 	LogPath        string
+}
+
+// WorkerSummary captures the status output for an active worker.
+type WorkerSummary struct {
+	PID       int
+	Role      string
+	StartedAt time.Time
 }
 
 // PlanningStepSummary captures the status output for a planning step.
@@ -232,6 +240,15 @@ func (s Summary) styledString() string {
 			b.WriteString(renderSupervisorKV(supervisor))
 		}
 		b.WriteString("\n")
+	}
+
+	// Workers section
+	if len(s.Workers) > 0 {
+		b.WriteString(headerStyle.Render(fmt.Sprintf("Workers (%d)", len(s.Workers))))
+		b.WriteString("\n")
+		workersTable := renderWorkersTable(s.Workers, width)
+		b.WriteString(tableStyle.Render(workersTable))
+		b.WriteString("\n\n")
 	}
 
 	// Planning steps section
@@ -420,6 +437,14 @@ func GetSummary(repoRoot string) (Summary, error) {
 				LastTransition: state.LastTransition,
 				LogPath:        state.LogPath,
 			})
+			// Collect active workers from execution supervisor (during triage step)
+			if state.WorkerPID > 0 && state.StepID == "triage" {
+				summary.Workers = append(summary.Workers, WorkerSummary{
+					PID:       state.WorkerPID,
+					Role:      "triage",
+					StartedAt: state.LastTransition,
+				})
+			}
 		}
 	}
 
@@ -808,6 +833,54 @@ func renderPlanningTable(steps []PlanningStepSummary, maxWidth int) string {
 			formatPID(step.PID),
 			formatSupervisorRuntime(step.StartedAt),
 			step.Status,
+		}
+		renderedCells := make([]string, len(cells))
+		for i, cell := range cells {
+			style := cellStyle.Width(widths[i]).MaxWidth(widths[i])
+			renderedCells[i] = style.Render(cell)
+		}
+		buf.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, renderedCells...))
+		buf.WriteString("\n")
+	}
+
+	return strings.TrimRight(buf.String(), "\n")
+}
+
+// renderWorkersTable renders the workers table with lipgloss styling.
+func renderWorkersTable(workers []WorkerSummary, maxWidth int) string {
+	if len(workers) == 0 {
+		return ""
+	}
+
+	var buf strings.Builder
+
+	// Column widths
+	widths := []int{6, 12, 8} // PID, Role, Runtime
+
+	// Header row
+	headers := []string{"PID", "Role", "Runtime"}
+	headerCells := make([]string, len(headers))
+	for i, h := range headers {
+		headerCells[i] = headerStyle.Width(widths[i]).Render(h)
+	}
+	buf.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, headerCells...))
+	buf.WriteString("\n")
+
+	// Separator
+	totalWidth := 0
+	for _, w := range widths {
+		totalWidth += w
+	}
+	separator := separatorStyle.Render(strings.Repeat("─", totalWidth))
+	buf.WriteString(separator)
+	buf.WriteString("\n")
+
+	// Data rows
+	for _, worker := range workers {
+		cells := []string{
+			formatPID(worker.PID),
+			worker.Role,
+			formatSupervisorRuntime(worker.StartedAt),
 		}
 		renderedCells := make([]string, len(cells))
 		for i, cell := range cells {

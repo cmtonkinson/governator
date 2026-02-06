@@ -41,6 +41,7 @@ var (
 type Model struct {
 	table         table.Model
 	planningTable table.Model
+	workersTable  table.Model
 	repoRoot      string
 	lastUpdate    time.Time
 	err           error
@@ -49,6 +50,7 @@ type Model struct {
 	merged        int
 	inProgress    int
 	supervisors   []status.SupervisorSummary
+	workers       []status.WorkerSummary
 	planningSteps []status.PlanningStepSummary
 	aggregates    status.AggregateMetrics
 }
@@ -112,10 +114,24 @@ func New(repoRoot string) Model {
 	)
 	planningTable.SetStyles(s)
 
+	// Workers table
+	workersColumns := []table.Column{
+		{Title: "PID", Width: 6},
+		{Title: "Role", Width: 12},
+		{Title: "Runtime", Width: 8},
+	}
+
+	workersTable := table.New(
+		table.WithColumns(workersColumns),
+		table.WithFocused(false),
+		table.WithHeight(5),
+	)
+	workersTable.SetStyles(s)
 
 	return Model{
 		table:         taskTable,
 		planningTable: planningTable,
+		workersTable:  workersTable,
 		repoRoot:      repoRoot,
 	}
 }
@@ -161,6 +177,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.merged = msg.summary.Merged
 		m.inProgress = msg.summary.InProgress
 		m.supervisors = msg.summary.Supervisors
+		m.workers = msg.summary.Workers
 		m.planningSteps = msg.summary.PlanningSteps
 		m.aggregates = msg.summary.Aggregates
 
@@ -179,6 +196,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.table.SetRows(rows)
+
+		// Convert workers to table rows
+		workersRows := make([]table.Row, len(msg.summary.Workers))
+		for i, worker := range msg.summary.Workers {
+			workersRows[i] = table.Row{
+				formatPID(worker.PID),
+				worker.Role,
+				formatRuntime(worker.StartedAt),
+			}
+		}
+		m.workersTable.SetRows(workersRows)
 
 		// Convert planning steps to table rows
 		planningRows := make([]table.Row, len(msg.summary.PlanningSteps))
@@ -241,6 +269,15 @@ func (m Model) View() string {
 			b.WriteString(renderSupervisorKV(sup))
 		}
 		b.WriteString("\n")
+	}
+
+	// Workers section (if any)
+	if len(m.workers) > 0 {
+		workersTitle := titleStyle.Render(fmt.Sprintf("Workers (%d)", len(m.workers)))
+		b.WriteString(workersTitle)
+		b.WriteString("\n")
+		b.WriteString(m.workersTable.View())
+		b.WriteString("\n\n")
 	}
 
 	// Planning steps table (if in planning phase)

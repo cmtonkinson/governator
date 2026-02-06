@@ -20,11 +20,9 @@ Orchestrating agentic software development is Hard&trade; because
   challenging/defending their own decisions (see: the tendency to just change
   the test to make it pass)
 
-In other words, you can only give a single agent so much scope at a time, or it
-starts to make really poor choices.
-
-In my opinion, multi-agent development is a perfect use-case for boring old
-traditional waterfall process. Sexy? Nope. Effective here? Hell yeah.
+You can only give a single agent so much scope at a time, or it starts to make
+really poor choices. Multi-agent development is a perfect use-case for boring
+old traditional waterfall process. Sexy? Nope. Effective here? Hell yeah.
 
 > Weeks of coding can save you hours of thinking.
 
@@ -36,10 +34,10 @@ traditional waterfall process. Sexy? Nope. Effective here? Hell yeah.
 5. Uses different agents to verify results against requirements
 6. Merges approved work into `main`
 
-Governator is a file-backed, git-driven, auditable, deterministic, waterfall
-orchestration framework for converting operator intent into working software.
-There is no shared memory, no long-lived agent state, and no hidden context. All
-state, intent, decisions, and artifacts live on disk and in git.
+Governator is a file-backed, git-driven, auditable, waterfall orchestration
+framework for converting operator intent into working software. There is no
+shared memory, no long-lived agent state, and no hidden context. All state,
+intent, decisions, and artifacts live on disk and in git.
 
 Governator can be used in a completely blank repository to get something from 0
 to 1, or in an existing project to improve, extend, and refine.
