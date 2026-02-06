@@ -359,7 +359,7 @@ func createMergeWorktree(repoRoot string, mainBranch string, taskID string) (str
 		return "", nil, fmt.Errorf("fetch main branch %s: %w", mainBranch, err)
 	}
 
-	if err := runGitInRepo(repoRoot, "worktree", "add", "-b", mergeBranch, worktreePath, "origin/"+mainBranch); err != nil {
+	if err := runGitInRepo(repoRoot, "worktree", "add", "-b", mergeBranch, worktreePath, mainBranch); err != nil {
 		return "", nil, fmt.Errorf("create merge worktree: %w", err)
 	}
 

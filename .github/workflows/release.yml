@@ -99,13 +99,102 @@ jobs:
         with:
           name: release-artifacts
           path: dist/
-      - name: Publish to Homebrew tap
+
+      - name: Validate homebrew artifacts exist
         run: |
-          echo "Publishing $(ls dist/homebrew/*.tar.gz) to Homebrew tap"
-          # TODO: Add Homebrew tap update commands, for example:
-          #   SHA256=$(sha256sum dist/homebrew/governator-*.tar.gz | cut -d' ' -f1)
-          #   git clone https://x-access-token:${{ secrets.TAP_GITHUB_TOKEN }}@github.com/cmtonkinson/homebrew-tap.git
-          #   cd homebrew-tap
-          #   # Update formula with new version and sha256
-          #   git commit -am "Update governator to ${GITHUB_REF_NAME}"
-          #   git push
+          set -euo pipefail
+          ls -la dist/homebrew
+          test -n "$(ls -1 dist/homebrew/*.tar.gz 2>/dev/null)"
+
+      - name: Compute SHA256s
+        id: shas
+        run: |
+          set -euo pipefail
+
+          sha_for() {
+            local pat="$1"
+            local f
+            f="$(ls -1 dist/homebrew/*"${pat}"*.tar.gz 2>/dev/null | head -n 1 || true)"
+            if [[ -z "${f}" ]]; then
+              echo "Missing tarball matching: *${pat}*.tar.gz" >&2
+              exit 1
+            fi
+            sha256sum "${f}" | awk '{print $1}'
+          }
+
+          echo "darwin_arm64=$(sha_for darwin_arm64)" >> "$GITHUB_OUTPUT"
+          echo "darwin_amd64=$(sha_for darwin_amd64)" >> "$GITHUB_OUTPUT"
+          echo "linux_arm64=$(sha_for linux_arm64)"   >> "$GITHUB_OUTPUT"
+          echo "linux_amd64=$(sha_for linux_amd64)"   >> "$GITHUB_OUTPUT"
+
+      - name: Update Homebrew tap formula
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }} # e.g. v1.2.3
+          SHA_DARWIN_ARM64: ${{ steps.shas.outputs.darwin_arm64 }}
+          SHA_DARWIN_AMD64: ${{ steps.shas.outputs.darwin_amd64 }}
+          SHA_LINUX_ARM64:  ${{ steps.shas.outputs.linux_arm64 }}
+          SHA_LINUX_AMD64:  ${{ steps.shas.outputs.linux_amd64 }}
+        run: |
+          set -euo pipefail
+
+          VERSION="${TAG#v}"
+          REPO_OWNER="cmtonkinson"
+          TAP_REPO="homebrew-tap"
+          FORMULA_PATH="Formula/governator.rb"
+          PROJECT_REPO="governator"
+
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/${REPO_OWNER}/${TAP_REPO}.git"
+          cd "${TAP_REPO}"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          mkdir -p Formula
+
+          cat > "${FORMULA_PATH}" <<RUBY
+  class Governator < Formula
+    desc "Governator CLI"
+    homepage "https://github.com/${REPO_OWNER}/${PROJECT_REPO}"
+    license "MIT"
+
+    version "${VERSION}"
+
+    on_macos do
+      if Hardware::CPU.arm?
+        url "https://github.com/${REPO_OWNER}/${PROJECT_REPO}/releases/download/v#{version}/governator_#{version}_darwin_arm64.tar.gz"
+        sha256 "${SHA_DARWIN_ARM64}"
+      else
+        url "https://github.com/${REPO_OWNER}/${PROJECT_REPO}/releases/download/v#{version}/governator_#{version}_darwin_amd64.tar.gz"
+        sha256 "${SHA_DARWIN_AMD64}"
+      end
+    end
+
+    on_linux do
+      if Hardware::CPU.arm?
+        url "https://github.com/${REPO_OWNER}/${PROJECT_REPO}/releases/download/v#{version}/governator_#{version}_linux_arm64.tar.gz"
+        sha256 "${SHA_LINUX_ARM64}"
+      else
+        url "https://github.com/${REPO_OWNER}/${PROJECT_REPO}/releases/download/v#{version}/governator_#{version}_linux_amd64.tar.gz"
+        sha256 "${SHA_LINUX_AMD64}"
+      end
+    end
+
+    def install
+      bin.install "governator"
+    end
+
+    test do
+      system "#{bin}/governator", "--version"
+    end
+  end
+  RUBY
+
+          git add "${FORMULA_PATH}"
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git commit -m "governator ${TAG}"
+          git push

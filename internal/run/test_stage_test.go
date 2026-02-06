@@ -478,7 +478,7 @@ func TestUpdateTaskStateFromReviewResult(t *testing.T) {
 		NewState: index.TaskStateReviewed,
 	}
 
-	err := UpdateTaskStateFromReviewResult(&idx, "T-001", successResult, auditor)
+	_, err := UpdateTaskStateFromReviewResult(&idx, "T-001", successResult, auditor)
 	if err != nil {
 		t.Fatalf("update task state from review result: %v", err)
 	}
@@ -526,7 +526,7 @@ func TestUpdateTaskStateFromReviewResultFailure(t *testing.T) {
 		BlockReason: "review failed: unauthorized file changes detected",
 	}
 
-	err := UpdateTaskStateFromReviewResult(&idx, "T-001", failedResult, auditor)
+	_, err := UpdateTaskStateFromReviewResult(&idx, "T-001", failedResult, auditor)
 	if err != nil {
 		t.Fatalf("update task state from review result: %v", err)
 	}

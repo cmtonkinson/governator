@@ -244,6 +244,7 @@ type TestStageResult struct {
 	TasksTested     int
 	TasksBlocked    int
 	InFlightUpdated bool
+	Metrics         map[string]index.ExecutionMetrics // Metrics by task ID
 }
 
 // WorkStageResult captures the outcome of work stage execution.
@@ -253,12 +254,14 @@ type WorkStageResult struct {
 	TasksBlocked    int
 	InFlightUpdated bool
 	WorktreePaths   map[string]string
+	Metrics         map[string]index.ExecutionMetrics // Metrics by task ID
 }
 
 // ExecuteWorkStage processes tasks in the open state through the work stage.
 func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps scheduler.RoleCaps, inFlight inflight.Set, resumeWorktrees map[string]string, transitionAuditor index.TransitionAuditor, workerAuditor *audit.Logger, opts Options) (WorkStageResult, error) {
 	result := WorkStageResult{
 		WorktreePaths: map[string]string{},
+		Metrics:       map[string]index.ExecutionMetrics{},
 	}
 	if inFlight == nil {
 		inFlight = inflight.Set{}
@@ -312,7 +315,7 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 				if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
 					fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
 				}
-				if updateErr := UpdateTaskStateFromWorkResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+				if _, updateErr := UpdateTaskStateFromWorkResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
 					fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
 				} else {
 					result.TasksBlocked++
@@ -355,9 +358,14 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 			fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
 		})
 
-		if err := UpdateTaskStateFromWorkResult(idx, task.ID, ingestResult, transitionAuditor); err != nil {
+		stageMetrics, err := UpdateTaskStateFromWorkResult(idx, task.ID, ingestResult, transitionAuditor)
+		if err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, err)
 			continue
+		}
+		// Store metrics for this task in the result
+		if ingestResult.Success {
+			result.Metrics[task.ID] = stageMetrics
 		}
 		if !ingestResult.Success {
 			if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
@@ -413,7 +421,7 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 			if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
 			}
-			if updateErr := UpdateTaskStateFromWorkResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+			if _, updateErr := UpdateTaskStateFromWorkResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
 			} else {
 				result.TasksBlocked++
@@ -435,7 +443,7 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 				if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
 					fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
 				}
-				if updateErr := UpdateTaskStateFromWorkResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+				if _, updateErr := UpdateTaskStateFromWorkResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
 					fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
 				} else {
 					result.TasksBlocked++
@@ -461,7 +469,7 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 				if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
 					fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
 				}
-				if updateErr := UpdateTaskStateFromWorkResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+				if _, updateErr := UpdateTaskStateFromWorkResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
 					fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
 				} else {
 					result.TasksBlocked++
@@ -501,7 +509,7 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 			if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
 			}
-			if updateErr := UpdateTaskStateFromWorkResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+			if _, updateErr := UpdateTaskStateFromWorkResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
 			} else {
 				result.TasksBlocked++
@@ -523,7 +531,7 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 			if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
 			}
-			if updateErr := UpdateTaskStateFromWorkResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+			if _, updateErr := UpdateTaskStateFromWorkResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
 			} else {
 				result.TasksBlocked++
@@ -609,14 +617,17 @@ func ExecuteWorkAgent(repoRoot, worktreePath string, task index.Task, cfg config
 }
 
 // UpdateTaskStateFromWorkResult updates the task index based on work execution results.
-func UpdateTaskStateFromWorkResult(idx *index.Index, taskID string, workResult worker.IngestResult, auditor index.TransitionAuditor) error {
+// Returns the metrics that were accumulated for this stage.
+func UpdateTaskStateFromWorkResult(idx *index.Index, taskID string, workResult worker.IngestResult, auditor index.TransitionAuditor) (index.ExecutionMetrics, error) {
 	target := index.TaskStateBlocked
 	if workResult.Success {
 		target = workResult.NewState
 	}
 	if err := applyTaskStateTransition(idx, taskID, target, auditor); err != nil {
-		return fmt.Errorf("task %q: %w", taskID, err)
+		return index.ExecutionMetrics{}, fmt.Errorf("task %q: %w", taskID, err)
 	}
+
+	var stageMetrics index.ExecutionMetrics
 	if err := updateIndexTask(idx, taskID, func(task *index.Task) {
 		task.PID = 0
 		if workResult.Success {
@@ -627,18 +638,22 @@ func UpdateTaskStateFromWorkResult(idx *index.Index, taskID string, workResult w
 			task.Metrics.TokensPrompt += workResult.Metrics.TokensPrompt
 			task.Metrics.TokensResponse += workResult.Metrics.TokensResponse
 			task.Metrics.TokensTotal += workResult.Metrics.TokensTotal
+			// Return the metrics from this stage
+			stageMetrics = workResult.Metrics
 		} else {
 			task.BlockedReason = workResult.BlockReason
 		}
 	}); err != nil {
-		return fmt.Errorf("task %q metadata: %w", taskID, err)
+		return index.ExecutionMetrics{}, fmt.Errorf("task %q metadata: %w", taskID, err)
 	}
-	return nil
+	return stageMetrics, nil
 }
 
 // ExecuteTestStage processes tasks in the worked state through the test stage.
 func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps scheduler.RoleCaps, inFlight inflight.Set, worktreeOverrides map[string]string, transitionAuditor index.TransitionAuditor, workerAuditor *audit.Logger, opts Options) (TestStageResult, error) {
-	result := TestStageResult{}
+	result := TestStageResult{
+		Metrics: map[string]index.ExecutionMetrics{},
+	}
 	if inFlight == nil {
 		inFlight = inflight.Set{}
 	}
@@ -685,7 +700,7 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 				if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
 					fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
 				}
-				if updateErr := UpdateTaskStateFromTestResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+				if _, updateErr := UpdateTaskStateFromTestResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
 					fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
 				} else {
 					result.TasksBlocked++
@@ -728,9 +743,14 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 			fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
 		})
 
-		if err := UpdateTaskStateFromTestResult(idx, task.ID, ingestResult, transitionAuditor); err != nil {
+		stageMetrics, err := UpdateTaskStateFromTestResult(idx, task.ID, ingestResult, transitionAuditor)
+		if err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, err)
 			continue
+		}
+		// Store metrics for this task in the result
+		if ingestResult.Success {
+			result.Metrics[task.ID] = stageMetrics
 		}
 		if !ingestResult.Success {
 			if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
@@ -801,7 +821,7 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 			if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
 			}
-			if updateErr := UpdateTaskStateFromTestResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+			if _, updateErr := UpdateTaskStateFromTestResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
 			} else {
 				result.TasksBlocked++
@@ -823,7 +843,7 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 			if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
 			}
-			if updateErr := UpdateTaskStateFromTestResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+			if _, updateErr := UpdateTaskStateFromTestResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
 			} else {
 				result.TasksBlocked++
@@ -910,26 +930,36 @@ func ExecuteTestAgent(repoRoot, worktreePath string, task index.Task, cfg config
 }
 
 // UpdateTaskStateFromTestResult updates the task index based on test execution results.
-func UpdateTaskStateFromTestResult(idx *index.Index, taskID string, testResult worker.IngestResult, auditor index.TransitionAuditor) error {
+// Returns the metrics that were accumulated for this stage.
+func UpdateTaskStateFromTestResult(idx *index.Index, taskID string, testResult worker.IngestResult, auditor index.TransitionAuditor) (index.ExecutionMetrics, error) {
 	target := index.TaskStateBlocked
 	if testResult.Success {
 		target = testResult.NewState
 	}
 	if err := applyTaskStateTransition(idx, taskID, target, auditor); err != nil {
-		return fmt.Errorf("task %q: %w", taskID, err)
+		return index.ExecutionMetrics{}, fmt.Errorf("task %q: %w", taskID, err)
 	}
+
+	var stageMetrics index.ExecutionMetrics
 	if err := updateIndexTask(idx, taskID, func(task *index.Task) {
 		task.PID = 0
 		if testResult.Success {
 			task.BlockedReason = ""
 			task.MergeConflict = false
+			// Accumulate metrics from this stage
+			task.Metrics.DurationMs += testResult.Metrics.DurationMs
+			task.Metrics.TokensPrompt += testResult.Metrics.TokensPrompt
+			task.Metrics.TokensResponse += testResult.Metrics.TokensResponse
+			task.Metrics.TokensTotal += testResult.Metrics.TokensTotal
+			// Return the metrics from this stage
+			stageMetrics = testResult.Metrics
 		} else {
 			task.BlockedReason = testResult.BlockReason
 		}
 	}); err != nil {
-		return fmt.Errorf("task %q metadata: %w", taskID, err)
+		return index.ExecutionMetrics{}, fmt.Errorf("task %q metadata: %w", taskID, err)
 	}
-	return nil
+	return stageMetrics, nil
 }
 
 // ReviewStageResult captures the outcome of review stage execution.
@@ -938,11 +968,14 @@ type ReviewStageResult struct {
 	TasksReviewed   int
 	TasksBlocked    int
 	InFlightUpdated bool
+	Metrics         map[string]index.ExecutionMetrics // Metrics by task ID
 }
 
 // ExecuteReviewStage processes tasks in the tested state through the review stage.
 func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, caps scheduler.RoleCaps, inFlight inflight.Set, worktreeOverrides map[string]string, transitionAuditor index.TransitionAuditor, workerAuditor *audit.Logger, opts Options) (ReviewStageResult, error) {
-	result := ReviewStageResult{}
+	result := ReviewStageResult{
+		Metrics: map[string]index.ExecutionMetrics{},
+	}
 	if inFlight == nil {
 		inFlight = inflight.Set{}
 	}
@@ -986,7 +1019,7 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 				logAgentOutcome(workerAuditor, task.ID, task.Role, roles.StageReview, statusFromIngestResult(failedResult), exitCodeForOutcome(-1, true), func(message string) {
 					fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
 				})
-				if err := UpdateTaskStateFromReviewResult(idx, task.ID, failedResult, transitionAuditor); err != nil {
+				if _, err := UpdateTaskStateFromReviewResult(idx, task.ID,failedResult, transitionAuditor); err != nil {
 					fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, err)
 				} else {
 					result.TasksBlocked++
@@ -1030,10 +1063,13 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 		})
 
 		if reviewResult.Success {
-			if err := UpdateTaskStateFromReviewResult(idx, task.ID, reviewResult, transitionAuditor); err != nil {
+			stageMetrics, err := UpdateTaskStateFromReviewResult(idx, task.ID,reviewResult, transitionAuditor)
+			if err != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s after review: %v\n", task.ID, err)
 				continue
 			}
+			// Store metrics for this task in the result
+			result.Metrics[task.ID] = stageMetrics
 			result.TasksReviewed++
 			emitTaskComplete(opts.Stdout, task.ID, string(task.Role), string(roles.StageReview))
 
@@ -1086,7 +1122,7 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 				emitTaskFailure(opts.Stdout, task.ID, string(task.Role), mergeStageName, mergeResult.ConflictError)
 			}
 		} else {
-			if err := UpdateTaskStateFromReviewResult(idx, task.ID, reviewResult, transitionAuditor); err != nil {
+			if _, err := UpdateTaskStateFromReviewResult(idx, task.ID,reviewResult, transitionAuditor); err != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, err)
 			} else {
 				result.TasksBlocked++
@@ -1144,7 +1180,7 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 				NewState:    index.TaskStateTriaged,
 				BlockReason: fmt.Sprintf("review agent staging failed: %v", err),
 			}
-			if updateErr := UpdateTaskStateFromReviewResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+			if _, updateErr := UpdateTaskStateFromReviewResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
 			} else {
 				result.TasksBlocked++
@@ -1163,7 +1199,7 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 				NewState:    index.TaskStateTriaged,
 				BlockReason: fmt.Sprintf("review agent dispatch failed: %v", err),
 			}
-			if updateErr := UpdateTaskStateFromReviewResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+			if _, updateErr := UpdateTaskStateFromReviewResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
 				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
 			} else {
 				result.TasksBlocked++
@@ -1250,26 +1286,36 @@ func ExecuteReviewAgent(repoRoot, worktreePath string, task index.Task, cfg conf
 }
 
 // UpdateTaskStateFromReviewResult updates the task index based on review execution results.
-func UpdateTaskStateFromReviewResult(idx *index.Index, taskID string, reviewResult worker.IngestResult, auditor index.TransitionAuditor) error {
+// Returns the metrics that were accumulated for this stage.
+func UpdateTaskStateFromReviewResult(idx *index.Index, taskID string, reviewResult worker.IngestResult, auditor index.TransitionAuditor) (index.ExecutionMetrics, error) {
 	target := index.TaskStateTriaged
 	if reviewResult.Success {
 		target = reviewResult.NewState
 	}
 	if err := applyTaskStateTransition(idx, taskID, target, auditor); err != nil {
-		return fmt.Errorf("task %q: %w", taskID, err)
+		return index.ExecutionMetrics{}, fmt.Errorf("task %q: %w", taskID, err)
 	}
+
+	var stageMetrics index.ExecutionMetrics
 	if err := updateIndexTask(idx, taskID, func(task *index.Task) {
 		task.PID = 0
 		if reviewResult.Success {
 			task.BlockedReason = ""
 			task.MergeConflict = false
+			// Accumulate metrics from this stage
+			task.Metrics.DurationMs += reviewResult.Metrics.DurationMs
+			task.Metrics.TokensPrompt += reviewResult.Metrics.TokensPrompt
+			task.Metrics.TokensResponse += reviewResult.Metrics.TokensResponse
+			task.Metrics.TokensTotal += reviewResult.Metrics.TokensTotal
+			// Return the metrics from this stage
+			stageMetrics = reviewResult.Metrics
 		} else {
 			task.BlockedReason = reviewResult.BlockReason
 		}
 	}); err != nil {
-		return fmt.Errorf("task %q metadata: %w", taskID, err)
+		return index.ExecutionMetrics{}, fmt.Errorf("task %q metadata: %w", taskID, err)
 	}
-	return nil
+	return stageMetrics, nil
 }
 
 // ConflictResolutionStageResult captures the outcome of conflict resolution stage execution.
@@ -1278,6 +1324,7 @@ type ConflictResolutionStageResult struct {
 	TasksResolved   int
 	TasksBlocked    int
 	InFlightUpdated bool
+	Metrics         map[string]index.ExecutionMetrics // Metrics by task ID
 }
 
 // ExecuteConflictResolutionStage processes tasks in the conflict state by dispatching conflict resolution agents.
