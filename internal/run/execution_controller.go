@@ -26,8 +26,6 @@ const (
 	executionStageResolve executionStage = "resolve"
 	// executionStageMerge merges resolved work.
 	executionStageMerge executionStage = "merge"
-	// executionStageBranch ensures branches exist for open tasks.
-	executionStageBranch executionStage = "branch"
 )
 
 // executionController adapts task execution stages to the workstream runner.
@@ -50,7 +48,6 @@ type executionController struct {
 	reviewResult       ReviewStageResult
 	conflictResult     ConflictResolutionStageResult
 	mergeResult        MergeStageResult
-	branchResult       BranchStageResult
 	inFlightWasUpdated bool
 }
 
@@ -75,7 +72,6 @@ func newExecutionController(repoRoot string, idx *index.Index, cfg config.Config
 			executionStageReview,
 			executionStageResolve,
 			executionStageMerge,
-			executionStageBranch,
 		},
 	}
 }
@@ -153,13 +149,6 @@ func (controller *executionController) Dispatch(step workstreamStep) (workstream
 		}
 		controller.mergeResult = mergeResult
 		result.Handled = mergeResult.TasksProcessed > 0
-	case executionStageBranch:
-		branchResult, err := EnsureBranchesForOpenTasks(controller.repoRoot, controller.idx, controller.workerAuditor, controller.opts, controller.baseBranch)
-		if err != nil {
-			return workstreamDispatchResult{}, err
-		}
-		controller.branchResult = branchResult
-		result.Handled = branchResult.BranchesCreated > 0
 	default:
 		return workstreamDispatchResult{}, fmt.Errorf("unsupported execution stage %q", stage)
 	}
@@ -183,7 +172,7 @@ func (controller *executionController) stageForStep(step workstreamStep) (execut
 	}
 	stage := executionStage(name)
 	switch stage {
-	case executionStageWork, executionStageTest, executionStageReview, executionStageResolve, executionStageMerge, executionStageBranch:
+	case executionStageWork, executionStageTest, executionStageReview, executionStageResolve, executionStageMerge:
 		return stage, nil
 	default:
 		return "", fmt.Errorf("unknown execution stage %q", name)

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -221,9 +220,16 @@ func writePipelineConfig(t *testing.T, repoRoot string, workerCommand []string) 
 // prepareWorkedTask transitions the planned task into a ready state for run execution.
 func prepareWorkedTask(t *testing.T, repoRoot string, idx *index.Index, repo *testrepos.TempRepo, baseBranch string) error {
 	t.Helper()
-	opts := Options{Stdout: io.Discard, Stderr: io.Discard}
-	if _, err := EnsureBranchesForOpenTasks(repoRoot, idx, nil, opts, baseBranch); err != nil {
-		return fmt.Errorf("ensure branches: %w", err)
+	// Ensure branches exist for all tasks
+	for _, task := range idx.Tasks {
+		if task.Kind == index.TaskKindPlanning {
+			continue
+		}
+		if task.State == index.TaskStateTriaged {
+			if err := EnsureBranchForTask(repoRoot, task, baseBranch, nil); err != nil {
+				return fmt.Errorf("ensure branch for task %s: %w", task.ID, err)
+			}
+		}
 	}
 	repo.RunGit(t, "checkout", "main")
 	manager, err := worktree.NewManager(repoRoot)
@@ -309,12 +315,12 @@ func execGitCommand(dir string, args ...string) (string, error) {
 	return string(output), nil
 }
 
-// TestEnsureBranchesForOpenTasks_BatchCreation verifies batch branch creation logic.
+// TestEnsureBranchForTask_JustInTime verifies just-in-time branch creation logic.
 // This test ensures that:
-// - Multiple task branches are created efficiently
-// - The repository remains on the main branch after creation
-// - All branches point to the same base commit
-func TestEnsureBranchesForOpenTasks_BatchCreation(t *testing.T) {
+// - Task branches are created on-demand (not upfront)
+// - Branches are created from current main HEAD
+// - Idempotent: calling again doesn't recreate existing branches
+func TestEnsureBranchForTask_JustInTime(t *testing.T) {
 	// Setup test repository
 	repo := testrepos.New(t)
 	repoRoot := repo.Root
@@ -324,70 +330,45 @@ func TestEnsureBranchesForOpenTasks_BatchCreation(t *testing.T) {
 		t.Fatalf("init layout: %v", err)
 	}
 
-	// Create multiple triaged tasks
-	tasks := []index.Task{
-		{
-			ID:    "test-001",
-			Role:  "default",
-			Title: "First test task",
-			Kind:  index.TaskKindExecution,
-			State: index.TaskStateTriaged,
-		},
-		{
-			ID:    "test-002",
-			Role:  "default",
-			Title: "Second test task",
-			Kind:  index.TaskKindExecution,
-			State: index.TaskStateTriaged,
-		},
-		{
-			ID:    "test-003",
-			Role:  "default",
-			Title: "Third test task",
-			Kind:  index.TaskKindExecution,
-			State: index.TaskStateTriaged,
-		},
+	// Create a test task
+	task := index.Task{
+		ID:    "test-001",
+		Role:  "default",
+		Title: "Test task",
+		Kind:  index.TaskKindExecution,
+		State: index.TaskStateTriaged,
 	}
 
-	// Create index with tasks
-	idx := index.Index{
-		Tasks: tasks,
-	}
-
-	// Save index
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
-	if err := index.Save(indexPath, idx); err != nil {
-		t.Fatalf("save index: %v", err)
-	}
-
-	// Ensure branches
-	opts := Options{
-		Stdout: io.Discard,
-		Stderr: io.Discard,
-	}
-	result, err := EnsureBranchesForOpenTasks(repoRoot, &idx, nil, opts, "main")
+	// Record initial main commit
+	mainCommit1, err := execGitCommand(repoRoot, "rev-parse", "main")
 	if err != nil {
-		t.Fatalf("EnsureBranchesForOpenTasks failed: %v", err)
+		t.Fatalf("Failed to get main commit: %v", err)
+	}
+	mainCommit1 = strings.TrimSpace(mainCommit1)
+
+	// Create branch just-in-time
+	if err := EnsureBranchForTask(repoRoot, task, "main", nil); err != nil {
+		t.Fatalf("EnsureBranchForTask failed: %v", err)
 	}
 
-	// Verify result counts
-	if result.BranchesCreated != 3 {
-		t.Errorf("Expected 3 branches created, got %d", result.BranchesCreated)
-	}
-	if result.BranchesSkipped != 0 {
-		t.Errorf("Expected 0 branches skipped, got %d", result.BranchesSkipped)
-	}
-
-	// Verify all branches exist
-	for _, task := range tasks {
-		branchName := TaskBranchName(task)
-		output, err := execGitCommand(repoRoot, "show-ref", "--verify", "--quiet", "refs/heads/"+branchName)
-		if err != nil {
-			t.Errorf("Branch %s should exist but got error: %v (output: %s)", branchName, err, output)
-		}
+	// Verify branch exists
+	branchName := TaskBranchName(task)
+	output, err := execGitCommand(repoRoot, "show-ref", "--verify", "--quiet", "refs/heads/"+branchName)
+	if err != nil {
+		t.Errorf("Branch %s should exist but got error: %v (output: %s)", branchName, err, output)
 	}
 
-	// Verify we're on main branch
+	// Verify branch points to main
+	branchCommit, err := execGitCommand(repoRoot, "rev-parse", branchName)
+	if err != nil {
+		t.Fatalf("Failed to get commit for branch %s: %v", branchName, err)
+	}
+	branchCommit = strings.TrimSpace(branchCommit)
+	if branchCommit != mainCommit1 {
+		t.Errorf("Branch %s commit %s doesn't match main commit %s", branchName, branchCommit, mainCommit1)
+	}
+
+	// Verify we're back on main branch
 	currentBranch, err := execGitCommand(repoRoot, "branch", "--show-current")
 	if err != nil {
 		t.Fatalf("Failed to get current branch: %v", err)
@@ -397,45 +378,18 @@ func TestEnsureBranchesForOpenTasks_BatchCreation(t *testing.T) {
 		t.Errorf("Expected to be on main branch, but on %s", currentBranch)
 	}
 
-	// Verify all task branches point to main (same commit)
-	mainCommit, err := execGitCommand(repoRoot, "rev-parse", "main")
+	// Test idempotency - calling again should be a no-op
+	if err := EnsureBranchForTask(repoRoot, task, "main", nil); err != nil {
+		t.Fatalf("Second EnsureBranchForTask failed: %v", err)
+	}
+
+	// Verify branch still exists and points to same commit
+	branchCommit2, err := execGitCommand(repoRoot, "rev-parse", branchName)
 	if err != nil {
-		t.Fatalf("Failed to get main commit: %v", err)
+		t.Fatalf("Failed to get commit for branch %s after second call: %v", branchName, err)
 	}
-	mainCommit = strings.TrimSpace(mainCommit)
-
-	for _, task := range tasks {
-		branchName := TaskBranchName(task)
-		branchCommit, err := execGitCommand(repoRoot, "rev-parse", branchName)
-		if err != nil {
-			t.Fatalf("Failed to get commit for branch %s: %v", branchName, err)
-		}
-		branchCommit = strings.TrimSpace(branchCommit)
-		if branchCommit != mainCommit {
-			t.Errorf("Branch %s commit %s doesn't match main commit %s", branchName, branchCommit, mainCommit)
-		}
-	}
-
-	// Test idempotency - calling again should skip all branches
-	result2, err := EnsureBranchesForOpenTasks(repoRoot, &idx, nil, opts, "main")
-	if err != nil {
-		t.Fatalf("Second EnsureBranchesForOpenTasks failed: %v", err)
-	}
-
-	if result2.BranchesCreated != 0 {
-		t.Errorf("Expected 0 branches created on second run, got %d", result2.BranchesCreated)
-	}
-	if result2.BranchesSkipped != 3 {
-		t.Errorf("Expected 3 branches skipped on second run, got %d", result2.BranchesSkipped)
-	}
-
-	// Verify still on main branch
-	currentBranch2, err := execGitCommand(repoRoot, "branch", "--show-current")
-	if err != nil {
-		t.Fatalf("Failed to get current branch after second run: %v", err)
-	}
-	currentBranch2 = strings.TrimSpace(currentBranch2)
-	if currentBranch2 != "main" {
-		t.Errorf("Expected to be on main branch after second run, but on %s", currentBranch2)
+	branchCommit2 = strings.TrimSpace(branchCommit2)
+	if branchCommit2 != mainCommit1 {
+		t.Errorf("Branch commit changed after idempotent call: was %s, now %s", mainCommit1, branchCommit2)
 	}
 }

@@ -157,10 +157,9 @@ func Run(repoRoot string, opts Options) (Result, error) {
 	reviewResult := executionController.reviewResult
 	conflictResult := executionController.conflictResult
 	mergeResult := executionController.mergeResult
-	branchResult := executionController.branchResult
 
 	// Save updated index
-	if len(resumedTasks) > 0 || len(blockedTasks) > 0 || workResult.TasksWorked > 0 || workResult.TasksBlocked > 0 || testResult.TasksTested > 0 || testResult.TasksBlocked > 0 || reviewResult.TasksReviewed > 0 || reviewResult.TasksBlocked > 0 || conflictResult.TasksResolved > 0 || conflictResult.TasksBlocked > 0 || mergeResult.TasksProcessed > 0 || branchResult.BranchesCreated > 0 {
+	if len(resumedTasks) > 0 || len(blockedTasks) > 0 || workResult.TasksWorked > 0 || workResult.TasksBlocked > 0 || testResult.TasksTested > 0 || testResult.TasksBlocked > 0 || reviewResult.TasksReviewed > 0 || reviewResult.TasksBlocked > 0 || conflictResult.TasksResolved > 0 || conflictResult.TasksBlocked > 0 || mergeResult.TasksProcessed > 0 {
 		if err := index.Save(indexPath, idx); err != nil {
 			return Result{}, fmt.Errorf("save task index: %w", err)
 		}
@@ -227,12 +226,6 @@ func Run(repoRoot string, opts Options) (Result, error) {
 			message.WriteString(", ")
 		}
 		message.WriteString(fmt.Sprintf("processed %d merge task(s)", mergeResult.TasksProcessed))
-	}
-	if branchResult.BranchesCreated > 0 {
-		if message.Len() > 0 {
-			message.WriteString(", ")
-		}
-		message.WriteString(fmt.Sprintf("created %d branch(es) for open tasks", branchResult.BranchesCreated))
 	}
 	if message.Len() == 0 {
 		message.WriteString("No tasks to resume or execute")
@@ -406,6 +399,26 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 		attempt, err := ensureWorkAttempt(idx, task.ID)
 		if err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to set attempt for task %s: %v\n", task.ID, err)
+			continue
+		}
+
+		// Ensure branch exists just-in-time before creating worktree
+		if err := EnsureBranchForTask(repoRoot, task, baseBranch, workerAuditor); err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to ensure branch for task %s: %v\n", task.ID, err)
+			failedResult := worker.IngestResult{
+				Success:     false,
+				NewState:    index.TaskStateBlocked,
+				BlockReason: fmt.Sprintf("branch creation failed: %v", err),
+			}
+			if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
+			}
+			if updateErr := UpdateTaskStateFromWorkResult(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
+			} else {
+				result.TasksBlocked++
+				emitTaskFailure(opts.Stdout, task.ID, string(task.Role), string(roles.StageWork), failedResult.BlockReason)
+			}
 			continue
 		}
 
@@ -1981,76 +1994,43 @@ func UpdateTaskStateFromMerge(idx *index.Index, taskID string, mergeResult worke
 	return nil
 }
 
-// BranchStageResult captures the outcome of branch creation for open tasks.
-type BranchStageResult struct {
-	BranchesCreated int
-	BranchesSkipped int
-}
-
-// EnsureBranchesForOpenTasks creates branches for tasks in the open state.
-func EnsureBranchesForOpenTasks(repoRoot string, idx *index.Index, auditor *audit.Logger, opts Options, baseBranch string) (BranchStageResult, error) {
-	result := BranchStageResult{}
-	if opts.DisableDispatch {
-		return result, nil
-	}
-
-	// Find tasks in open state
-	var openTasks []index.Task
-	for _, task := range idx.Tasks {
-		if task.Kind != index.TaskKindExecution {
-			continue
-		}
-		if task.State == index.TaskStateTriaged {
-			openTasks = append(openTasks, task)
-		}
-	}
-
-	if len(openTasks) == 0 {
-		return result, nil
-	}
-
+// EnsureBranchForTask creates a branch for a task if it doesn't exist.
+// This is called just-in-time before creating a worktree for dispatch.
+// Branches are stable/long-lived - only create if missing, never force-update.
+func EnsureBranchForTask(repoRoot string, task index.Task, baseBranch string, auditor *audit.Logger) error {
 	effectiveBranch := strings.TrimSpace(baseBranch)
 	if effectiveBranch == "" {
 		effectiveBranch = config.Defaults().Branches.Base
 	}
 
-	// Create branch lifecycle manager
 	branchManager := NewBranchLifecycleManager(repoRoot, auditor)
+	branchName := branchManager.GetTaskBranchName(task)
 
-	// Prepare base branch once before creating all task branches
+	// Check if branch already exists
+	exists, err := branchManager.BranchExists(branchName)
+	if err != nil {
+		return fmt.Errorf("check if branch exists: %w", err)
+	}
+
+	if exists {
+		// Branch already exists, nothing to do
+		return nil
+	}
+
+	// Prepare base branch
 	if err := branchManager.PrepareBaseBranch(effectiveBranch); err != nil {
-		return result, fmt.Errorf("prepare base branch %s: %w", effectiveBranch, err)
+		return fmt.Errorf("prepare base branch %s: %w", effectiveBranch, err)
 	}
 
-	// Process each open task to ensure it has a branch
-	for _, task := range openTasks {
-		// Check if branch already exists
-		branchName := branchManager.GetTaskBranchName(task)
-		exists, err := branchManager.BranchExists(branchName)
-		if err != nil {
-			fmt.Fprintf(opts.Stderr, "Warning: failed to check if branch exists for task %s: %v\n", task.ID, err)
-			continue
-		}
-
-		if exists {
-			result.BranchesSkipped++
-			continue
-		}
-
-		// Create branch for the task
-		if err := branchManager.CreateTaskBranchWithoutCheckout(task, effectiveBranch); err != nil {
-			fmt.Fprintf(opts.Stderr, "Warning: failed to create branch for task %s: %v\n", task.ID, err)
-			continue
-		}
-
-		result.BranchesCreated++
-		fmt.Fprintf(opts.Stdout, "Created branch %s for task %s\n", branchName, task.ID)
+	// Create branch without checkout
+	if err := branchManager.CreateTaskBranchWithoutCheckout(task, effectiveBranch); err != nil {
+		return fmt.Errorf("create branch: %w", err)
 	}
 
-	// Ensure we're still on the base branch (for predictability)
+	// Return to base branch for predictability
 	if err := branchManager.CheckoutBranch(effectiveBranch); err != nil {
-		fmt.Fprintf(opts.Stderr, "Warning: failed to ensure checkout of %s: %v\n", effectiveBranch, err)
+		return fmt.Errorf("checkout base branch: %w", err)
 	}
 
-	return result, nil
+	return nil
 }

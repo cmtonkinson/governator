@@ -369,9 +369,12 @@ func buildTriageTaskContent(template string, idx index.Index) string {
 	var b strings.Builder
 	b.WriteString(strings.TrimSpace(template))
 	b.WriteString("\n\nOutput the JSON mapping to `_governator/_local-state/dag.json`.\n")
-	b.WriteString("Schema example: {\"task-07\": [\"task-03\", \"task-04\"], \"task-08\": [\"task-03\", \"task-06\", \"task-07\"]}\n")
+	b.WriteString("Schema example: {\"task-07\": [\"task-03\", \"task-04\"], \"task-08\": []}\n")
 	b.WriteString("Include only backlog and triaged tasks. Prefer listing every task with [] for independent work; omitted tasks are treated as independent.\n")
-	b.WriteString("Ensure the mapping captures the complete ordering among backlog/triaged tasks.\n")
+	b.WriteString("\n**CRITICAL: Maximize parallelism. Only add dependencies for TRUE blockers, not for cosmetic ordering.**\n")
+	b.WriteString("\nTRUE dependency = Task X needs Y's output/code/feature to proceed\n")
+	b.WriteString("FALSE dependency = Tasks touch same file but don't share code, or are just conceptually related\n")
+	b.WriteString("\nWhen in doubt, prefer NO dependency (parallel execution) over serial ordering.\n")
 	b.WriteString("\nCurrent backlog + triaged tasks:\n")
 	for _, task := range idx.Tasks {
 		if !isTriageEligible(task) {
@@ -385,7 +388,7 @@ func buildTriageTaskContent(template string, idx index.Index) string {
 			task.Path,
 		))
 	}
-	b.WriteString("\nExisting dependencies should be treated as hints, not constraints.\n")
+	b.WriteString("\nExisting dependencies are hints only - reevaluate based on TRUE dependency criteria above.\n")
 	return b.String()
 }
 
