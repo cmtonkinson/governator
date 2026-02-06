@@ -3,3 +3,6 @@ governator
 # Agent/task management
 work-*/
 
+# GoReleaser build artifacts
+dist/
+

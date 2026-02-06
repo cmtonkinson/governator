@@ -1,0 +1,140 @@
+# GoReleaser configuration for Governator
+# Documentation: https://goreleaser.com
+
+version: 2
+
+before:
+  hooks:
+    # Ensure dependencies are up to date
+    - go mod tidy
+    # Run tests before building (using sh -c for shell expansion)
+    - sh -c 'go test -v $(go list ./... | grep -v "/test$")'
+
+builds:
+  - id: governator
+    binary: governator
+    main: ./
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/cmtonkinson/governator/internal/buildinfo.Version={{.Version}}
+      - -X github.com/cmtonkinson/governator/internal/buildinfo.Commit={{.FullCommit}}
+      - -X github.com/cmtonkinson/governator/internal/buildinfo.BuiltAt={{.Date}}
+    flags:
+      - -trimpath
+
+archives:
+  - id: governator-archive
+    name_template: "governator_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      # Only include the binary, no additional files
+      - none*
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+nfpms:
+  - id: governator-deb
+    package_name: governator
+    file_name_template: "governator_{{ .Version }}_{{ .Arch }}"
+    vendor: Governator Release Team
+    homepage: https://github.com/cmtonkinson/governator
+    maintainer: Governator Release Team <releases@example.com>
+    description: |-
+      Governator CLI v2 deterministic orchestrator.
+      AI-powered task orchestration tool with supervisor pattern.
+    license: MIT
+    formats:
+      - deb
+    bindir: /usr/local/bin
+    section: utils
+    priority: optional
+
+brews:
+  - name: governator
+    repository:
+      owner: cmtonkinson
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/cmtonkinson/governator
+    description: Governator CLI - AI-powered task orchestration tool
+    license: MIT
+    test: |
+      system "#{bin}/governator", "version"
+    install: |
+      bin.install "governator"
+
+# SBOM generation (requires syft to be installed)
+# Uncomment to enable:
+# sboms:
+#   - id: governator-sbom
+#     artifacts: archive
+#     documents:
+#       - "{{ .ProjectName }}_{{ .Version }}_sbom.spdx.json"
+
+release:
+  github:
+    owner: cmtonkinson
+    name: governator
+  draft: false
+  prerelease: auto
+  mode: replace
+  header: |
+    ## Governator {{ .Version }}
+
+    Release artifacts for Governator {{ .Version }}.
+
+    ### Installation
+
+    **Homebrew (macOS/Linux):**
+    ```bash
+    brew install cmtonkinson/tap/governator
+    ```
+
+    **Debian/Ubuntu:**
+    ```bash
+    # Download the .deb file for your architecture from the assets below
+    sudo dpkg -i governator_{{ .Version }}_amd64.deb
+    ```
+
+    **Manual installation:**
+    Download the appropriate archive for your platform from the assets below, extract it, and move the binary to a directory in your PATH.
+
+  footer: |
+    ---
+
+    **Full Changelog**: https://github.com/cmtonkinson/governator/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+  name_template: "v{{ .Version }}"
+
+snapshot:
+  version_template: "{{ .Version }}-next"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+      - "^build:"
+  groups:
+    - title: Features
+      regexp: "^feat:"
+      order: 0
+    - title: Bug Fixes
+      regexp: "^fix:"
+      order: 1
+    - title: Others
+      order: 999
