@@ -176,12 +176,12 @@ governator [global options] <command> [command options]
 | `init` | Bootstrap `_governator/` in the current git repo |
 | `plan` | Start the planning supervisor (background) |
 | `execute` | Start the execution supervisor (background) |
-| `status [-w]` | Show supervisor state and task progress (`-w` for live watch mode) |
+| `status [-i]` | Show supervisor state and task progress (`-i` for interactive mode) |
 | `stop [-w]` | Graceful shutdown (`-w` to also stop worker agents) |
 | `restart [-w]` | Stop and restart the current phase |
 | `reset [-w]` | Stop everything and clear all state |
 | `tail [--stdout]` | Stream real-time agent output logs |
-| `version` | Print version and build info |
+| `-V, --version` | Print version and build info |
 
 Run `governator <command> -h` for detailed help.
 

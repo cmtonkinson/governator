@@ -36,7 +36,9 @@ USAGE:
     governator [global options] <command> [command options]
 
 GLOBAL OPTIONS:
+    -h, --help       Show this help message
     -v, --verbose    Enable verbose output for debugging
+    -V, --version    Print version and build information
 
 COMMANDS:
     init             Bootstrap a new governator workspace in the current repository
@@ -48,7 +50,6 @@ COMMANDS:
     restart          Stop and restart the current supervisor phase
     reset            Stop supervisor and clear all state (nuclear option)
     tail             Stream agent output logs in real-time
-    version          Print version and build information
 
 Run 'governator <command> -h' for command-specific help.
 `
@@ -61,6 +62,8 @@ func main() {
 	}
 	verbose := globalFlags.Bool("v", false, "")
 	verboseLong := globalFlags.Bool("verbose", false, "")
+	version := globalFlags.Bool("V", false, "")
+	versionLong := globalFlags.Bool("version", false, "")
 
 	if len(os.Args) < 2 {
 		globalFlags.Usage()
@@ -69,14 +72,24 @@ func main() {
 
 	// Parse global flags
 	args := os.Args[1:]
-	for len(args) > 0 && (args[0] == "-v" || args[0] == "--verbose") {
+	for len(args) > 0 && (args[0] == "-v" || args[0] == "--verbose" || args[0] == "-V" || args[0] == "--version") {
 		if args[0] == "-v" {
 			*verbose = true
-		} else {
+		} else if args[0] == "--verbose" {
 			*verboseLong = true
+		} else if args[0] == "-V" {
+			*version = true
+		} else if args[0] == "--version" {
+			*versionLong = true
 		}
 		args = args[1:]
 	}
+
+	if *version || *versionLong {
+		runVersion()
+		return
+	}
+
 	isVerbose := *verbose || *verboseLong
 
 	if len(args) == 0 {
@@ -107,8 +120,6 @@ func main() {
 		runReset(commandArgs)
 	case "tail":
 		runTail(commandArgs)
-	case "version":
-		runVersion()
 	case "-h", "--help", "help":
 		globalFlags.Usage()
 		os.Exit(0)
