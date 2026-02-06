@@ -67,7 +67,21 @@ governator tail             # Stream worker logs to your terminal (q to quit)
 
 ### Install
 
-Build from source (requires Go 1.25+):
+**Homebrew** (macOS):
+
+```bash
+brew install cmtonkinson/tap/governator
+```
+
+**apt** (Debian/Ubuntu):
+
+```bash
+sudo add-apt-repository ppa:cmtonkinson/governator
+sudo apt update
+sudo apt install governator
+```
+
+**From source** (requires Go 1.25+):
 
 ```bash
 git clone https://github.com/cmtonkinson/governator.git
