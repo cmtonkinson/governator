@@ -113,10 +113,12 @@ type SupervisorSummary struct {
 
 // PlanningStepSummary captures the status output for a planning step.
 type PlanningStepSummary struct {
-	ID     string
-	Name   string
-	Status string
-	Order  int
+	ID        string
+	Name      string
+	Status    string
+	Order     int
+	PID       int       // From supervisor if this step is currently running
+	StartedAt time.Time // From supervisor if this step is currently running
 }
 
 // String returns the formatted status output per flow.md.
@@ -141,40 +143,39 @@ func (s Summary) plainString() string {
 	fmt.Fprintln(&b, formatAggregateMetrics(s.Aggregates))
 
 	if len(s.Supervisors) > 0 {
-		fmt.Fprintln(&b, "supervisors")
-		fmt.Fprintf(&b, "%-10s %-8s %-6s %-8s %-14s %s\n", "phase", "state", "pid", "runtime", "step_id", "step_name")
+		fmt.Fprintln(&b, "supervisor")
 		for _, supervisor := range s.Supervisors {
-			fmt.Fprintf(&b, "%-10s %-8s %-6s %-8s %-14s %s\n",
-				normalizeToken(supervisor.Phase),
-				normalizeToken(supervisor.State),
-				formatPID(supervisor.PID),
-				formatSupervisorRuntime(supervisor.StartedAt),
-				normalizeToken(supervisor.StepID),
-				normalizeToken(supervisor.StepName),
-			)
-			fmt.Fprintf(&b, "worker_pid=%s validation_pid=%s\n",
-				formatPID(supervisor.WorkerPID),
-				formatPID(supervisor.ValidationPID),
-			)
-			fmt.Fprintf(&b, "started_at=%s last_transition=%s\n",
-				formatTime(supervisor.StartedAt),
-				formatTime(supervisor.LastTransition),
-			)
+			fmt.Fprintf(&b, "phase=%s\n", normalizeToken(supervisor.Phase))
+			fmt.Fprintf(&b, "state=%s\n", normalizeToken(supervisor.State))
+			fmt.Fprintf(&b, "pid=%s\n", formatPID(supervisor.PID))
+			fmt.Fprintf(&b, "runtime=%s\n", formatSupervisorRuntime(supervisor.StartedAt))
+			if supervisor.WorkerPID > 0 {
+				fmt.Fprintf(&b, "worker_pid=%s\n", formatPID(supervisor.WorkerPID))
+			}
+			if supervisor.ValidationPID > 0 {
+				fmt.Fprintf(&b, "validation_pid=%s\n", formatPID(supervisor.ValidationPID))
+			}
+			fmt.Fprintf(&b, "step_id=%s\n", normalizeToken(supervisor.StepID))
+			fmt.Fprintf(&b, "step_name=%s\n", normalizeToken(supervisor.StepName))
+			fmt.Fprintf(&b, "started_at=%s\n", formatTime(supervisor.StartedAt))
+			fmt.Fprintf(&b, "last_transition=%s\n", formatTime(supervisor.LastTransition))
 			fmt.Fprintf(&b, "log=%s\n", normalizeToken(supervisor.LogPath))
 		}
 	}
 	if len(s.PlanningSteps) > 0 {
 		fmt.Fprintf(&b, "planning-steps=%d\n", len(s.PlanningSteps))
-		fmt.Fprintf(&b, "%-*s %-*s %s\n",
-			planningIDWidth, "id",
-			planningStatusWidth, "status",
+		fmt.Fprintf(&b, "%-40s %-6s %-8s %-*s\n",
 			"name",
+			"pid",
+			"runtime",
+			planningStatusWidth, "status",
 		)
 		for _, step := range s.PlanningSteps {
-			fmt.Fprintf(&b, "%-*s %-*s %s\n",
-				planningIDWidth, step.ID,
-				planningStatusWidth, step.Status,
+			fmt.Fprintf(&b, "%-40s %-6s %-8s %-*s\n",
 				step.Name,
+				formatPID(step.PID),
+				formatSupervisorRuntime(step.StartedAt),
+				planningStatusWidth, step.Status,
 			)
 		}
 	}
@@ -223,13 +224,14 @@ func (s Summary) styledString() string {
 	b.WriteString(countsStyle.Render(aggregateStr))
 	b.WriteString("\n\n")
 
-	// Supervisors section
+	// Supervisor section
 	if len(s.Supervisors) > 0 {
-		b.WriteString(headerStyle.Render("Supervisors"))
+		b.WriteString(headerStyle.Render("Supervisor"))
 		b.WriteString("\n")
-		supervisorTable := renderSupervisorTable(s.Supervisors, width)
-		b.WriteString(tableStyle.Render(supervisorTable))
-		b.WriteString("\n\n")
+		for _, supervisor := range s.Supervisors {
+			b.WriteString(renderSupervisorKV(supervisor))
+		}
+		b.WriteString("\n")
 	}
 
 	// Planning steps section
@@ -465,7 +467,7 @@ func GetSummary(repoRoot string) (Summary, error) {
 	})
 
 	summary.Rows = rows
-	steps, err := planningStepSummary(repoRoot, idx)
+	steps, err := planningStepSummary(repoRoot, idx, summary.Supervisors)
 	if err != nil {
 		return Summary{}, err
 	}
@@ -527,7 +529,7 @@ func extractNumericPrefix(taskID string) string {
 	return taskID
 }
 
-func planningStepSummary(repoRoot string, idx index.Index) ([]PlanningStepSummary, error) {
+func planningStepSummary(repoRoot string, idx index.Index, supervisors []SupervisorSummary) ([]PlanningStepSummary, error) {
 	stateID, found := planningTaskStateID(idx)
 	if !found {
 		return nil, nil
@@ -549,24 +551,45 @@ func planningStepSummary(repoRoot string, idx index.Index) ([]PlanningStepSummar
 	if currentIndex == -1 {
 		return nil, fmt.Errorf("planning state id %q not found in planning spec", stateID)
 	}
+
+	// Find the planning supervisor to get PID and StartedAt
+	var planningSupervisor *SupervisorSummary
+	for i := range supervisors {
+		if supervisors[i].Phase == "planning" {
+			planningSupervisor = &supervisors[i]
+			break
+		}
+	}
+
 	steps := make([]PlanningStepSummary, 0, len(spec.Steps))
 	for i, step := range spec.Steps {
 		status := "open"
+		var pid int
+		var startedAt time.Time
+
 		switch {
 		case i < currentIndex:
 			status = "complete"
 		case i == currentIndex:
 			status = "in-progress"
+			// For the current step, get PID and StartedAt from supervisor
+			// Use LastTransition as it's updated when the worker starts
+			if planningSupervisor != nil && planningSupervisor.StepID == step.ID {
+				pid = planningSupervisor.WorkerPID
+				startedAt = planningSupervisor.LastTransition
+			}
 		}
 		name := strings.TrimSpace(step.Name)
 		if name == "" {
 			name = step.ID
 		}
 		steps = append(steps, PlanningStepSummary{
-			ID:     step.ID,
-			Name:   name,
-			Status: status,
-			Order:  (i + 1) * 10,
+			ID:        step.ID,
+			Name:      name,
+			Status:    status,
+			Order:     (i + 1) * 10,
+			PID:       pid,
+			StartedAt: startedAt,
 		})
 	}
 	return steps, nil
@@ -691,93 +714,45 @@ func renderTaskTable(rows []statusRow, maxWidth int) string {
 	return strings.TrimRight(buf.String(), "\n")
 }
 
-// renderSupervisorTable renders the supervisor table with lipgloss styling.
-func renderSupervisorTable(supervisors []SupervisorSummary, maxWidth int) string {
-	if len(supervisors) == 0 {
-		return ""
-	}
+// renderSupervisorKV renders supervisor info as key-value pairs with lipgloss styling.
+func renderSupervisorKV(supervisor SupervisorSummary) string {
+	keyStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("12")).
+		Width(16).
+		Align(lipgloss.Right)
+
+	valueStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("15"))
 
 	var buf strings.Builder
 
-	// Column widths - calculate step name dynamically
-	minWidths := []int{10, 8, 6, 8, 14, 20}
-	totalFixed := minWidths[0] + minWidths[1] + minWidths[2] + minWidths[3] + minWidths[4]
-	overhead := 8
-	availableForStepName := maxWidth - totalFixed - overhead
-	stepNameWidth := minWidths[5]
-	if availableForStepName > stepNameWidth {
-		stepNameWidth = availableForStepName
-		if stepNameWidth > 60 {
-			stepNameWidth = 60
-		}
-	}
-
-	widths := []int{
-		minWidths[0],
-		minWidths[1],
-		minWidths[2],
-		minWidths[3],
-		minWidths[4],
-		stepNameWidth,
-	}
-
-	// Header row
-	headers := []string{"Phase", "State", "PID", "Runtime", "Step ID", "Step Name"}
-	headerCells := make([]string, len(headers))
-	for i, h := range headers {
-		headerCells[i] = headerStyle.Width(widths[i]).Render(h)
-	}
-	buf.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, headerCells...))
-	buf.WriteString("\n")
-
-	// Separator
-	totalWidth := 0
-	for _, w := range widths {
-		totalWidth += w
-	}
-	separator := separatorStyle.Render(strings.Repeat("─", totalWidth))
-	buf.WriteString(separator)
-	buf.WriteString("\n")
-
-	// Data rows
-	for _, supervisor := range supervisors {
-		cells := []string{
-			normalizeToken(supervisor.Phase),
-			normalizeToken(supervisor.State),
-			formatPID(supervisor.PID),
-			formatSupervisorRuntime(supervisor.StartedAt),
-			normalizeToken(supervisor.StepID),
-			normalizeToken(supervisor.StepName),
-		}
-		renderedCells := make([]string, len(cells))
-		for i, cell := range cells {
-			style := cellStyle.Width(widths[i]).MaxWidth(widths[i])
-			renderedCells[i] = style.Render(cell)
-		}
-		buf.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, renderedCells...))
-		buf.WriteString("\n")
-
-		// Additional info lines - let these wrap naturally
-		totalTableWidth := 0
-		for _, w := range widths {
-			totalTableWidth += w
-		}
-		infoStyle := cellStyle.MaxWidth(totalTableWidth)
-		buf.WriteString(infoStyle.Render(fmt.Sprintf("worker_pid=%s validation_pid=%s",
-			formatPID(supervisor.WorkerPID),
-			formatPID(supervisor.ValidationPID),
-		)))
-		buf.WriteString("\n")
-		buf.WriteString(infoStyle.Render(fmt.Sprintf("started_at=%s last_transition=%s",
-			formatTime(supervisor.StartedAt),
-			formatTime(supervisor.LastTransition),
-		)))
-		buf.WriteString("\n")
-		buf.WriteString(infoStyle.Render(fmt.Sprintf("log=%s", normalizeToken(supervisor.LogPath))))
+	renderKV := func(key, value string) {
+		buf.WriteString(keyStyle.Render(key + ":"))
+		buf.WriteString(" ")
+		buf.WriteString(valueStyle.Render(value))
 		buf.WriteString("\n")
 	}
 
-	return strings.TrimRight(buf.String(), "\n")
+	renderKV("Phase", normalizeToken(supervisor.Phase))
+	renderKV("State", normalizeToken(supervisor.State))
+	renderKV("PID", formatPID(supervisor.PID))
+	renderKV("Runtime", formatSupervisorRuntime(supervisor.StartedAt))
+
+	if supervisor.WorkerPID > 0 {
+		renderKV("Worker PID", formatPID(supervisor.WorkerPID))
+	}
+	if supervisor.ValidationPID > 0 {
+		renderKV("Validation PID", formatPID(supervisor.ValidationPID))
+	}
+
+	renderKV("Step ID", normalizeToken(supervisor.StepID))
+	renderKV("Step Name", normalizeToken(supervisor.StepName))
+	renderKV("Started At", formatTime(supervisor.StartedAt))
+	renderKV("Last Transition", formatTime(supervisor.LastTransition))
+	renderKV("Log", normalizeToken(supervisor.LogPath))
+
+	return buf.String()
 }
 
 // renderPlanningTable renders the planning steps table with lipgloss styling.
@@ -789,26 +764,27 @@ func renderPlanningTable(steps []PlanningStepSummary, maxWidth int) string {
 	var buf strings.Builder
 
 	// Column widths - calculate name dynamically
-	minWidths := []int{planningIDWidth, planningStatusWidth, 30}
-	totalFixed := minWidths[0] + minWidths[1]
+	minWidths := []int{30, 6, 8, planningStatusWidth}
+	totalFixed := minWidths[1] + minWidths[2] + minWidths[3]
 	overhead := 8
 	availableForName := maxWidth - totalFixed - overhead
-	nameWidth := minWidths[2]
+	nameWidth := minWidths[0]
 	if availableForName > nameWidth {
 		nameWidth = availableForName
-		if nameWidth > 80 {
-			nameWidth = 80
+		if nameWidth > 60 {
+			nameWidth = 60
 		}
 	}
 
 	widths := []int{
-		minWidths[0],
-		minWidths[1],
 		nameWidth,
+		minWidths[1],
+		minWidths[2],
+		minWidths[3],
 	}
 
 	// Header row
-	headers := []string{"ID", "Status", "Name"}
+	headers := []string{"Name", "PID", "Runtime", "Status"}
 	headerCells := make([]string, len(headers))
 	for i, h := range headers {
 		headerCells[i] = headerStyle.Width(widths[i]).Render(h)
@@ -828,9 +804,10 @@ func renderPlanningTable(steps []PlanningStepSummary, maxWidth int) string {
 	// Data rows
 	for _, step := range steps {
 		cells := []string{
-			step.ID,
-			step.Status,
 			step.Name,
+			formatPID(step.PID),
+			formatSupervisorRuntime(step.StartedAt),
+			step.Status,
 		}
 		renderedCells := make([]string, len(cells))
 		for i, cell := range cells {

@@ -144,11 +144,11 @@ func TestGetSummarySupervisorFiltering(t *testing.T) {
 			t.Fatalf("state=%s, want %s", summary.Supervisors[0].State, supervisor.SupervisorStateRunning)
 		}
 		output := summary.String()
-		if !strings.Contains(output, "supervisors") {
-			t.Fatalf("expected supervisors header in output: %q", output)
+		if !strings.Contains(output, "supervisor") {
+			t.Fatalf("expected supervisor header in output: %q", output)
 		}
-		if !strings.Contains(output, "runtime") {
-			t.Fatalf("expected runtime column in output: %q", output)
+		if !strings.Contains(output, "runtime=") {
+			t.Fatalf("expected runtime field in output: %q", output)
 		}
 	})
 

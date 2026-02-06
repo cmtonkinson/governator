@@ -39,19 +39,18 @@ var (
 
 // Model represents the interactive status TUI state.
 type Model struct {
-	table          table.Model
-	planningTable  table.Model
-	supervisorTable table.Model
-	repoRoot       string
-	lastUpdate     time.Time
-	err            error
-	quitting       bool
-	backlog        int
-	merged         int
-	inProgress     int
-	supervisors    []status.SupervisorSummary
-	planningSteps  []status.PlanningStepSummary
-	aggregates     status.AggregateMetrics
+	table         table.Model
+	planningTable table.Model
+	repoRoot      string
+	lastUpdate    time.Time
+	err           error
+	quitting      bool
+	backlog       int
+	merged        int
+	inProgress    int
+	supervisors   []status.SupervisorSummary
+	planningSteps []status.PlanningStepSummary
+	aggregates    status.AggregateMetrics
 }
 
 type tickMsg time.Time
@@ -100,9 +99,10 @@ func New(repoRoot string) Model {
 
 	// Planning steps table
 	planningColumns := []table.Column{
-		{Title: "ID", Width: 24},
+		{Title: "Name", Width: 40},
+		{Title: "PID", Width: 6},
+		{Title: "Runtime", Width: 8},
 		{Title: "Status", Width: 12},
-		{Title: "Name", Width: 60},
 	}
 
 	planningTable := table.New(
@@ -112,29 +112,11 @@ func New(repoRoot string) Model {
 	)
 	planningTable.SetStyles(s)
 
-	// Supervisor table
-	supervisorColumns := []table.Column{
-		{Title: "Phase", Width: 10},
-		{Title: "Step Name", Width: 50},
-		{Title: "State", Width: 8},
-		{Title: "PID", Width: 6},
-		{Title: "Runtime", Width: 8},
-		{Title: "Worker", Width: 7},
-		{Title: "Valid", Width: 6},
-	}
-
-	supervisorTable := table.New(
-		table.WithColumns(supervisorColumns),
-		table.WithFocused(false),
-		table.WithHeight(3),
-	)
-	supervisorTable.SetStyles(s)
 
 	return Model{
-		table:           taskTable,
-		planningTable:   planningTable,
-		supervisorTable: supervisorTable,
-		repoRoot:        repoRoot,
+		table:         taskTable,
+		planningTable: planningTable,
+		repoRoot:      repoRoot,
 	}
 }
 
@@ -182,21 +164,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.planningSteps = msg.summary.PlanningSteps
 		m.aggregates = msg.summary.Aggregates
 
-		// Convert supervisor summaries to table rows
-		supervisorRows := make([]table.Row, len(msg.summary.Supervisors))
-		for i, sup := range msg.summary.Supervisors {
-			runtime := formatRuntime(sup.StartedAt)
-			supervisorRows[i] = table.Row{
-				sup.Phase,
-				sup.StepName,
-				sup.State,
-				formatPID(sup.PID),
-				runtime,
-				formatPID(sup.WorkerPID),
-				formatPID(sup.ValidationPID),
-			}
-		}
-		m.supervisorTable.SetRows(supervisorRows)
 
 		// Convert summary rows to table rows
 		rows := make([]table.Row, len(msg.summary.Rows))
@@ -217,9 +184,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		planningRows := make([]table.Row, len(msg.summary.PlanningSteps))
 		for i, step := range msg.summary.PlanningSteps {
 			planningRows[i] = table.Row{
-				step.ID,
-				step.Status,
 				step.Name,
+				formatPID(step.PID),
+				formatRuntime(step.StartedAt),
+				step.Status,
 			}
 		}
 		m.planningTable.SetRows(planningRows)
@@ -264,13 +232,15 @@ func (m Model) View() string {
 	b.WriteString(countsStyle.Render(aggregateStr))
 	b.WriteString("\n\n")
 
-	// Supervisors table (if any)
+	// Supervisor section (if any)
 	if len(m.supervisors) > 0 {
-		supervisorTitle := titleStyle.Render(fmt.Sprintf("Supervisors (%d)", len(m.supervisors)))
+		supervisorTitle := titleStyle.Render("Supervisor")
 		b.WriteString(supervisorTitle)
 		b.WriteString("\n")
-		b.WriteString(m.supervisorTable.View())
-		b.WriteString("\n\n")
+		for _, sup := range m.supervisors {
+			b.WriteString(renderSupervisorKV(sup))
+		}
+		b.WriteString("\n")
 	}
 
 	// Planning steps table (if in planning phase)
@@ -410,4 +380,40 @@ func formatAggregateMetrics(agg status.AggregateMetrics) string {
 
 	return fmt.Sprintf("Total Runtime: %s | Total Tokens: %s (in: %s | out: %s)",
 		duration, totalTokens, inputTokens, outputTokens)
+}
+
+// renderSupervisorKV renders supervisor info as key-value pairs.
+func renderSupervisorKV(sup status.SupervisorSummary) string {
+	keyStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("12")).
+		Width(12).
+		Align(lipgloss.Right).
+		MarginLeft(1)
+
+	valueStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("15")).
+		MarginLeft(1)
+
+	var b strings.Builder
+
+	renderKV := func(key, value string) {
+		b.WriteString(keyStyle.Render(key + ":"))
+		b.WriteString(valueStyle.Render(value))
+		b.WriteString("\n")
+	}
+
+	renderKV("Phase", sup.Phase)
+	renderKV("State", sup.State)
+	renderKV("PID", formatPID(sup.PID))
+	renderKV("Runtime", formatRuntime(sup.StartedAt))
+
+	if sup.WorkerPID > 0 {
+		renderKV("Worker PID", formatPID(sup.WorkerPID))
+	}
+	if sup.ValidationPID > 0 {
+		renderKV("Valid PID", formatPID(sup.ValidationPID))
+	}
+
+	return b.String()
 }
