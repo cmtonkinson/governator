@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: Vet
+        run: go vet ./...
+      - name: Unit tests
+        run: go test -v $(go list ./... | grep -v '/test$')
+      - name: E2E tests
+        run: go test -v ./test
+
+  build:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - name: Build release artifacts
+        run: |
+          ./scripts/release.sh \
+            --version "${{ steps.version.outputs.version }}" \
+            --commit "${{ github.sha }}" \
+            --built-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            all
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: dist/
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+          path: dist/
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/homebrew/*.tar.gz
+            dist/apt/*.deb
+
+  publish-apt:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+          path: dist/
+      - name: Publish to apt repository
+        run: |
+          echo "Publishing $(ls dist/apt/*.deb) to apt repository"
+          # TODO: Add apt repository publishing commands, for example:
+          #   curl --fail -X POST \
+          #     -H "Authorization: Bearer ${{ secrets.APT_REPO_TOKEN }}" \
+          #     -F "file=@dist/apt/governator_${VERSION}_amd64.deb" \
+          #     https://apt.example.com/upload
+
+  publish-homebrew:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+          path: dist/
+      - name: Publish to Homebrew tap
+        run: |
+          echo "Publishing $(ls dist/homebrew/*.tar.gz) to Homebrew tap"
+          # TODO: Add Homebrew tap update commands, for example:
+          #   SHA256=$(sha256sum dist/homebrew/governator-*.tar.gz | cut -d' ' -f1)
+          #   git clone https://x-access-token:${{ secrets.TAP_GITHUB_TOKEN }}@github.com/cmtonkinson/homebrew-tap.git
+          #   cd homebrew-tap
+          #   # Update formula with new version and sha256
+          #   git commit -am "Update governator to ${GITHUB_REF_NAME}"
+          #   git push
