@@ -367,7 +367,7 @@ func TestE2EPlanning(t *testing.T) {
 
 	// Verify task inventory updated the execution index after planning completes.
 	t.Run("task_inventory_indexed", func(t *testing.T) {
-		indexPath := filepath.Join(repoRoot, "_governator", "index.json")
+		indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
 		idx, err := index.Load(indexPath)
 		if err != nil {
 			t.Fatalf("load task index: %v", err)

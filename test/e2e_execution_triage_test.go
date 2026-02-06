@@ -159,7 +159,7 @@ func TestE2EExecutionTriage(t *testing.T) {
 			},
 		},
 	}
-	if err := index.Save(filepath.Join(repoRoot, "_governator/index.json"), idx); err != nil {
+	if err := index.Save(filepath.Join(repoRoot, "_governator/_local-state/index.json"), idx); err != nil {
 		t.Fatalf("save index: %v", err)
 	}
 
@@ -186,7 +186,7 @@ func TestE2EExecutionTriage(t *testing.T) {
 		t.Fatalf("run execution supervisor: %v", err)
 	}
 
-	finalIndex, err := index.Load(filepath.Join(repoRoot, "_governator/index.json"))
+	finalIndex, err := index.Load(filepath.Join(repoRoot, "_governator/_local-state/index.json"))
 	if err != nil {
 		t.Fatalf("load index: %v", err)
 	}

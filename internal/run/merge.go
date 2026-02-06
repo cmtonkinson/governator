@@ -141,48 +141,34 @@ func ExecuteReviewMergeFlow(input MergeFlowInput) (MergeFlowResult, error) {
 		}
 	}
 
-	// Step 5a: Get the merge commit SHA from the merge worktree
+	// Step 5: Get the merge commit SHA from the merge worktree
 	mergeCommit, err := getWorktreeCommit(mergeWorktreePath)
 	if err != nil {
 		return MergeFlowResult{}, fmt.Errorf("get merge commit: %w", err)
 	}
 
-	// Step 5b: Check if main worktree has uncommitted changes that need preservation
-	hasUncommitted, err := hasUncommittedChanges(input.RepoRoot)
-	if err != nil {
-		return MergeFlowResult{}, fmt.Errorf("check uncommitted changes: %w", err)
-	}
-
-	// Step 5c: Stash uncommitted changes if present
-	if hasUncommitted {
-		if err := runGitInRepo(input.RepoRoot, "stash", "push", "-m", "governator merge: preserve execution state"); err != nil {
-			return MergeFlowResult{}, fmt.Errorf("stash uncommitted changes: %w", err)
-		}
-	}
-
-	// Step 5d: Update main worktree to the merge commit
+	// Update main worktree to the merge commit
 	if err := runGitInRepo(input.RepoRoot, "reset", "--hard", mergeCommit); err != nil {
 		return MergeFlowResult{}, fmt.Errorf("update main to merge commit: %w", err)
 	}
 
-	// Step 5e: Restore uncommitted changes if we stashed them
-	if hasUncommitted {
-		// Use stash pop, but don't fail the merge if there are conflicts
-		// The user can resolve stash conflicts manually
-		if err := runGitInRepo(input.RepoRoot, "stash", "pop"); err != nil {
-			// Log warning but don't fail - stash conflicts are user-recoverable
+	// Step 6: Remove task worktree to allow branch deletion
+	worktreePath := filepath.Join(input.RepoRoot, "_governator", "_local-state", fmt.Sprintf("task-%s", input.Task.ID))
+	if _, err := os.Stat(worktreePath); err == nil {
+		if err := runGitInRepo(input.RepoRoot, "worktree", "remove", "--force", worktreePath); err != nil {
+			// Log warning but don't fail merge
 			if input.Auditor != nil {
 				_ = input.Auditor.Log(audit.Entry{
 					TaskID: input.Task.ID,
 					Role:   string(input.Task.Role),
-					Event:  "merge.stash_pop.warning",
+					Event:  "worktree.remove.warning",
 					Fields: []audit.Field{{Key: "error", Value: err.Error()}},
 				})
 			}
 		}
 	}
 
-	// Step 6: Clean up task branch after successful merge
+	// Step 7: Clean up task branch after successful merge
 	branchManager := NewBranchLifecycleManager(input.RepoRoot, input.Auditor)
 	if err := branchManager.CleanupTaskBranch(input.Task); err != nil {
 		// Log warning but don't fail the merge - branch cleanup is not critical
@@ -198,7 +184,7 @@ func ExecuteReviewMergeFlow(input MergeFlowInput) (MergeFlowResult, error) {
 		}
 	}
 
-	// Step 7: Log successful transition to audit
+	// Step 8: Log successful transition to audit
 	if input.Auditor != nil {
 		_ = input.Auditor.LogTaskTransition(
 			input.Task.ID,
@@ -410,33 +396,6 @@ func getWorktreeCommit(worktreePath string) (string, error) {
 	}
 
 	return strings.TrimSpace(string(output)), nil
-}
-
-// hasUncommittedChanges checks if a worktree has any uncommitted changes.
-func hasUncommittedChanges(worktreePath string) (bool, error) {
-	if strings.TrimSpace(worktreePath) == "" {
-		return false, fmt.Errorf("worktree path is required")
-	}
-
-	cmd := exec.Command("git", "status", "--porcelain")
-	cmd.Dir = worktreePath
-	output, err := cmd.Output()
-	if err != nil {
-		return false, fmt.Errorf("check status: %w", err)
-	}
-
-	// Check if there are any changes outside of _governator/_local-state
-	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
-		if line == "" {
-			continue
-		}
-		path := strings.TrimSpace(line[3:])
-		if !strings.HasPrefix(path, "_governator/_local-state") {
-			return true, nil
-		}
-	}
-
-	return false, nil
 }
 
 // isRebaseConflict determines if a git error indicates a rebase conflict.

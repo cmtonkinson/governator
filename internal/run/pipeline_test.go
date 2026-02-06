@@ -36,10 +36,10 @@ func TestPipelineIntegrationHappyPath(t *testing.T) {
 	task := newTestTask("T-PIPE-001", "Pipeline integration task", "worker", taskPath, 10)
 	writeTestTaskIndex(t, repoRoot, []index.Task{task})
 
-	repo.RunGit(t, "add", "_governator/index.json", filepath.Join("_governator", "tasks"))
+	repo.RunGit(t, "add", filepath.Join("_governator", "tasks"))
 	repo.RunGit(t, "commit", "-m", "Add plan outputs")
 
-	indexPath := filepath.Join(repoRoot, "_governator", "index.json")
+	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
 	idx, err := index.Load(indexPath)
 	if err != nil {
 		t.Fatalf("load index: %v", err)
@@ -355,7 +355,7 @@ func TestEnsureBranchesForOpenTasks_BatchCreation(t *testing.T) {
 	}
 
 	// Save index
-	indexPath := filepath.Join(repoRoot, "_governator", "index.json")
+	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
 	if err := index.Save(indexPath, idx); err != nil {
 		t.Fatalf("save index: %v", err)
 	}

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -31,6 +32,12 @@ func Load(path string) (Index, error) {
 
 // Save writes a task index JSON file to disk deterministically.
 func Save(path string, idx Index) (err error) {
+	// Ensure the parent directory exists
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create index directory %s: %w", dir, err)
+	}
+
 	lock, err := lockIndexForWrite(path)
 	if err != nil {
 		return err

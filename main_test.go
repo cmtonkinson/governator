@@ -283,7 +283,7 @@ func TestStatusCommand(t *testing.T) {
 
 	t.Run("status with populated index", func(t *testing.T) {
 		// Create a populated task index
-		indexPath := filepath.Join(tempDir, "_governator", "index.json")
+		indexPath := filepath.Join(tempDir, "_governator", "_local-state", "index.json")
 		populatedIndex := `{
 				"schema_version": 1,
 				"tasks": [

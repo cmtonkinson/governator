@@ -172,7 +172,7 @@ func TestRunWithTestStage(t *testing.T) {
 	}
 
 	// Save the index
-	indexPath := filepath.Join(repoRoot, "_governator/index.json")
+	indexPath := filepath.Join(repoRoot, "_governator/_local-state/index.json")
 	if err := index.Save(indexPath, idx); err != nil {
 		t.Fatalf("save index: %v", err)
 	}
@@ -432,7 +432,7 @@ func TestRunWithReviewStage(t *testing.T) {
 	}
 
 	// Save the index
-	indexPath := filepath.Join(repoRoot, "_governator/index.json")
+	indexPath := filepath.Join(repoRoot, "_governator/_local-state/index.json")
 	if err := index.Save(indexPath, idx); err != nil {
 		t.Fatalf("save index: %v", err)
 	}

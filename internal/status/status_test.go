@@ -63,7 +63,7 @@ func TestGetSummary(t *testing.T) {
 		},
 	}
 
-	indexPath := filepath.Join(tempDir, "_governator", "index.json")
+	indexPath := filepath.Join(tempDir, "_governator", "_local-state", "index.json")
 	if err := index.Save(indexPath, testIndex); err != nil {
 		t.Fatalf("failed to save test index: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestGetSummarySupervisorFiltering(t *testing.T) {
 		if err := os.MkdirAll(stateDir, 0o755); err != nil {
 			t.Fatalf("create state dir: %v", err)
 		}
-		indexPath := filepath.Join(repoRoot, "_governator", "index.json")
+		indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
 		if err := index.Save(indexPath, index.Index{SchemaVersion: 1}); err != nil {
 			t.Fatalf("save index: %v", err)
 		}
@@ -158,7 +158,7 @@ func TestGetSummarySupervisorFiltering(t *testing.T) {
 		if err := os.MkdirAll(stateDir, 0o755); err != nil {
 			t.Fatalf("create state dir: %v", err)
 		}
-		indexPath := filepath.Join(repoRoot, "_governator", "index.json")
+		indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
 		if err := index.Save(indexPath, index.Index{SchemaVersion: 1}); err != nil {
 			t.Fatalf("save index: %v", err)
 		}
@@ -190,7 +190,7 @@ func TestGetSummarySupervisorFiltering(t *testing.T) {
 		if err := os.MkdirAll(stateDir, 0o755); err != nil {
 			t.Fatalf("create state dir: %v", err)
 		}
-		indexPath := filepath.Join(repoRoot, "_governator", "index.json")
+		indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
 		if err := index.Save(indexPath, index.Index{SchemaVersion: 1}); err != nil {
 			t.Fatalf("save index: %v", err)
 		}
@@ -225,7 +225,7 @@ func TestGetSummarySupervisorFiltering(t *testing.T) {
 		if err := os.MkdirAll(stateDir, 0o755); err != nil {
 			t.Fatalf("create state dir: %v", err)
 		}
-		indexPath := filepath.Join(repoRoot, "_governator", "index.json")
+		indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
 		if err := index.Save(indexPath, index.Index{SchemaVersion: 1}); err != nil {
 			t.Fatalf("save index: %v", err)
 		}
@@ -298,7 +298,7 @@ func TestPlanningStepSummary_NotStartedState(t *testing.T) {
 		},
 	}
 
-	indexPath := filepath.Join(repoRoot, "_governator", "index.json")
+	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
 	if err := index.Save(indexPath, testIndex); err != nil {
 		t.Fatalf("save index: %v", err)
 	}
@@ -363,7 +363,7 @@ func TestPlanningStepSummary_InProgress(t *testing.T) {
 		},
 	}
 
-	indexPath := filepath.Join(repoRoot, "_governator", "index.json")
+	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
 	if err := index.Save(indexPath, testIndex); err != nil {
 		t.Fatalf("save index: %v", err)
 	}
@@ -438,7 +438,7 @@ func TestPlanningStepSummary_Complete(t *testing.T) {
 		},
 	}
 
-	indexPath := filepath.Join(repoRoot, "_governator", "index.json")
+	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
 	if err := index.Save(indexPath, testIndex); err != nil {
 		t.Fatalf("save index: %v", err)
 	}

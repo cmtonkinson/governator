@@ -14,7 +14,7 @@ import (
 
 const (
 	tasksDirName      = "_governator/tasks"
-	taskIndexFileName = "_governator/index.json"
+	taskIndexFileName = "_governator/_local-state/index.json"
 	taskIndexSchema   = 1
 )
 

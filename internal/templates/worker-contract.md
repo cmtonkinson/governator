@@ -47,9 +47,9 @@ conditions include (but are not limited to):
 The task file is the file at `GOVERNATOR_TASK_PATH`.
 
 If `GOVERNATOR_TASK_PATH` points under `_governator/prompts` or
-`_governator/_local-state`, do NOT edit it. Instead, append a section titled
-`## Blocking Reason` to `_governator/docs/planning-notes.md` (create the file if
-missing).
+`_governator/_local-state`, do NOT edit it. Instead, append a section titled `##
+Blocking Reason` to `_governator/_local-state/planning-notes.md` (create the
+file if missing).
 
 Otherwise, to block a task, append a section titled `## Blocking Reason` to the
 task file.
@@ -61,8 +61,9 @@ Do not make speculative changes when blocked.
 
 ## 6. Completing the Task
 When you believe the task is complete, append a section titled `## Change
-Summary` to the task file (or to `_governator/docs/planning-notes.md` when the
-task file is under `_governator/prompts` or `_governator/_local-state`):
+Summary` to the task file (or to `_governator/_local-state/planning-notes.md`
+when the task file is under `_governator/prompts` or
+`_governator/_local-state`):
 - Describe what was changed.
 - Note any assumptions made.
 - Mention potential follow-up concerns without creating tasks for them.

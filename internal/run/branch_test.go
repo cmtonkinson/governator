@@ -221,7 +221,7 @@ func TestBranchLifecycleManager_GetTaskBranchName(t *testing.T) {
 				Role:  "default",
 				Title: "",
 			},
-			expected: "task-task-01",
+			expected: "task-01",
 		},
 		{
 			name: "withTitle",
@@ -230,7 +230,7 @@ func TestBranchLifecycleManager_GetTaskBranchName(t *testing.T) {
 				Role:  "default",
 				Title: "Add logging steps",
 			},
-			expected: "task-001-add-logging-steps-generalist",
+			expected: "001-add-logging-steps-generalist",
 		},
 	}
 

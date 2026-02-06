@@ -22,7 +22,7 @@ import (
 
 const (
 	// indexFilePath is the relative path to the task index file.
-	indexFilePath = "_governator/index.json"
+	indexFilePath = "_governator/_local-state/index.json"
 )
 
 // Options defines the configuration for a run execution.

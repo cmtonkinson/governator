@@ -268,7 +268,7 @@ rules:
   - pattern: 'planning.*complete|task.*complete'
     actions:
       - write:
-          path: '_governator/docs/planning-notes.md'
+          path: '_governator/_local-state/planning-notes.md'
           content: |
             # Planning Notes
 

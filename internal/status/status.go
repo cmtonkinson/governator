@@ -255,7 +255,7 @@ func formatSupervisorRuntime(startedAt time.Time) string {
 
 // GetSummary reads the task index and returns a detailed summary.
 func GetSummary(repoRoot string) (Summary, error) {
-	indexPath := filepath.Join(repoRoot, "_governator", "index.json")
+	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
 
 	idx, err := index.Load(indexPath)
 	if err != nil {
