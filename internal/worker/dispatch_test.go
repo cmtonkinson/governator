@@ -179,13 +179,13 @@ func TestBuildClaudeCommandLine(t *testing.T) {
 		{
 			name:    "standard claude",
 			command: []string{"claude", "--print", "/path/prompt.md"},
-			want:    "cat /path/prompt.md | claude --print --output-format=text",
+			want:    "cat /path/prompt.md | claude --print --output-format=text --permission-mode=bypassPermissions",
 			wantOK:  true,
 		},
 		{
 			name:    "path with spaces",
 			command: []string{"claude", "--print", "/path/with spaces/prompt.md"},
-			want:    "cat '/path/with spaces/prompt.md' | claude --print --output-format=text",
+			want:    "cat '/path/with spaces/prompt.md' | claude --print --output-format=text --permission-mode=bypassPermissions",
 			wantOK:  true,
 		},
 		{
@@ -196,7 +196,7 @@ func TestBuildClaudeCommandLine(t *testing.T) {
 		{
 			name:    "custom output format preserved",
 			command: []string{"claude", "--print", "--output-format=json", "/path/prompt.md"},
-			want:    "cat /path/prompt.md | claude --print --output-format=json",
+			want:    "cat /path/prompt.md | claude --print --permission-mode=bypassPermissions --output-format=json",
 			wantOK:  true,
 		},
 	}
