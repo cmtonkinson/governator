@@ -6,6 +6,8 @@ import (
 	"time"
 	"testing"
 
+	"github.com/cmtonkinson/governator/internal/config"
+	"github.com/cmtonkinson/governator/internal/index"
 	"github.com/cmtonkinson/governator/internal/roles"
 )
 
@@ -80,4 +82,134 @@ func TestDispatchWorkerWritesPIDAndExitStatus(t *testing.T) {
 		time.Sleep(25 * time.Millisecond)
 	}
 	t.Fatalf("exit status not found in %s", workerStateDir)
+}
+
+func TestSelectCLIName(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  config.Config
+		role index.Role
+		want string
+	}{
+		{
+			name: "role-specific CLI overrides default",
+			cfg: config.Config{
+				Workers: config.WorkersConfig{
+					CLI: config.WorkerCLI{
+						Default: "codex",
+						Roles:   map[string]string{"planner": "claude"},
+					},
+				},
+			},
+			role: "planner",
+			want: "claude",
+		},
+		{
+			name: "uses default CLI when role not specified",
+			cfg: config.Config{
+				Workers: config.WorkersConfig{
+					CLI: config.WorkerCLI{
+						Default: "claude",
+						Roles:   map[string]string{},
+					},
+				},
+			},
+			role: "worker",
+			want: "claude",
+		},
+		{
+			name: "empty when no CLI configured",
+			cfg: config.Config{
+				Workers: config.WorkersConfig{
+					CLI: config.WorkerCLI{},
+				},
+			},
+			role: "worker",
+			want: "",
+		},
+		{
+			name: "empty when role-specific command override exists",
+			cfg: config.Config{
+				Workers: config.WorkersConfig{
+					Commands: config.WorkerCommands{
+						Roles: map[string][]string{"planner": {"custom-cmd", "arg"}},
+					},
+					CLI: config.WorkerCLI{
+						Default: "claude",
+					},
+				},
+			},
+			role: "planner",
+			want: "",
+		},
+		{
+			name: "empty when default command override exists",
+			cfg: config.Config{
+				Workers: config.WorkersConfig{
+					Commands: config.WorkerCommands{
+						Default: []string{"custom-cmd", "arg"},
+					},
+					CLI: config.WorkerCLI{
+						Default: "claude",
+					},
+				},
+			},
+			role: "worker",
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := selectCLIName(tt.cfg, tt.role)
+			if got != tt.want {
+				t.Errorf("selectCLIName() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildClaudeCommandLine(t *testing.T) {
+	tests := []struct {
+		name    string
+		command []string
+		want    string
+		wantOK  bool
+	}{
+		{
+			name:    "standard claude",
+			command: []string{"claude", "--print", "/path/prompt.md"},
+			want:    "cat /path/prompt.md | claude --print --output-format=text",
+			wantOK:  true,
+		},
+		{
+			name:    "path with spaces",
+			command: []string{"claude", "--print", "/path/with spaces/prompt.md"},
+			want:    "cat '/path/with spaces/prompt.md' | claude --print --output-format=text",
+			wantOK:  true,
+		},
+		{
+			name:    "too few arguments",
+			command: []string{"claude", "--print"},
+			wantOK:  false,
+		},
+		{
+			name:    "custom output format preserved",
+			command: []string{"claude", "--print", "--output-format=json", "/path/prompt.md"},
+			want:    "cat /path/prompt.md | claude --print --output-format=json",
+			wantOK:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := buildClaudeCommandLine(tt.command)
+			if ok != tt.wantOK {
+				t.Errorf("buildClaudeCommandLine() ok = %v, want %v", ok, tt.wantOK)
+			}
+			if got != tt.want {
+				t.Errorf("buildClaudeCommandLine() = %q, want %q", got, tt.want)
+			}
+		})
+	}
 }

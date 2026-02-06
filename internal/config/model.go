@@ -74,6 +74,8 @@ func BuiltInCommand(cli string) ([]string, bool) {
 	case CLICodex:
 		return []string{"codex", "--ask-for-approval=never", "--sandbox=workspace-write", "exec", "{prompt_path}"}, true
 	case CLIClaude:
+		// Note: dispatch.sh generation will transform this to use stdin piping:
+		// cat {prompt_path} | claude --print --output-format=text
 		return []string{"claude", "--print", "{prompt_path}"}, true
 	case CLIGemini:
 		return []string{"gemini", "{prompt_path}"}, true

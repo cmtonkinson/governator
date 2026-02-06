@@ -154,6 +154,10 @@ func decodeConfig(raw map[string]any) Config {
 	cfg.Workers.Commands.Default = parseStringSlice(commands["default"])
 	cfg.Workers.Commands.Roles = parseStringSliceMap(commands["roles"])
 
+	cli := toConfigMap(workers["cli"])
+	cfg.Workers.CLI.Default = parseString(cli["default"])
+	cfg.Workers.CLI.Roles = parseStringMap(cli["roles"])
+
 	concurrency := toConfigMap(raw["concurrency"])
 	cfg.Concurrency.Global = parseInt(concurrency["global"])
 	cfg.Concurrency.DefaultRole = parseInt(concurrency["default_role"])

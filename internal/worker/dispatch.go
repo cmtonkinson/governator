@@ -30,6 +30,7 @@ type DispatchInput struct {
 	EnvVars        map[string]string
 	Warn           func(string)
 	WorkerStateDir string
+	SelectedCLI    string // The CLI name from config ("claude", "codex", "gemini", or "")
 }
 
 // DispatchResult captures the worker dispatch metadata.
@@ -101,7 +102,7 @@ func DispatchWorker(input DispatchInput) (DispatchResult, error) {
 	}
 	agentName := detectAgentName(input.Command)
 	pidPaths := agentPIDPaths(input.WorkerStateDir, agentName)
-	wrapperPath, err := writeDispatchWrapper(input.WorkerStateDir, input.TaskID, input.Stage, input.Command, exitPath, pidPaths)
+	wrapperPath, err := writeDispatchWrapper(input.WorkerStateDir, input.TaskID, input.Stage, input.Command, exitPath, pidPaths, input.SelectedCLI)
 	if err != nil {
 		return DispatchResult{}, err
 	}
@@ -156,6 +157,9 @@ func DispatchWorker(input DispatchInput) (DispatchResult, error) {
 
 // DispatchWorkerFromConfig resolves the worker command and dispatches asynchronously.
 func DispatchWorkerFromConfig(cfg config.Config, task index.Task, stageResult StageResult, workDir string, stage roles.Stage, warn func(string)) (DispatchResult, error) {
+	// Determine which CLI will be used (before command resolution)
+	selectedCLI := selectCLIName(cfg, task.Role)
+
 	command, err := ResolveCommand(cfg, task.Role, task.Path, workDir, stageResult.PromptPath)
 	if err != nil {
 		return DispatchResult{}, fmt.Errorf("resolve worker command: %w", err)
@@ -170,9 +174,40 @@ func DispatchWorkerFromConfig(cfg config.Config, task index.Task, stageResult St
 		EnvVars:        stageResult.Env,
 		Warn:           warn,
 		WorkerStateDir: stageResult.WorkerStateDir,
+		SelectedCLI:    selectedCLI,
 	}
 
 	return DispatchWorker(input)
+}
+
+// selectCLIName returns the CLI name that will be used for this role.
+// Mirrors the priority logic from selectCommandTemplate in command.go.
+func selectCLIName(cfg config.Config, role index.Role) string {
+	// Priority 1: Role-specific command override (custom command, not a CLI)
+	if role != "" {
+		if command, ok := cfg.Workers.Commands.Roles[string(role)]; ok && len(command) > 0 {
+			return ""
+		}
+	}
+
+	// Priority 2: Role-specific CLI
+	if role != "" {
+		if roleCLI, ok := cfg.Workers.CLI.Roles[string(role)]; ok && roleCLI != "" {
+			return roleCLI
+		}
+	}
+
+	// Priority 3: Default command override (custom command, not a CLI)
+	if len(cfg.Workers.Commands.Default) > 0 {
+		return ""
+	}
+
+	// Priority 4: Default CLI
+	if cfg.Workers.CLI.Default != "" {
+		return cfg.Workers.CLI.Default
+	}
+
+	return ""
 }
 
 // exitStatusPath returns the absolute path for the worker exit status file.
@@ -216,7 +251,7 @@ func ReadExitStatus(workerStateDir string, taskID string, stage roles.Stage) (Ex
 }
 
 // writeDispatchWrapper writes a wrapper script that captures exit status and persists the agent pid.
-func writeDispatchWrapper(workerStateDir string, taskID string, stage roles.Stage, command []string, exitPath string, pidPaths []string) (string, error) {
+func writeDispatchWrapper(workerStateDir string, taskID string, stage roles.Stage, command []string, exitPath string, pidPaths []string, selectedCLI string) (string, error) {
 	if strings.TrimSpace(taskID) == "" {
 		return "", errors.New("task id is required")
 	}
@@ -237,7 +272,19 @@ func writeDispatchWrapper(workerStateDir string, taskID string, stage roles.Stag
 		return "", errors.New("worker state dir is required")
 	}
 	wrapperPath := filepath.Join(workerStateDir, "dispatch.sh")
-	commandLine := shellCommandLine(command)
+
+	// Claude CLI requires stdin piping instead of file path arguments
+	var commandLine string
+	if selectedCLI == config.CLIClaude {
+		var ok bool
+		commandLine, ok = buildClaudeCommandLine(command)
+		if !ok {
+			commandLine = shellCommandLine(command)
+		}
+	} else {
+		commandLine = shellCommandLine(command)
+	}
+
 	exitPathEscaped := shellEscapeArg(exitPath)
 	pidWriteLines := buildPIDWriteLines(pidPaths)
 	content := strings.Join([]string{
@@ -325,4 +372,63 @@ func shellEscapeArg(value string) string {
 		return value
 	}
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+// buildClaudeCommandLine transforms Claude commands to use stdin piping.
+// Input:  ["claude", "--print", "/path/to/prompt.md"]
+// Output: "cat '/path/to/prompt.md' | claude --print --output-format=text"
+func buildClaudeCommandLine(command []string) (string, bool) {
+	if len(command) < 3 {
+		return "", false
+	}
+
+	// Find prompt file path (last non-flag argument)
+	var promptPath string
+	for i := len(command) - 1; i >= 1; i-- {
+		if !strings.HasPrefix(command[i], "-") {
+			promptPath = command[i]
+			break
+		}
+	}
+
+	if promptPath == "" {
+		return "", false
+	}
+
+	// Build cat command with escaped path
+	catCmd := "cat " + shellEscapeArg(promptPath)
+
+	// Build Claude command (exclude prompt path, add --output-format=text)
+	claudeArgs := []string{command[0], "--print", "--output-format=text"}
+
+	// Preserve other flags, but skip duplicates
+	hasOutputFormat := false
+	for i := 1; i < len(command); i++ {
+		arg := command[i]
+		if arg == promptPath || arg == "--print" {
+			continue
+		}
+		// Check if --output-format is already specified
+		if strings.HasPrefix(arg, "--output-format") {
+			hasOutputFormat = true
+			claudeArgs = append(claudeArgs, shellEscapeArg(arg))
+			continue
+		}
+		claudeArgs = append(claudeArgs, shellEscapeArg(arg))
+	}
+
+	// Remove the default --output-format=text if user specified one
+	if hasOutputFormat {
+		claudeArgs = claudeArgs[:2] // Keep just ["claude", "--print"]
+		for i := 1; i < len(command); i++ {
+			arg := command[i]
+			if arg == promptPath || arg == "--print" {
+				continue
+			}
+			claudeArgs = append(claudeArgs, shellEscapeArg(arg))
+		}
+	}
+
+	claudeCmd := strings.Join(claudeArgs, " ")
+	return catCmd + " | " + claudeCmd, true
 }
