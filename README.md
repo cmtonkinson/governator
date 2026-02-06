@@ -110,9 +110,9 @@ Configure during initialization with `governator init` options (see `governator 
 
 ```bash
 governator init \
-  --agent claude \          # Agent CLI (codex, claude, gemini)
-  --concurrency 5 \         # Max concurrent workers
-  --reasoning-effort high \ # Reasoning level (low, medium, high)
+  --agent claude \            # Agent CLI (codex, claude, gemini)
+  --concurrency 5 \           # Max concurrent workers
+  --reasoning-effort high     # Reasoning level (low, medium, high)
 ```
 
 Or edit `_governator/_durable-state/config.json` post-init:
