@@ -38,8 +38,8 @@ func TestCLICommands(t *testing.T) {
 			expectedError: usageMessage,
 		},
 		{
-			name:           "version command",
-			args:           []string{"version"},
+			name:           "version flag",
+			args:           []string{"--version"},
 			expectedExit:   0,
 			expectedOutput: "version=dev commit=unknown built_at=unknown",
 		},
@@ -87,9 +87,9 @@ func TestVersionCommandWithMetadata(t *testing.T) {
 		t.Fatalf("Failed to build CLI binary with metadata: %v", err)
 	}
 
-	output, err := exec.Command(binaryPath, "version").CombinedOutput()
+	output, err := exec.Command(binaryPath, "--version").CombinedOutput()
 	if err != nil {
-		t.Fatalf("Version command failed: %v, output: %s", err, output)
+		t.Fatalf("Version flag failed: %v, output: %s", err, output)
 	}
 
 	outputStr := strings.TrimSpace(string(output))
