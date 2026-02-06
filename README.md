@@ -223,6 +223,9 @@ through the filesystem, git branches, and markdown documents.
 prompt stack, environment variables (`GOVERNATOR_TASK_ID`, `GOVERNATOR_WORKTREE_DIR`,
 etc.), and produces an `exit.json` artifact. Audit logs track every state transition.
 
+**Operator control.** Operators can override prompts, roles, concurrency caps, even the entire planning phase is
+entirely JSON-configurable.
+
 ---
 
 ## Testing
