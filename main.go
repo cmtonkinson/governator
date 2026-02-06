@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -27,60 +28,121 @@ import (
 	"github.com/cmtonkinson/governator/internal/supervisorlock"
 )
 
-const usageLine = "usage: governator [-v|--verbose] <init|plan|execute|run|status|stop|restart|reset|tail|version>"
+const usage = `governator - AI-powered task orchestration engine
+
+USAGE:
+    governator [global options] <command> [command options]
+
+GLOBAL OPTIONS:
+    -v, --verbose    Enable verbose output for debugging
+
+COMMANDS:
+    init             Bootstrap a new governator workspace in the current repository
+    plan             Start the planning supervisor to analyze tasks and generate execution plan
+    execute          Start the execution supervisor to run the generated plan
+    run              (Deprecated) Run planning and execution in sequence without supervision
+    status           Display current supervisor and task status
+    stop             Stop the running supervisor gracefully
+    restart          Stop and restart the current supervisor phase
+    reset            Stop supervisor and clear all state (nuclear option)
+    tail             Stream agent output logs in real-time
+    version          Print version and build information
+
+Run 'governator <command> -h' for command-specific help.
+`
 
 func main() {
-	verbose := false
-	args := os.Args[1:]
-
-flagLoop:
-	for len(args) > 0 {
-		switch args[0] {
-		case "-v", "--verbose":
-			verbose = true
-			args = args[1:]
-		default:
-			break flagLoop
-		}
+	// Global flags
+	globalFlags := flag.NewFlagSet("governator", flag.ExitOnError)
+	globalFlags.Usage = func() {
+		fmt.Fprint(os.Stderr, usage)
 	}
+	verbose := globalFlags.Bool("v", false, "")
+	verboseLong := globalFlags.Bool("verbose", false, "")
 
-	if len(args) == 0 {
-		emitUsage()
+	if len(os.Args) < 2 {
+		globalFlags.Usage()
 		os.Exit(2)
 	}
 
-	switch args[0] {
+	// Parse global flags
+	args := os.Args[1:]
+	for len(args) > 0 && (args[0] == "-v" || args[0] == "--verbose") {
+		if args[0] == "-v" {
+			*verbose = true
+		} else {
+			*verboseLong = true
+		}
+		args = args[1:]
+	}
+	isVerbose := *verbose || *verboseLong
+
+	if len(args) == 0 {
+		globalFlags.Usage()
+		os.Exit(2)
+	}
+
+	// Route to command
+	command := args[0]
+	commandArgs := args[1:]
+
+	switch command {
 	case "init":
-		runInit(verbose)
+		runInit(isVerbose, commandArgs)
 	case "plan":
-		runPlan(args[1:])
+		runPlan(commandArgs)
 	case "execute":
-		runExecute(args[1:])
+		runExecute(commandArgs)
 	case "run":
-		runRun()
+		runRun(commandArgs)
 	case "status":
-		runStatus(args[1:])
+		runStatus(commandArgs)
 	case "stop":
-		runStop(args[1:])
+		runStop(commandArgs)
 	case "restart":
-		runRestart(args[1:])
+		runRestart(commandArgs)
 	case "reset":
-		runReset(args[1:])
+		runReset(commandArgs)
 	case "tail":
-		runTail(args[1:])
+		runTail(commandArgs)
 	case "version":
 		runVersion()
+	case "-h", "--help", "help":
+		globalFlags.Usage()
+		os.Exit(0)
 	default:
-		emitUsage()
+		fmt.Fprintf(os.Stderr, "governator: unknown command %q\n\n", command)
+		globalFlags.Usage()
 		os.Exit(2)
 	}
 }
 
-func runInit(verbose bool) {
+func runInit(verbose bool, args []string) {
+	flags := flag.NewFlagSet("init", flag.ExitOnError)
+	flags.Usage = func() {
+		fmt.Fprint(os.Stderr, `USAGE:
+    governator init
+
+DESCRIPTION:
+    Initialize a new governator workspace in the current git repository.
+    Creates the _governator/ directory structure with default configuration,
+    seeds the planning index, and commits the initialization.
+
+OPTIONS:
+    -h, --help    Show this help message
+`)
+	}
+	flags.Parse(args)
+
+	if flags.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "governator init: unexpected arguments\n\n")
+		flags.Usage()
+		os.Exit(2)
+	}
+
 	repoRoot, err := repo.DiscoverRootFromCWD()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
-		emitUsage()
 		os.Exit(2)
 	}
 	if err := config.InitFullLayout(repoRoot, config.InitOptions{Verbose: verbose}); err != nil {
@@ -128,11 +190,31 @@ func commitInit(repoRoot string) error {
 	return nil
 }
 
-func runRun() {
+func runRun(args []string) {
+	flags := flag.NewFlagSet("run", flag.ExitOnError)
+	flags.Usage = func() {
+		fmt.Fprint(os.Stderr, `USAGE:
+    governator run
+
+DESCRIPTION:
+    [DEPRECATED] Run planning and execution phases sequentially without supervision.
+    This command is deprecated; use 'governator plan' followed by 'governator execute'.
+
+OPTIONS:
+    -h, --help    Show this help message
+`)
+	}
+	flags.Parse(args)
+
+	if flags.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "governator run: unexpected arguments\n\n")
+		flags.Usage()
+		os.Exit(2)
+	}
+
 	repoRoot, err := repo.DiscoverRootFromCWD()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
-		emitUsage()
 		os.Exit(2)
 	}
 	fmt.Fprintln(os.Stderr, "Warning: governator run is deprecated. Use `governator plan` followed by `governator execute`.")
@@ -143,18 +225,39 @@ func runRun() {
 }
 
 func runPlan(args []string) {
-	if len(args) > 0 && args[0] == "--supervisor" {
+	flags := flag.NewFlagSet("plan", flag.ExitOnError)
+	supervisorMode := flags.Bool("supervisor", false, "")
+	flags.Usage = func() {
+		fmt.Fprint(os.Stderr, `USAGE:
+    governator plan
+
+DESCRIPTION:
+    Start the planning supervisor in the background.
+    The supervisor analyzes pending tasks, generates an execution DAG, and prepares
+    for execution. Returns immediately after spawning the supervisor process.
+
+    Use 'governator status' to monitor progress and 'governator tail' to stream logs.
+
+OPTIONS:
+    -h, --help    Show this help message
+`)
+	}
+	flags.Parse(args)
+
+	if *supervisorMode {
 		runPlanSupervisor()
 		return
 	}
-	if len(args) > 0 {
-		emitUsage()
+
+	if flags.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "governator plan: unexpected arguments\n\n")
+		flags.Usage()
 		os.Exit(2)
 	}
+
 	repoRoot, err := repo.DiscoverRootFromCWD()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
-		emitUsage()
 		os.Exit(2)
 	}
 	if _, running, err := supervisor.AnySupervisorRunning(repoRoot); err != nil {
@@ -213,7 +316,6 @@ func runPlanSupervisor() {
 	repoRoot, err := repo.DiscoverRootFromCWD()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
-		emitUsage()
 		os.Exit(2)
 	}
 	if err := run.RunPlanningSupervisor(repoRoot, run.PlanningSupervisorOptions{Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
@@ -223,18 +325,40 @@ func runPlanSupervisor() {
 }
 
 func runExecute(args []string) {
-	if len(args) > 0 && args[0] == "--supervisor" {
+	flags := flag.NewFlagSet("execute", flag.ExitOnError)
+	supervisorMode := flags.Bool("supervisor", false, "")
+	flags.Usage = func() {
+		fmt.Fprint(os.Stderr, `USAGE:
+    governator execute
+
+DESCRIPTION:
+    Start the execution supervisor in the background.
+    The supervisor processes the execution plan created by 'governator plan',
+    dispatching work to agents and managing task orchestration.
+    Returns immediately after spawning the supervisor process.
+
+    Use 'governator status' to monitor progress and 'governator tail' to stream logs.
+
+OPTIONS:
+    -h, --help    Show this help message
+`)
+	}
+	flags.Parse(args)
+
+	if *supervisorMode {
 		runExecuteSupervisor()
 		return
 	}
-	if len(args) > 0 {
-		emitUsage()
+
+	if flags.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "governator execute: unexpected arguments\n\n")
+		flags.Usage()
 		os.Exit(2)
 	}
+
 	repoRoot, err := repo.DiscoverRootFromCWD()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
-		emitUsage()
 		os.Exit(2)
 	}
 	if _, running, err := supervisor.AnySupervisorRunning(repoRoot); err != nil {
@@ -293,7 +417,6 @@ func runExecuteSupervisor() {
 	repoRoot, err := repo.DiscoverRootFromCWD()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
-		emitUsage()
 		os.Exit(2)
 	}
 	if err := run.RunExecutionSupervisor(repoRoot, run.ExecutionSupervisorOptions{Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
@@ -303,16 +426,36 @@ func runExecuteSupervisor() {
 }
 
 func runStop(args []string) {
-	stopWorker, err := parseWorkerFlag(args)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		emitUsage()
+	flags := flag.NewFlagSet("stop", flag.ExitOnError)
+	worker := flags.Bool("worker", false, "Also stop running worker agents")
+	workerShort := flags.Bool("w", false, "")
+	flags.Usage = func() {
+		fmt.Fprint(os.Stderr, `USAGE:
+    governator stop [options]
+
+DESCRIPTION:
+    Stop the currently running supervisor gracefully.
+    The supervisor will finish in-flight operations and shut down cleanly.
+    State is preserved for restart or inspection.
+
+OPTIONS:
+    -w, --worker    Also stop any running worker agents (default: supervisor only)
+    -h, --help      Show this help message
+`)
+	}
+	flags.Parse(args)
+
+	stopWorker := *worker || *workerShort
+
+	if flags.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "governator stop: unexpected arguments\n\n")
+		flags.Usage()
 		os.Exit(2)
 	}
+
 	repoRoot, err := repo.DiscoverRootFromCWD()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
-		emitUsage()
 		os.Exit(2)
 	}
 	if phase, running, err := supervisor.AnySupervisorRunning(repoRoot); err != nil {
@@ -337,16 +480,36 @@ func runStop(args []string) {
 }
 
 func runRestart(args []string) {
-	stopWorker, err := parseWorkerFlag(args)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		emitUsage()
+	flags := flag.NewFlagSet("restart", flag.ExitOnError)
+	worker := flags.Bool("worker", false, "Also stop running worker agents")
+	workerShort := flags.Bool("w", false, "")
+	flags.Usage = func() {
+		fmt.Fprint(os.Stderr, `USAGE:
+    governator restart [options]
+
+DESCRIPTION:
+    Stop the current supervisor and immediately restart it in the same phase.
+    If no supervisor is running, starts the planning phase.
+    Useful for picking up configuration changes or recovering from errors.
+
+OPTIONS:
+    -w, --worker    Also stop any running worker agents before restart
+    -h, --help      Show this help message
+`)
+	}
+	flags.Parse(args)
+
+	stopWorker := *worker || *workerShort
+
+	if flags.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "governator restart: unexpected arguments\n\n")
+		flags.Usage()
 		os.Exit(2)
 	}
+
 	repoRoot, err := repo.DiscoverRootFromCWD()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
-		emitUsage()
 		os.Exit(2)
 	}
 	phase, running, err := supervisor.AnySupervisorRunning(repoRoot)
@@ -374,16 +537,38 @@ func runRestart(args []string) {
 }
 
 func runReset(args []string) {
-	stopWorker, err := parseWorkerFlag(args)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		emitUsage()
+	flags := flag.NewFlagSet("reset", flag.ExitOnError)
+	worker := flags.Bool("worker", false, "Also stop running worker agents")
+	workerShort := flags.Bool("w", false, "")
+	flags.Usage = func() {
+		fmt.Fprint(os.Stderr, `USAGE:
+    governator reset [options]
+
+DESCRIPTION:
+    Nuclear option: stop the supervisor and clear all state.
+    This removes supervisor state files, clears locks, and prepares for a fresh start.
+    Use this when the supervisor is stuck or state is corrupted.
+
+    WARNING: In-progress work may be lost. Use 'governator stop' for graceful shutdown.
+
+OPTIONS:
+    -w, --worker    Also stop any running worker agents before reset
+    -h, --help      Show this help message
+`)
+	}
+	flags.Parse(args)
+
+	stopWorker := *worker || *workerShort
+
+	if flags.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "governator reset: unexpected arguments\n\n")
+		flags.Usage()
 		os.Exit(2)
 	}
+
 	repoRoot, err := repo.DiscoverRootFromCWD()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
-		emitUsage()
 		os.Exit(2)
 	}
 	phase, running, err := supervisor.AnySupervisorRunning(repoRoot)
@@ -444,31 +629,36 @@ func ensureNoSupervisorLocks(repoRoot string) error {
 	return nil
 }
 
-func parseWorkerFlag(args []string) (bool, error) {
-	stopWorker := false
-	for _, arg := range args {
-		if arg == "--worker" || arg == "-w" {
-			stopWorker = true
-			continue
-		}
-		return false, fmt.Errorf("unknown flag %q", arg)
-	}
-	return stopWorker, nil
-}
-
 func runStatus(args []string) {
-	// Parse flags
-	watchMode := false
-	for _, arg := range args {
-		if arg == "--watch" || arg == "-w" {
-			watchMode = true
-		}
+	flags := flag.NewFlagSet("status", flag.ExitOnError)
+	watch := flags.Bool("watch", false, "Enable interactive watch mode with live updates")
+	watchShort := flags.Bool("w", false, "")
+	flags.Usage = func() {
+		fmt.Fprint(os.Stderr, `USAGE:
+    governator status [options]
+
+DESCRIPTION:
+    Display current supervisor status and task progress.
+    Default mode shows a static snapshot; watch mode provides live updates.
+
+OPTIONS:
+    -w, --watch    Enable interactive watch mode with live task updates
+    -h, --help     Show this help message
+`)
+	}
+	flags.Parse(args)
+
+	watchMode := *watch || *watchShort
+
+	if flags.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "governator status: unexpected arguments\n\n")
+		flags.Usage()
+		os.Exit(2)
 	}
 
 	repoRoot, err := repo.DiscoverRootFromCWD()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
-		emitUsage()
 		os.Exit(2)
 	}
 
@@ -495,18 +685,32 @@ func runVersion() {
 }
 
 func runTail(args []string) {
-	// Parse flags (--stdout to include stdout, --both for both streams)
-	includeStdout := false
-	for _, arg := range args {
-		if arg == "--stdout" {
-			includeStdout = true
-		} else if arg == "--both" {
-			includeStdout = true
-		} else {
-			fmt.Fprintf(os.Stderr, "unknown flag: %s\n", arg)
-			emitUsage()
-			os.Exit(2)
-		}
+	flags := flag.NewFlagSet("tail", flag.ExitOnError)
+	stdout := flags.Bool("stdout", false, "Include stdout stream (default: stderr only)")
+	both := flags.Bool("both", false, "Include both stdout and stderr streams")
+	flags.Usage = func() {
+		fmt.Fprint(os.Stderr, `USAGE:
+    governator tail [options]
+
+DESCRIPTION:
+    Stream real-time output from all active worker agents.
+    Each line is prefixed with [task_id:stream] for identification.
+    Automatically exits when all agents complete. Press Ctrl+C to stop.
+
+OPTIONS:
+    --stdout      Include stdout stream in addition to stderr
+    --both        Alias for --stdout (include both stdout and stderr)
+    -h, --help    Show this help message
+`)
+	}
+	flags.Parse(args)
+
+	includeStdout := *stdout || *both
+
+	if flags.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "governator tail: unexpected arguments\n\n")
+		flags.Usage()
+		os.Exit(2)
 	}
 
 	repoRoot, err := repo.DiscoverRootFromCWD()
@@ -611,8 +815,4 @@ func tailLogFile(ctx context.Context, taskID string, stream string, path string,
 	}
 
 	cmd.Wait()
-}
-
-func emitUsage() {
-	fmt.Fprintln(os.Stderr, usageLine)
 }
