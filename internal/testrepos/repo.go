@@ -49,10 +49,25 @@ func (r *TempRepo) Cleanup() error {
 	if r == nil || r.Root == "" {
 		return nil
 	}
-	if err := os.RemoveAll(r.Root); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("remove temp repo %s: %w", r.Root, err)
+
+	// Clean up git worktrees first to avoid "directory not empty" errors
+	_, _ = runGit(r.Root, "worktree", "prune")
+
+	// Retry removal a few times to handle race conditions with git processes
+	var lastErr error
+	for i := 0; i < 3; i++ {
+		err := os.RemoveAll(r.Root)
+		if err == nil || os.IsNotExist(err) {
+			return nil
+		}
+		lastErr = err
+		// Brief pause before retry
+		if i < 2 {
+			continue
+		}
 	}
-	return nil
+
+	return fmt.Errorf("remove temp repo %s: %w", r.Root, lastErr)
 }
 
 func (r *TempRepo) initialize(tb testing.TB) {
