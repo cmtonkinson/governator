@@ -97,6 +97,29 @@ if [[ "$run_lint" == true ]]; then
   echo -e "${YELLOW}=== Running Lint Checks ===${NC}"
   echo ""
 
+  gofmt_cmd=(gofmt -l .)
+  if [[ "$quiet" == true ]]; then
+    gofmt_output="$("${gofmt_cmd[@]}")"
+    if [[ -n "$gofmt_output" ]]; then
+      echo ""
+      echo "The following files are not formatted:"
+      echo "$gofmt_output"
+      echo ""
+      echo -e "${RED}✗ gofmt check failed${NC}"
+      exit 1
+    fi
+  else
+    gofmt_output="$("${gofmt_cmd[@]}")"
+    if [[ -n "$gofmt_output" ]]; then
+      echo ""
+      echo "The following files are not formatted:"
+      echo "$gofmt_output"
+      echo ""
+      echo -e "${RED}✗ gofmt check failed${NC}"
+      exit 1
+    fi
+  fi
+
   lint_cmd=(go vet)
   if [[ "$go_test_verbosity" == "-v" ]]; then
     lint_cmd+=("-v")

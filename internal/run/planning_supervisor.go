@@ -276,8 +276,6 @@ func refreshPlanningWorkerState(state supervisor.PlanningSupervisorState, inFlig
 	return state
 }
 
-
-
 // completePlanningSupervisor clears persisted supervisor state after a healthy completion.
 func completePlanningSupervisor(repoRoot string, state *supervisor.PlanningSupervisorState) error {
 	if state == nil {
@@ -323,8 +321,6 @@ func maybePersistPlanningSupervisorState(repoRoot string, state *supervisor.Plan
 	state.LastTransition = time.Now().UTC()
 	return supervisor.SavePlanningState(repoRoot, *state)
 }
-
-
 
 func failPlanningSupervisor(repoRoot string, state *supervisor.PlanningSupervisorState, err error) error {
 	if state == nil {

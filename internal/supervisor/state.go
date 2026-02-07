@@ -13,13 +13,13 @@ import (
 )
 
 const (
-	localStateDirName   = "_governator/_local-state"
+	localStateDirName          = "_governator/_local-state"
 	planningSupervisorDirName  = "planning_supervisor"
 	executionSupervisorDirName = "execution_supervisor"
-	supervisorStateFile = "state.json"
-	supervisorLogFile   = "supervisor.log"
-	supervisorDirMode   = 0o755
-	supervisorFileMode  = 0o644
+	supervisorStateFile        = "state.json"
+	supervisorLogFile          = "supervisor.log"
+	supervisorDirMode          = 0o755
+	supervisorFileMode         = 0o644
 )
 
 // SupervisorKind represents the type of supervisor (planning or execution).
@@ -34,6 +34,7 @@ const (
 
 // PlanningSupervisorLockName is the lockfile name for planning supervision.
 const PlanningSupervisorLockName = "planning_supervisor.lock"
+
 // ExecutionSupervisorLockName is the lockfile name for execution supervision.
 const ExecutionSupervisorLockName = "execution_supervisor.lock"
 

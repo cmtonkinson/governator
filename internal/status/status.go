@@ -286,8 +286,6 @@ func (s Summary) styledString() string {
 	return strings.TrimSpace(b.String())
 }
 
-
-
 func formatSupervisorRuntime(startedAt time.Time) string {
 	if startedAt.IsZero() {
 		return "-"
@@ -301,8 +299,6 @@ func formatTaskRuntime(startedAt time.Time) string {
 	}
 	return format.DurationShort(time.Since(startedAt))
 }
-
-
 
 // formatAggregateMetrics formats the aggregate metrics section.
 func formatAggregateMetrics(agg AggregateMetrics) string {
@@ -510,8 +506,6 @@ func statusOrder(state index.TaskState) int {
 	}
 	return len(statusStateOrder)
 }
-
-
 
 func resolveAssignedRole(task index.Task) string {
 	if role := strings.TrimSpace(task.AssignedRole); role != "" {

@@ -347,8 +347,6 @@ func Run(repoRoot string) error {
 	return err
 }
 
-
-
 // formatRuntime formats the runtime duration since the given start time.
 func formatRuntime(startedAt time.Time) string {
 	if startedAt.IsZero() {
@@ -356,10 +354,6 @@ func formatRuntime(startedAt time.Time) string {
 	}
 	return format.DurationShort(time.Since(startedAt))
 }
-
-
-
-
 
 // formatAggregateMetrics formats the aggregate metrics section.
 func formatAggregateMetrics(agg status.AggregateMetrics) string {

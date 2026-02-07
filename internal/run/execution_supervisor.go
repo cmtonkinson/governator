@@ -184,8 +184,6 @@ func newExecutionSupervisorState(repoRoot string, logPath string) supervisor.Exe
 	}
 }
 
-
-
 // completeExecutionSupervisor clears persisted supervisor state after a healthy completion.
 func completeExecutionSupervisor(repoRoot string, state *supervisor.ExecutionSupervisorState) error {
 	if state == nil {
@@ -238,8 +236,6 @@ func countBacklog(idx index.Index) int {
 	}
 	return count
 }
-
-
 
 // failExecutionSupervisor persists failure metadata and returns the root error.
 func failExecutionSupervisor(repoRoot string, state *supervisor.ExecutionSupervisorState, err error) error {
