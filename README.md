@@ -234,15 +234,26 @@ entirely JSON-configurable.
 
 ## Testing
 
-```bash
-# Run all tests
-./test.sh
+Simply invoke `./test.sh`.
 
-# Run only unit tests
-go test ./internal/...
+```text
+./test.sh -h
+Usage: ./test.sh [options]
 
-# Run E2E tests
-go test -v ./tests/e2e
+Options:
+  -a, --all        Run lint, native, and E2E tests (default).
+  -n, --native     Run native tests only.
+  -e, --e2e        Run E2E tests only.
+  -l, --lint       Run lint checks only.
+  -q, --quiet      Suppress go test output (failures still surface).
+  -v, --verbose    Enable verbose go test output (default).
+  -h, --help       Show this help message.
+  -e2e-preserve-all     Preserve all E2E test repositories.
+  -e2e-clear-all        Clear all E2E test repositories, even on failure.
+
+Examples:
+  ./test.sh -a
+  ./test.sh --e2e --e2e-preserve-all
 ```
 
 ---
