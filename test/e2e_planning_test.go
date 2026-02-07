@@ -20,12 +20,7 @@ func TestE2EPlanning(t *testing.T) {
 	repo := testrepos.New(t)
 	repoRoot := repo.Root
 	t.Logf("Test repo at: %s", repoRoot)
-
-	// Keep test directory for debugging
-	defer func() {
-		t.Logf("Test repo preserved at: %s", repoRoot)
-		t.Logf("To clean up: rm -rf %s", repoRoot)
-	}()
+	TrackE2ERepo(t, repoRoot)
 
 	// Copy GOVERNATOR.md fixture to repo
 	fixtureDir, err := filepath.Abs("testdata")

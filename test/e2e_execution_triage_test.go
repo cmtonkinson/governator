@@ -21,11 +21,7 @@ func TestE2EExecutionTriage(t *testing.T) {
 	repo := testrepos.New(t)
 	repoRoot := repo.Root
 	t.Logf("Test repo at: %s", repoRoot)
-
-	defer func() {
-		t.Logf("Test repo preserved at: %s", repoRoot)
-		t.Logf("To clean up: rm -rf %s", repoRoot)
-	}()
+	TrackE2ERepo(t, repoRoot)
 
 	if err := config.InitFullLayout(repoRoot, config.InitOptions{}); err != nil {
 		t.Fatalf("init full layout: %v", err)
