@@ -89,7 +89,7 @@ func RunPlanningSupervisor(repoRoot string, opts PlanningSupervisorOptions) erro
 		case <-stopSignals:
 			state.State = supervisor.SupervisorStateStopped
 			state.Error = ""
-			state = markPlanningSupervisorTransition(state)
+			state = MarkSupervisorTransition(state)
 			return supervisor.SavePlanningState(repoRoot, state)
 		default:
 		}
@@ -276,10 +276,7 @@ func refreshPlanningWorkerState(state supervisor.PlanningSupervisorState, inFlig
 	return state
 }
 
-func markPlanningSupervisorTransition(state supervisor.PlanningSupervisorState) supervisor.PlanningSupervisorState {
-	state.LastTransition = time.Now().UTC()
-	return state
-}
+
 
 // completePlanningSupervisor clears persisted supervisor state after a healthy completion.
 func completePlanningSupervisor(repoRoot string, state *supervisor.PlanningSupervisorState) error {
@@ -293,7 +290,7 @@ func completePlanningSupervisor(repoRoot string, state *supervisor.PlanningSuper
 	state.ValidationPID = 0
 	state.WorkerStateDir = ""
 	state.Error = ""
-	updated := markPlanningSupervisorTransition(*state)
+	updated := MarkSupervisorTransition(*state)
 	*state = updated
 	if err := supervisor.ClearPlanningState(repoRoot); err != nil {
 		if saveErr := supervisor.SavePlanningState(repoRoot, updated); saveErr != nil {
@@ -320,26 +317,14 @@ func maybePersistPlanningSupervisorState(repoRoot string, state *supervisor.Plan
 	if err != nil {
 		return err
 	}
-	if planningSupervisorStateEqual(current, *state) {
+	if SupervisorStateEqual(current, *state) {
 		return nil
 	}
 	state.LastTransition = time.Now().UTC()
 	return supervisor.SavePlanningState(repoRoot, *state)
 }
 
-func planningSupervisorStateEqual(left supervisor.PlanningSupervisorState, right supervisor.PlanningSupervisorState) bool {
-	return left.Phase == right.Phase &&
-		left.PID == right.PID &&
-		left.WorkerPID == right.WorkerPID &&
-		left.ValidationPID == right.ValidationPID &&
-		left.StepID == right.StepID &&
-		left.StepName == right.StepName &&
-		left.State == right.State &&
-		left.LogPath == right.LogPath &&
-		left.Error == right.Error &&
-		left.WorkerStateDir == right.WorkerStateDir &&
-		left.StartedAt.Equal(right.StartedAt)
-}
+
 
 func failPlanningSupervisor(repoRoot string, state *supervisor.PlanningSupervisorState, err error) error {
 	if state == nil {
@@ -347,7 +332,7 @@ func failPlanningSupervisor(repoRoot string, state *supervisor.PlanningSuperviso
 	}
 	state.State = supervisor.SupervisorStateFailed
 	state.Error = err.Error()
-	updated := markPlanningSupervisorTransition(*state)
+	updated := MarkSupervisorTransition(*state)
 	*state = updated
 	if saveErr := supervisor.SavePlanningState(repoRoot, updated); saveErr != nil {
 		return fmt.Errorf("%w; supervisor state save failed: %v", err, saveErr)

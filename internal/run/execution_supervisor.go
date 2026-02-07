@@ -82,7 +82,7 @@ func RunExecutionSupervisor(repoRoot string, opts ExecutionSupervisorOptions) er
 		case <-stopSignals:
 			state.State = supervisor.SupervisorStateStopped
 			state.Error = ""
-			state = markExecutionSupervisorTransition(state)
+			state = MarkSupervisorTransition(state)
 			return supervisor.SaveExecutionState(repoRoot, state)
 		default:
 		}
@@ -184,11 +184,7 @@ func newExecutionSupervisorState(repoRoot string, logPath string) supervisor.Exe
 	}
 }
 
-// markExecutionSupervisorTransition updates the transition timestamp for the supervisor state.
-func markExecutionSupervisorTransition(state supervisor.ExecutionSupervisorState) supervisor.ExecutionSupervisorState {
-	state.LastTransition = time.Now().UTC()
-	return state
-}
+
 
 // completeExecutionSupervisor clears persisted supervisor state after a healthy completion.
 func completeExecutionSupervisor(repoRoot string, state *supervisor.ExecutionSupervisorState) error {
@@ -202,7 +198,7 @@ func completeExecutionSupervisor(repoRoot string, state *supervisor.ExecutionSup
 	state.ValidationPID = 0
 	state.WorkerStateDir = ""
 	state.Error = ""
-	updated := markExecutionSupervisorTransition(*state)
+	updated := MarkSupervisorTransition(*state)
 	*state = updated
 	if err := supervisor.ClearExecutionState(repoRoot); err != nil {
 		if saveErr := supervisor.SaveExecutionState(repoRoot, updated); saveErr != nil {
@@ -222,7 +218,7 @@ func maybePersistExecutionSupervisorState(repoRoot string, state *supervisor.Exe
 	if err != nil {
 		return err
 	}
-	if executionSupervisorStateEqual(current, *state) {
+	if SupervisorStateEqual(current, *state) {
 		return nil
 	}
 	state.LastTransition = time.Now().UTC()
@@ -243,20 +239,7 @@ func countBacklog(idx index.Index) int {
 	return count
 }
 
-// executionSupervisorStateEqual compares execution supervisor state snapshots.
-func executionSupervisorStateEqual(left supervisor.ExecutionSupervisorState, right supervisor.ExecutionSupervisorState) bool {
-	return left.Phase == right.Phase &&
-		left.PID == right.PID &&
-		left.WorkerPID == right.WorkerPID &&
-		left.ValidationPID == right.ValidationPID &&
-		left.StepID == right.StepID &&
-		left.StepName == right.StepName &&
-		left.State == right.State &&
-		left.LogPath == right.LogPath &&
-		left.Error == right.Error &&
-		left.WorkerStateDir == right.WorkerStateDir &&
-		left.StartedAt.Equal(right.StartedAt)
-}
+
 
 // failExecutionSupervisor persists failure metadata and returns the root error.
 func failExecutionSupervisor(repoRoot string, state *supervisor.ExecutionSupervisorState, err error) error {
@@ -265,7 +248,7 @@ func failExecutionSupervisor(repoRoot string, state *supervisor.ExecutionSupervi
 	}
 	state.State = supervisor.SupervisorStateFailed
 	state.Error = err.Error()
-	updated := markExecutionSupervisorTransition(*state)
+	updated := MarkSupervisorTransition(*state)
 	*state = updated
 	if saveErr := supervisor.SaveExecutionState(repoRoot, updated); saveErr != nil {
 		return fmt.Errorf("%w; supervisor state save failed: %v", err, saveErr)

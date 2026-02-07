@@ -260,6 +260,65 @@ func commitInit(repoRoot string) error {
 	return nil
 }
 
+// launchSupervisor extracts common logic for launching planning and execution supervisors.
+func launchSupervisor(kind supervisor.SupervisorKind, commandArg string) {
+	repoRoot, err := repo.DiscoverRootFromCWD()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(2)
+	}
+	if _, running, err := supervisor.AnySupervisorRunning(repoRoot); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	} else if running {
+		fmt.Fprintln(os.Stderr, "supervisor already running; use governator stop or governator reset first")
+		os.Exit(1)
+	}
+	if err := ensureNoSupervisorLocks(repoRoot); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	logPath := supervisor.LogPath(repoRoot, kind)
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	defer logFile.Close()
+
+	cmd := exec.Command(os.Args[0], commandArg, "--supervisor")
+	cmd.Dir = repoRoot
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	pid := cmd.Process.Pid
+	state := supervisor.SupervisorStateInfo{
+		Phase:          string(kind),
+		PID:            pid,
+		State:          supervisor.SupervisorStateRunning,
+		StartedAt:      time.Now().UTC(),
+		LastTransition: time.Now().UTC(),
+		LogPath:        logPath,
+	}
+	if err := supervisor.SaveState(repoRoot, kind, state); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	if err := cmd.Process.Release(); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	fmt.Printf("%s supervisor started (pid %d)\n", kind, pid)
+}
+
 func runPlan(args []string) {
 	flags := flag.NewFlagSet("plan", flag.ExitOnError)
 	supervisorMode := flags.Bool("supervisor", false, "")
@@ -291,61 +350,7 @@ OPTIONS:
 		os.Exit(2)
 	}
 
-	repoRoot, err := repo.DiscoverRootFromCWD()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(2)
-	}
-	if _, running, err := supervisor.AnySupervisorRunning(repoRoot); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	} else if running {
-		fmt.Fprintln(os.Stderr, "supervisor already running; use governator stop or governator reset first")
-		os.Exit(1)
-	}
-	if err := ensureNoSupervisorLocks(repoRoot); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-
-	logPath := supervisor.PlanningLogPath(repoRoot)
-	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-	defer logFile.Close()
-
-	cmd := exec.Command(os.Args[0], "plan", "--supervisor")
-	cmd.Dir = repoRoot
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
-	if err := cmd.Start(); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-	pid := cmd.Process.Pid
-	state := supervisor.PlanningSupervisorState{
-		Phase:          "planning",
-		PID:            pid,
-		State:          supervisor.SupervisorStateRunning,
-		StartedAt:      time.Now().UTC(),
-		LastTransition: time.Now().UTC(),
-		LogPath:        logPath,
-	}
-	if err := supervisor.SavePlanningState(repoRoot, state); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-	if err := cmd.Process.Release(); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-	fmt.Printf("planning supervisor started (pid %d)\n", pid)
+	launchSupervisor(supervisor.SupervisorKindPlanning, "plan")
 }
 
 func runPlanSupervisor() {
@@ -392,61 +397,7 @@ OPTIONS:
 		os.Exit(2)
 	}
 
-	repoRoot, err := repo.DiscoverRootFromCWD()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(2)
-	}
-	if _, running, err := supervisor.AnySupervisorRunning(repoRoot); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	} else if running {
-		fmt.Fprintln(os.Stderr, "supervisor already running; use governator stop or governator reset first")
-		os.Exit(1)
-	}
-	if err := ensureNoSupervisorLocks(repoRoot); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-
-	logPath := supervisor.ExecutionLogPath(repoRoot)
-	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-	defer logFile.Close()
-
-	cmd := exec.Command(os.Args[0], "execute", "--supervisor")
-	cmd.Dir = repoRoot
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
-	if err := cmd.Start(); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-	pid := cmd.Process.Pid
-	state := supervisor.ExecutionSupervisorState{
-		Phase:          "execution",
-		PID:            pid,
-		State:          supervisor.SupervisorStateRunning,
-		StartedAt:      time.Now().UTC(),
-		LastTransition: time.Now().UTC(),
-		LogPath:        logPath,
-	}
-	if err := supervisor.SaveExecutionState(repoRoot, state); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-	if err := cmd.Process.Release(); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-	fmt.Printf("execution supervisor started (pid %d)\n", pid)
+	launchSupervisor(supervisor.SupervisorKindExecution, "execute")
 }
 
 func runExecuteSupervisor() {
@@ -500,7 +451,7 @@ OPTIONS:
 	} else if !running {
 		fmt.Fprintln(os.Stderr, "no supervisor running")
 		os.Exit(1)
-	} else if phase == "planning" {
+	} else if phase == string(supervisor.SupervisorKindPlanning) {
 		if err := run.StopPlanningSupervisor(repoRoot, run.PlanningSupervisorStopOptions{StopWorker: stopWorker}); err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
@@ -557,15 +508,15 @@ OPTIONS:
 		runPlan(nil)
 		return
 	}
-	if phase == "planning" {
-		if err := run.StopPlanningSupervisor(repoRoot, run.PlanningSupervisorStopOptions{StopWorker: stopWorker}); err != nil && !errors.Is(err, supervisor.ErrPlanningSupervisorNotRunning) {
+	if phase == string(supervisor.SupervisorKindPlanning) {
+		if err := run.StopPlanningSupervisor(repoRoot, run.PlanningSupervisorStopOptions{StopWorker: stopWorker}); err != nil && !errors.Is(err, supervisor.ErrSupervisorNotRunning) {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
 		}
 		runPlan(nil)
 		return
 	}
-	if err := run.StopExecutionSupervisor(repoRoot, run.ExecutionSupervisorStopOptions{StopWorker: stopWorker}); err != nil && !errors.Is(err, supervisor.ErrExecutionSupervisorNotRunning) {
+	if err := run.StopExecutionSupervisor(repoRoot, run.ExecutionSupervisorStopOptions{StopWorker: stopWorker}); err != nil && !errors.Is(err, supervisor.ErrSupervisorNotRunning) {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
@@ -612,14 +563,14 @@ OPTIONS:
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
-	if running && phase == "planning" {
-		if err := run.StopPlanningSupervisor(repoRoot, run.PlanningSupervisorStopOptions{StopWorker: stopWorker}); err != nil && !errors.Is(err, supervisor.ErrPlanningSupervisorNotRunning) {
+	if running && phase == string(supervisor.SupervisorKindPlanning) {
+		if err := run.StopPlanningSupervisor(repoRoot, run.PlanningSupervisorStopOptions{StopWorker: stopWorker}); err != nil && !errors.Is(err, supervisor.ErrSupervisorNotRunning) {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
 		}
 	}
-	if running && phase == "execution" {
-		if err := run.StopExecutionSupervisor(repoRoot, run.ExecutionSupervisorStopOptions{StopWorker: stopWorker}); err != nil && !errors.Is(err, supervisor.ErrExecutionSupervisorNotRunning) {
+	if running && phase == string(supervisor.SupervisorKindExecution) {
+		if err := run.StopExecutionSupervisor(repoRoot, run.ExecutionSupervisorStopOptions{StopWorker: stopWorker}); err != nil && !errors.Is(err, supervisor.ErrSupervisorNotRunning) {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
 		}
@@ -631,11 +582,11 @@ OPTIONS:
 		fmt.Fprintln(os.Stderr, "supervisor still running; retry reset after it exits")
 		os.Exit(1)
 	}
-	if err := supervisor.ClearPlanningState(repoRoot); err != nil {
+	if err := supervisor.ClearState(repoRoot, supervisor.SupervisorKindPlanning); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
-	if err := supervisor.ClearExecutionState(repoRoot); err != nil {
+	if err := supervisor.ClearState(repoRoot, supervisor.SupervisorKindExecution); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}

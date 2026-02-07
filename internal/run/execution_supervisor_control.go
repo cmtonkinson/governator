@@ -25,7 +25,7 @@ func StopExecutionSupervisor(repoRoot string, opts ExecutionSupervisorStopOption
 		return err
 	}
 	if !ok || state.PID <= 0 {
-		return supervisor.ErrExecutionSupervisorNotRunning
+		return supervisor.ErrSupervisorNotRunning
 	}
 	_, running, err := supervisor.ExecutionSupervisorRunning(repoRoot)
 	if err != nil {
@@ -36,7 +36,7 @@ func StopExecutionSupervisor(repoRoot string, opts ExecutionSupervisorStopOption
 		state.Error = ""
 		state.LastTransition = time.Now().UTC()
 		_ = supervisor.SaveExecutionState(repoRoot, state)
-		return supervisor.ErrExecutionSupervisorNotRunning
+		return supervisor.ErrSupervisorNotRunning
 	}
 
 	if opts.StopWorker {
@@ -45,7 +45,7 @@ func StopExecutionSupervisor(repoRoot string, opts ExecutionSupervisorStopOption
 		}
 	}
 
-	if err := terminateProcess(state.PID); err != nil {
+	if err := TerminateProcess(state.PID); err != nil {
 		return err
 	}
 

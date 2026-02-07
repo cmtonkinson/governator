@@ -25,7 +25,7 @@ func StopPlanningSupervisor(repoRoot string, opts PlanningSupervisorStopOptions)
 		return err
 	}
 	if !ok || state.PID <= 0 {
-		return supervisor.ErrPlanningSupervisorNotRunning
+		return supervisor.ErrSupervisorNotRunning
 	}
 	_, running, err := supervisor.PlanningSupervisorRunning(repoRoot)
 	if err != nil {
@@ -36,7 +36,7 @@ func StopPlanningSupervisor(repoRoot string, opts PlanningSupervisorStopOptions)
 		state.Error = ""
 		state.LastTransition = time.Now().UTC()
 		_ = supervisor.SavePlanningState(repoRoot, state)
-		return supervisor.ErrPlanningSupervisorNotRunning
+		return supervisor.ErrSupervisorNotRunning
 	}
 
 	if opts.StopWorker {
@@ -45,7 +45,7 @@ func StopPlanningSupervisor(repoRoot string, opts PlanningSupervisorStopOptions)
 		}
 	}
 
-	if err := terminateProcess(state.PID); err != nil {
+	if err := TerminateProcess(state.PID); err != nil {
 		return err
 	}
 
