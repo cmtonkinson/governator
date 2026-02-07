@@ -214,30 +214,6 @@ _governator/
   reasoning/              # Reasoning effort prompts (low, medium, high)
   templates/              # Architecture & planning templates
 ```
-
----
-
-## Core Design
-
-Why did I build this? To get PoCs from zero to one. Plain and simple.
-
-**Determinism by design.** Governator intentionally avoids chat-based
-orchestration, shared agent memory, implicit context, and conversational state.
-If something matters, it exists as a file in git. This makes the system
-auditable, reproducible, debuggable, and safe to automate.
-
-**Separation of concerns.** Governator owns task creation, assignment, review,
-and merging. Workers own executing exactly one task, in exactly one role, on an
-isolated branch, with explicit and reviewable output. All coordination happens
-through the filesystem, git branches, and markdown documents.
-
-**Worker accountability.** Every worker invocation is staged with a deterministic
-prompt stack, environment variables (`GOVERNATOR_TASK_ID`, `GOVERNATOR_WORKTREE_DIR`,
-etc.), and produces an `exit.json` artifact. Audit logs track every state transition.
-
-**Operator control.** Operators can override prompts, roles, concurrency caps, even the entire planning phase is
-entirely JSON-configurable.
-
 ---
 
 ## Testing
@@ -263,6 +239,29 @@ Examples:
   ./test.sh -a
   ./test.sh --e2e --e2e-preserve-all
 ```
+
+---
+
+## Core Design
+
+Why did I build this? To get PoCs from zero to one. Plain and simple.
+
+**Determinism by design.** Governator intentionally avoids chat-based
+orchestration, shared agent memory, implicit context, and conversational state.
+If something matters, it exists as a file in git. This makes the system
+auditable, reproducible, debuggable, and safe to automate.
+
+**Separation of concerns.** Governator owns task creation, assignment, review,
+and merging. Workers own executing exactly one task, in exactly one role, on an
+isolated branch, with explicit and reviewable output. All coordination happens
+through the filesystem, git branches, and markdown documents.
+
+**Worker accountability.** Every worker invocation is staged with a deterministic
+prompt stack, environment variables (`GOVERNATOR_TASK_ID`, `GOVERNATOR_WORKTREE_DIR`,
+etc.), and produces an `exit.json` artifact. Audit logs track every state transition.
+
+**Operator control.** Operators can override prompts, roles, concurrency caps, even the entire planning phase is
+entirely JSON-configurable.
 
 ---
 
