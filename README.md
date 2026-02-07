@@ -170,22 +170,30 @@ Each worker:
 ## CLI Reference
 
 ```
-governator [global options] <command> [command options]
+governator --help
+governator - AI-powered task orchestration engine
+
+USAGE:
+    governator [global options] <command> [command options]
+
+GLOBAL OPTIONS:
+    -h, --help       Show this help message
+    -v, --verbose    Enable verbose output for debugging
+    -V, --version    Print version and build information
+
+COMMANDS:
+    init             Bootstrap a new governator workspace in the current repository
+    plan             Start the planning supervisor to analyze tasks and generate execution plan
+    execute          Start the execution supervisor to run the generated plan
+    status           Display current supervisor and task status
+    dag              Display task dependency graph (DAG)
+    stop             Stop the running supervisor gracefully
+    restart          Stop and restart the current supervisor phase
+    reset            Stop supervisor and clear all state (nuclear option)
+    tail             Stream agent output logs in real-time
+
+Run 'governator <command> -h' for command-specific help.
 ```
-
-| Command | Description |
-|---------|-------------|
-| `init` | Bootstrap `_governator/` in the current git repo |
-| `plan` | Start the planning supervisor (background) |
-| `execute` | Start the execution supervisor (background) |
-| `status [-i]` | Show supervisor state and task progress (`-i` for interactive mode) |
-| `stop [-w]` | Graceful shutdown (`-w` to also stop worker agents) |
-| `restart [-w]` | Stop and restart the current phase |
-| `reset [-w]` | Stop everything and clear all state |
-| `tail [--stdout]` | Stream real-time agent output logs |
-| `-V, --version` | Print version and build info |
-
-Run `governator <command> -h` for detailed help.
 
 ---
 
