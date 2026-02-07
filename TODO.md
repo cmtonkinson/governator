@@ -128,5 +128,5 @@ After each step:
 For Step 5 specifically, run the lifecycle e2e test in isolation:
 ```
 go test ./internal/run/ -run TestLifecycle -v
-go test ./test/ -v
+go test ./tests/e2e -v
 ```

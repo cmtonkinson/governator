@@ -7,7 +7,7 @@ The `test-worker.sh` script provides deterministic LLM worker behavior for E2E/i
 ### How It Works
 
 1. Reads a prompt file (stitched from role, contract, task, etc.)
-2. Matches prompt content against regex patterns in `fixtures/worker-actions.yaml`
+2. Matches prompt content against regex patterns in `testdata/fixtures/worker-actions.yaml`
 3. Executes file actions (write, modify, delete) for ALL matching rules
 4. Logs matched rules to stderr for debugging
 
@@ -22,7 +22,7 @@ Configure your test to use the test worker instead of real LLM:
 ```go
 func TestMyFeature(t *testing.T) {
     // Point to test worker script (use absolute path or ensure it's in PATH)
-    testWorkerPath, _ := filepath.Abs("test/test-worker.sh")
+    testWorkerPath, _ := filepath.Abs("tests/e2e/test-worker.sh")
 
     // Configure governator to use test worker
     cfg := &config.Config{
@@ -73,7 +73,7 @@ rules:
 ### Adding New Test Scenarios
 
 1. Identify the prompt pattern you need to handle
-2. Add a new rule to `test/fixtures/worker-actions.yaml`
+2. Add a new rule to `tests/e2e/testdata/fixtures/worker-actions.yaml`
 3. Define the file actions that simulate LLM worker output
 4. Run your test
 
@@ -101,7 +101,7 @@ func TestPlanningWorkflow(t *testing.T) {
     repo := testrepos.TempRepo(t)
 
     // Use test worker
-    testWorkerPath, _ := filepath.Abs("test/test-worker.sh")
+    testWorkerPath, _ := filepath.Abs("tests/e2e/test-worker.sh")
     cfg := &config.Config{
         Workers: config.WorkersConfig{
             Default: []string{testWorkerPath, "{prompt_path}"},

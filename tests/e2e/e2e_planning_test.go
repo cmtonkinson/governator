@@ -43,7 +43,7 @@ func TestE2EPlanning(t *testing.T) {
 		t.Fatalf("get test worker path: %v", err)
 	}
 
-	fixturesPath, err := filepath.Abs("fixtures/worker-actions-realistic.yaml")
+	fixturesPath, err := filepath.Abs("testdata/fixtures/worker-actions-realistic.yaml")
 	if err != nil {
 		t.Fatalf("get fixtures path: %v", err)
 	}

@@ -12,9 +12,10 @@ usage() {
 Usage: ./test.sh [options]
 
 Options:
-  -a, --all        Run native and E2E tests (default).
+  -a, --all        Run lint, native, and E2E tests (default).
   -n, --native     Run native tests only.
   -e, --e2e        Run E2E tests only.
+  -l, --lint       Run lint checks only.
   -q, --quiet      Suppress go test output (failures still surface).
   -v, --verbose    Enable verbose go test output (default).
   -h, --help       Show this help message.
@@ -29,6 +30,7 @@ USAGE
 
 run_native=true
 run_e2e=true
+run_lint=true
 e2e_preserve_all=false
 e2e_clear_all=false
 quiet=false
@@ -39,16 +41,25 @@ while [[ $# -gt 0 ]]; do
     -a|--all)
       run_native=true
       run_e2e=true
+      run_lint=true
       shift
       ;;
     -n|--native)
       run_native=true
       run_e2e=false
+      run_lint=false
       shift
       ;;
     -e|--e2e)
       run_native=false
       run_e2e=true
+      run_lint=false
+      shift
+      ;;
+    -l|--lint)
+      run_native=false
+      run_e2e=false
+      run_lint=true
       shift
       ;;
     -q|--quiet)
@@ -82,17 +93,46 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ "$run_lint" == true ]]; then
+  echo -e "${YELLOW}=== Running Lint Checks ===${NC}"
+  echo ""
+
+  lint_cmd=(go vet)
+  if [[ "$go_test_verbosity" == "-v" ]]; then
+    lint_cmd+=("-v")
+  fi
+  lint_cmd+=("./...")
+  if [[ "$quiet" == true ]]; then
+    if "${lint_cmd[@]}" >/dev/null; then
+      echo ""
+      echo -e "${GREEN}✓ Lint checks passed${NC}"
+      echo ""
+    else
+      echo ""
+      echo -e "${RED}✗ Lint checks failed${NC}"
+      exit 1
+    fi
+  elif "${lint_cmd[@]}"; then
+    echo ""
+    echo -e "${GREEN}✓ Lint checks passed${NC}"
+    echo ""
+  else
+    echo ""
+    echo -e "${RED}✗ Lint checks failed${NC}"
+    exit 1
+  fi
+fi
+
 if [[ "$run_native" == true ]]; then
   echo -e "${YELLOW}=== Running Native Go Test Suite ===${NC}"
   echo ""
 
 # Run all tests except the e2e test directory
-# The ! -path "./test/*" excludes the test directory
   native_cmd=(go test)
   if [[ -n "$go_test_verbosity" ]]; then
     native_cmd+=("$go_test_verbosity")
   fi
-  native_cmd+=($(go list ./... | grep -v '/test$'))
+  native_cmd+=($(go list ./... | grep -v '/tests/e2e$'))
   if [[ "$quiet" == true ]]; then
     if "${native_cmd[@]}" >/dev/null; then
       echo ""
@@ -123,7 +163,7 @@ if [[ "$run_e2e" == true ]]; then
   if [[ -n "$go_test_verbosity" ]]; then
     e2e_cmd+=("$go_test_verbosity")
   fi
-  e2e_cmd+=("./test")
+  e2e_cmd+=("./tests/e2e")
   if [[ "$e2e_preserve_all" == true ]]; then
     e2e_cmd+=("-e2e-preserve-all")
   fi

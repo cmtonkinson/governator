@@ -52,7 +52,7 @@ fi
 prompt_content=$(cat "$prompt_file")
 
 # Load fixture config
-fixture_file="${GOVERNATOR_TEST_FIXTURES:-test/fixtures/worker-actions.yaml}"
+fixture_file="${GOVERNATOR_TEST_FIXTURES:-tests/e2e/testdata/fixtures/worker-actions.yaml}"
 if [ ! -f "$fixture_file" ]; then
     echo "[test-worker] ERROR: fixture file not found: $fixture_file" >&2
     echo "[test-worker] Set GOVERNATOR_TEST_FIXTURES to override default location" >&2

@@ -242,7 +242,7 @@ entirely JSON-configurable.
 go test ./internal/...
 
 # Run E2E tests
-go test -v ./test
+go test -v ./tests/e2e
 ```
 
 ---

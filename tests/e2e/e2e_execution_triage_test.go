@@ -32,7 +32,7 @@ func TestE2EExecutionTriage(t *testing.T) {
 		t.Fatalf("get test worker path: %v", err)
 	}
 
-	fixturesPath, err := filepath.Abs("fixtures/worker-actions.yaml")
+	fixturesPath, err := filepath.Abs("testdata/fixtures/worker-actions.yaml")
 	if err != nil {
 		t.Fatalf("get fixtures path: %v", err)
 	}
