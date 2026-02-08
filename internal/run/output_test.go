@@ -46,6 +46,16 @@ func TestPlanningDriftMessage(t *testing.T) {
 	}
 }
 
+func TestADRReplanMessage(t *testing.T) {
+	var buf bytes.Buffer
+	emitADRReplanMessage(&buf, "ADR drift detected")
+	got := buf.String()
+	want := "planning=drift status=drain reason=\"ADR drift detected\" next_step=\"auto-replan\"\n"
+	if got != want {
+		t.Fatalf("replan message = %q, want %q", got, want)
+	}
+}
+
 func splitLines(s string) []string {
 	var lines []string
 	for _, line := range bytes.Split([]byte(s), []byte("\n")) {

@@ -121,9 +121,12 @@ func TestPipelineIntegrationDrift(t *testing.T) {
 	task := newTestTask("T-PIPE-001", "Pipeline integration task", "worker", taskPath, 10)
 	writeTestTaskIndex(t, repoRoot, []index.Task{task})
 
-	governatorPath := filepath.Join(repoRoot, "GOVERNATOR.md")
-	if err := os.WriteFile(governatorPath, []byte("# Pipeline fixture\n\nDrift\n"), 0o644); err != nil {
-		t.Fatalf("update %s: %v", governatorPath, err)
+	adrDir := filepath.Join(repoRoot, "_governator", "docs", "adr")
+	if err := os.MkdirAll(adrDir, 0o755); err != nil {
+		t.Fatalf("create ADR dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(adrDir, "adr-0002-test.md"), []byte("# ADR\n"), 0o644); err != nil {
+		t.Fatalf("write ADR: %v", err)
 	}
 
 	var runStdout bytes.Buffer

@@ -3,8 +3,10 @@ package run
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
+	"github.com/cmtonkinson/governator/internal/digests"
 	"github.com/cmtonkinson/governator/internal/index"
 )
 
@@ -80,4 +82,29 @@ func planningTaskState(idx index.Index) (string, error) {
 		return "", fmt.Errorf("planning task %s has unexpected kind %q", planningIndexTaskID, task.Kind)
 	}
 	return strings.TrimSpace(string(task.State)), nil
+}
+
+// ResetPlanningToStep updates planning state to restart the planning pipeline at a specific step.
+func ResetPlanningToStep(repoRoot string, nextStepID string) error {
+	if strings.TrimSpace(repoRoot) == "" {
+		return fmt.Errorf("repo root is required")
+	}
+	if strings.TrimSpace(nextStepID) == "" {
+		return fmt.Errorf("planning step id is required")
+	}
+	indexPath := filepath.Join(repoRoot, indexFilePath)
+	updated, err := index.Load(indexPath)
+	if err != nil {
+		return fmt.Errorf("reload task index: %w", err)
+	}
+	digestsMap, err := digests.Compute(repoRoot)
+	if err != nil {
+		return fmt.Errorf("compute digests: %w", err)
+	}
+	updated.Digests = digestsMap
+	updatePlanningState(&updated, nextStepID)
+	if err := index.Save(indexPath, updated); err != nil {
+		return fmt.Errorf("save task index: %w", err)
+	}
+	return nil
 }

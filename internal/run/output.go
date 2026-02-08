@@ -11,6 +11,7 @@ const (
 	mergeStageName      = "merge"
 	defaultUnknownToken = "unknown"
 	planRequiredCommand = "governator plan"
+	autoReplanCommand   = "auto-replan"
 )
 
 const (
@@ -76,6 +77,24 @@ func emitPlanningMessage(out io.Writer, detail string) {
 			strconv.Quote(detail) +
 			" next_step=" +
 			strconv.Quote(planRequiredCommand) +
+			"\n",
+	))
+}
+
+// emitADRReplanMessage reports that ADR drift triggered an automatic replan.
+func emitADRReplanMessage(out io.Writer, detail string) {
+	if out == nil {
+		return
+	}
+	detail = strings.TrimSpace(detail)
+	if detail == "" {
+		detail = "ADR drift detected; auto-replan initiated"
+	}
+	_, _ = out.Write([]byte(
+		"planning=drift status=drain reason=" +
+			strconv.Quote(detail) +
+			" next_step=" +
+			strconv.Quote(autoReplanCommand) +
 			"\n",
 	))
 }

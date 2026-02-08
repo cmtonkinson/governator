@@ -40,8 +40,12 @@ func TestCheckPlanningDriftDetectsChange(t *testing.T) {
 		t.Fatalf("Compute error: %v", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(root, "GOVERNATOR.md"), []byte("changed\n"), 0o644); err != nil {
-		t.Fatalf("update GOV: %v", err)
+	adrDir := filepath.Join(root, "_governator", "docs", "adr")
+	if err := os.MkdirAll(adrDir, 0o755); err != nil {
+		t.Fatalf("create ADR dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(adrDir, "adr-0002-test.md"), []byte("# ADR\n"), 0o644); err != nil {
+		t.Fatalf("write ADR: %v", err)
 	}
 
 	err = CheckPlanningDrift(root, stored)
@@ -52,10 +56,10 @@ func TestCheckPlanningDriftDetectsChange(t *testing.T) {
 		t.Fatalf("expected ErrPlanningDrift, got %v", err)
 	}
 	message := err.Error()
-	if !strings.Contains(message, "Planning drift detected") {
+	if !strings.Contains(message, "ADR drift detected") {
 		t.Fatalf("expected drift message, got %q", message)
 	}
-	if !strings.Contains(message, "GOVERNATOR.md changed") {
+	if !strings.Contains(message, "ADR added") {
 		t.Fatalf("expected drift details, got %q", message)
 	}
 	if !strings.Contains(message, "governator plan") {

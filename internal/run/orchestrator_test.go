@@ -268,8 +268,12 @@ func TestRunPlanningDriftMessage(t *testing.T) {
 		t.Fatalf("save index: %v", err)
 	}
 
-	if err := os.WriteFile(planFile, []byte("updated plan"), 0o644); err != nil {
-		t.Fatalf("update plan file: %v", err)
+	adrDir := filepath.Join(docDir, "adr")
+	if err := os.MkdirAll(adrDir, 0o755); err != nil {
+		t.Fatalf("create ADR dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(adrDir, "adr-0002-test.md"), []byte("# ADR\n"), 0o644); err != nil {
+		t.Fatalf("write ADR file: %v", err)
 	}
 
 	var stdout, stderr bytes.Buffer

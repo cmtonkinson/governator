@@ -95,20 +95,67 @@ func RunExecutionSupervisor(repoRoot string, opts ExecutionSupervisorOptions) er
 		if err != nil {
 			return failExecutionSupervisor(repoRoot, &state, fmt.Errorf("load planning spec: %w", err))
 		}
-		complete, err := planningComplete(idx, planning)
-		if err != nil {
-			return failExecutionSupervisor(repoRoot, &state, fmt.Errorf("planning index: %w", err))
-		}
-		if !complete {
-			return failExecutionSupervisor(repoRoot, &state, fmt.Errorf("planning incomplete: run `governator plan` before executing"))
-		}
-
 		inFlight, err := inFlightStore.Load()
 		if err != nil {
 			return failExecutionSupervisor(repoRoot, &state, fmt.Errorf("load in-flight tasks: %w", err))
 		}
 		if inFlight == nil {
 			inFlight = inflight.Set{}
+		}
+
+		adrDrift, err := DetectADRDrift(repoRoot, idx.Digests)
+		if err != nil {
+			return failExecutionSupervisor(repoRoot, &state, err)
+		}
+		if len(adrDrift.Added) > 0 {
+			state.StepID = "replan"
+			state.StepName = "ADR Replan"
+			state.WorkerPID = 0
+			state.WorkerStateDir = ""
+			if err := maybePersistExecutionSupervisorState(repoRoot, &state); err != nil {
+				return err
+			}
+			emitADRReplanMessage(stdout, adrDrift.Message)
+			if len(inFlight) > 0 {
+				if _, err := Run(repoRoot, Options{Stdout: stdout, Stderr: stderr, DisableDispatch: true, SkipPlanningDrift: true}); err != nil {
+					return failExecutionSupervisor(repoRoot, &state, err)
+				}
+				time.Sleep(opts.PollInterval)
+				continue
+			}
+			if err := ResetPlanningToStep(repoRoot, "gap-analysis"); err != nil {
+				return failExecutionSupervisor(repoRoot, &state, err)
+			}
+			time.Sleep(opts.PollInterval)
+			continue
+		}
+
+		complete, err := planningComplete(idx, planning)
+		if err != nil {
+			return failExecutionSupervisor(repoRoot, &state, fmt.Errorf("planning index: %w", err))
+		}
+		if !complete {
+			step, stepOK, err := currentPlanningStep(idx, planning)
+			if err != nil {
+				return failExecutionSupervisor(repoRoot, &state, fmt.Errorf("planning step: %w", err))
+			}
+			if stepOK {
+				state.StepID = step.name
+				state.StepName = step.title()
+			} else {
+				state.StepID = "planning"
+				state.StepName = "Planning"
+			}
+			state.WorkerPID = 0
+			state.WorkerStateDir = ""
+			if err := maybePersistExecutionSupervisorState(repoRoot, &state); err != nil {
+				return err
+			}
+			if _, err := Run(repoRoot, Options{Stdout: stdout, Stderr: stderr, SkipPlanningDrift: true}); err != nil {
+				return failExecutionSupervisor(repoRoot, &state, err)
+			}
+			time.Sleep(opts.PollInterval)
+			continue
 		}
 		backlogCount := countBacklog(idx)
 		if backlogCount > 0 {
@@ -118,7 +165,7 @@ func RunExecutionSupervisor(repoRoot string, opts ExecutionSupervisorOptions) er
 				if err := maybePersistExecutionSupervisorState(repoRoot, &state); err != nil {
 					return err
 				}
-				if _, err := Run(repoRoot, Options{Stdout: stdout, Stderr: stderr, DisableDispatch: true}); err != nil {
+				if _, err := Run(repoRoot, Options{Stdout: stdout, Stderr: stderr, DisableDispatch: true, SkipPlanningDrift: true}); err != nil {
 					return failExecutionSupervisor(repoRoot, &state, err)
 				}
 				time.Sleep(opts.PollInterval)
@@ -160,7 +207,7 @@ func RunExecutionSupervisor(repoRoot string, opts ExecutionSupervisorOptions) er
 			return err
 		}
 
-		if _, err := Run(repoRoot, Options{Stdout: stdout, Stderr: stderr}); err != nil {
+		if _, err := Run(repoRoot, Options{Stdout: stdout, Stderr: stderr, SkipPlanningDrift: true}); err != nil {
 			return failExecutionSupervisor(repoRoot, &state, err)
 		}
 

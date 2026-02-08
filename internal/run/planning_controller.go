@@ -44,6 +44,14 @@ func (controller *planningController) Collect(step workstreamStep) (workstreamCo
 	taskID := step.workstreamID()
 	inFlight := controller.runner.inFlight.Contains(taskID)
 	if !inFlight {
+		skip, err := controller.shouldSkipStep(step)
+		if err != nil {
+			return result, err
+		}
+		if skip {
+			result.Completed = true
+			result.Handled = true
+		}
 		return result, nil
 	}
 
@@ -162,6 +170,37 @@ func (controller *planningController) Dispatch(step workstreamStep) (workstreamD
 		return workstreamDispatchResult{}, err
 	}
 	return workstreamDispatchResult{Handled: true}, nil
+}
+
+// shouldSkipStep reports whether a planning step can be advanced without dispatching a worker.
+func (controller *planningController) shouldSkipStep(step workstreamStep) (bool, error) {
+	if controller.idx == nil || !hasExecutionTasks(*controller.idx) {
+		return false, nil
+	}
+	if len(step.validations) == 0 {
+		return false, nil
+	}
+	validationEngine := NewValidationEngine(controller.runner.repoRoot)
+	results, err := validationEngine.RunValidations(step.name, step.displayName, step.validations)
+	if err != nil {
+		return false, fmt.Errorf("validation execution failed: %w", err)
+	}
+	for _, result := range results {
+		if !result.Valid {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// hasExecutionTasks reports whether the index already contains execution work from a prior plan.
+func hasExecutionTasks(idx index.Index) bool {
+	for _, task := range idx.Tasks {
+		if task.Kind != index.TaskKindPlanning {
+			return true
+		}
+	}
+	return false
 }
 
 // EmitRunning logs that the phase worker is still running.

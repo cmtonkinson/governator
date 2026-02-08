@@ -31,6 +31,8 @@ type Options struct {
 	Stderr io.Writer
 	// DisableDispatch prevents new work from dispatching while allowing in-flight collection.
 	DisableDispatch bool
+	// SkipPlanningDrift disables planning drift checks for this run invocation.
+	SkipPlanningDrift bool
 }
 
 // Result captures the outcome of a run execution.
@@ -98,12 +100,14 @@ func Run(repoRoot string, opts Options) (Result, error) {
 	caps := scheduler.RoleCapsFromConfig(cfg)
 	baseBranch := baseBranchName(cfg)
 
-	// Check for planning drift
-	if err := CheckPlanningDrift(repoRoot, idx.Digests); err != nil {
-		if errors.Is(err, ErrPlanningDrift) {
-			emitPlanningDriftMessage(opts.Stdout, err.Error())
+	if !opts.SkipPlanningDrift {
+		// Check for planning drift
+		if err := CheckPlanningDrift(repoRoot, idx.Digests); err != nil {
+			if errors.Is(err, ErrPlanningDrift) {
+				emitPlanningDriftMessage(opts.Stdout, err.Error())
+			}
+			return Result{}, err
 		}
-		return Result{}, err
 	}
 
 	// Set up audit logging
