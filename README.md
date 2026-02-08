@@ -59,9 +59,9 @@ governator init
 governator start
 
 # 4. During orchestration, you may:
-governator status           # Show workers and tasks   
-governator status --watch   # Live view of workers and tasks (q to quit)
-governator tail             # Stream worker logs to your terminal (q to quit)
+governator status    # Show workers and tasks
+governator tail      # Stream both stderr/stdout worker logs (q to quit)
+governator why       # Recent supervisor + blocked/failed task logs
 ```
 
 ### Install
@@ -180,9 +180,10 @@ GLOBAL OPTIONS:
 COMMANDS:
     init             Bootstrap a new governator workspace in the current repository
     start            Start the unified supervisor to plan, triage, and execute work
-    plan             Deprecated alias for 'start'
-    execute          Deprecated alias for 'start'
+    plan             Alias for 'start'
+    execute          Alias for 'start'
     status           Display current supervisor and task status
+    why              Show the most recent supervisor log lines
     dag              Display task dependency graph (DAG)
     stop             Stop the running supervisor gracefully
     restart          Stop and restart the current supervisor phase
@@ -192,17 +193,47 @@ COMMANDS:
 Run 'governator <command> -h' for command-specific help.
 ```
 
+### Command Options
+
+```text
+governator init [options]
+  -a, --agent <cli>             Set default worker CLI (codex, claude, gemini)
+  -c, --concurrency <n>         Set global and default role concurrency limit
+  -r, --reasoning-effort <lvl>  Set default reasoning effort (low, medium, high)
+  -b, --branch <name>           Set base branch name (default: main)
+  -t, --timeout <seconds>       Set worker timeout in seconds (default: 900)
+
+governator status [options]
+  -i, --interactive             Enable interactive mode with live task updates
+
+governator why [options]
+  -s, --supervisor-lines <n>    Supervisor trailing lines (default: 20)
+  -t, --task-lines <n>          Per-task trailing lines (default: 20)
+
+governator stop|restart|reset [options]
+  -w, --worker                  Also stop running worker agents
+
+governator dag [options]
+  -i, --interactive             Enable interactive DAG mode (not yet implemented)
+
+governator tail [options]
+  --stdout                      Include stdout stream in addition to stderr
+  --both                        Alias for --stdout (include both stdout and stderr)
+```
+
 ---
 
 ## Directory Layout
 
 ```
 _governator/
+  .gitignore              # Ignores runtime-only local state
   _durable-state/         # Tracked config (config.json, migrations)
+    migrations/           # Config/data migrations
   _local-state/           # Runtime state (gitignored): logs, worktrees, workers
   docs/                   # Architecture & planning docs (generated)
   tasks/                  # Execution task files (markdown)
-  index.json              # Canonical task registry
+  _local-state/index.json # Canonical task registry (runtime)
   planning.json           # Planning pipeline spec
   worker-contract.md      # Non-negotiable worker behavior rules
   roles/                  # Role prompts (architect, planner, default, ...)
