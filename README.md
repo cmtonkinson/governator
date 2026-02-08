@@ -248,20 +248,26 @@ governator tail [options]
 ## Directory Layout
 ```
 _governator/
-  .gitignore              # Ignores runtime-only local state
-  _durable-state/         # Tracked config (config.json, migrations)
-    migrations/           # Config/data migrations
-  _local-state/           # Runtime state (gitignored): logs, worktrees, workers
-    index.json            # Canonical task registry (runtime)
-  docs/                   # Architecture & planning docs (generated)
-  tasks/                  # Execution task files (markdown)
-  planning.json           # Planning pipeline spec
-  worker-contract.md      # Non-negotiable worker behavior rules
-  roles/                  # Role prompts (architect, planner, default, ...)
-  prompts/                # Planning step prompts
-  custom-prompts/         # Operator overrides (_global.md, per-role)
-  reasoning/              # Reasoning effort prompts (low, medium, high)
-  templates/              # Architecture & planning templates
+|-- .gitignore              # Ignores runtime-only local state
+|-- _durable-state/         # Tracked config (config.json, migrations)
+|   |-- config.json         # Durable settings used by supervisor/workers
+|-- _local-state/           # Runtime state (gitignored except .keep)
+|   |-- index.json          # Canonical task registry
+|   |-- dag.json            # Dependency graph output from triage
+|   |-- supervisor/         # Supervisor runtime files
+|   |   |-- state.json
+|   |   `-- supervisor.log
+|   `-- task-<id>/          # Per-task worktree + worker logs/artifacts
+|-- docs/                   # Architecture & planning docs (generated)
+|   `-- adr/                # Architectural Decision Records
+|-- tasks/                  # Execution task files (markdown)
+|-- roles/                  # Default role prompts created at init
+|-- custom-prompts/         # Operator overrides
+|-- prompts/                # Planning step prompts
+|-- reasoning/              # Reasoning effort prompts
+|-- templates/              # Embedded template copies (for operator customization)
+|-- planning.json           # Planning pipeline spec
+`-- worker-contract.md      # Non-negotiable worker behavior rules
 ```
 ---
 ## Testing
