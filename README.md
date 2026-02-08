@@ -135,8 +135,9 @@ Up front, Governator loads the planning pipeline from
 `_governator/planning.json` and runs each step, serially. Out of the box,
 Governator ships with an opinionated planning pipeline:
 1. **Architecture baseline** - analyze/design the system (personas, ASRs,
-   Wardley map, arc42, C4, ADRs)
-2. **Gap analysis** - compare current project to documented intent
+   arc42, Wardley map, C4, and ADRs)
+2. **Gap analysis** - compare current project to documented intent (for
+   greenfield, the gap will be "everything")
 3. **Project planning** - decompose the gap into milestones and epics
 4. **Task planning** - generate discrete, individually-executable task files
 
