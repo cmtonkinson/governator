@@ -58,7 +58,7 @@ governator init
 governator start
 
 # 4a. (Optional)
-Say "Hasta la vista, baby," then go do something else.
+# Say "Hasta la vista, baby," and go do something else for a while.
 
 # 4b. (Optional) During orchestration, inspect the system via:
 governator status    # Show workers and tasks
@@ -111,8 +111,9 @@ truth for system behavior. Consider including:
 - Stack
 - Example input/output
 - References to existing work
+
 The more detailed, specific, and precise you are, the more effective Governator
-will be. That's just LLMs, baby.
+will be. That's just LLMs for you ¯\_(ツ)_/¯.
 
 ### Configuration
 Configure during initialization with `governator init` options (see `governator
