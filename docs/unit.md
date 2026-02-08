@@ -118,17 +118,17 @@ This document outlines opportunities for adding or improving unit test coverage 
         - Test error handling for `stageForStep` and unknown stages.
     - **`TestExecutionController_stageForStep`**: Test with valid, empty, and unknown step names.
 
-### `internal/run/execution_supervisor_control.go`
+### `internal/run/unified_supervisor_control.go`
 
-- **Opportunity:** This file contains logic for stopping the execution supervisor and its workers, which involves filesystem and process operations.
+- **Opportunity:** This file contains logic for stopping the supervisor and its workers, which involves filesystem and process operations.
 - **Suggestions:**
-    - **`TestStopExecutionSupervisor`**:
+    - **`TestStopUnifiedSupervisor`**:
         - Test the `repoRoot` guard clause.
-        - Mock `supervisor.LoadExecutionState` to return various states (error, not running, running).
-        - Mock `supervisor.ExecutionSupervisorRunning` to return various states (error, not running).
+        - Mock `supervisor.LoadState` to return various states (error, not running, running).
+        - Mock `supervisor.SupervisorRunning` to return various states (error, not running).
         - When `opts.StopWorker` is true, mock `stopExecutionWorkers` and test its error case.
         - Mock `TerminateProcess` and test its error case.
-        - Verify that `supervisor.SaveExecutionState` is called with the correct final state.
+        - Verify that `supervisor.SaveState` is called with the correct final state.
     - **`TestStopExecutionWorkers`**:
         - Mock `inflight.NewStore` and `store.Load` to test their error cases.
         - Create a mock `inflight.Set` and verify that `readDispatchWrapperPID` and `killWorkerProcess` are called for each worker.
@@ -179,22 +179,6 @@ This document outlines opportunities for adding or improving unit test coverage 
     - **`TestPlanningTaskFromSpec`**: Verify that a valid spec is correctly transformed into a `planningTask`.
     - **`TestNormalizePlanningPromptPath`**: Test various invalid paths (empty, absolute, containing `..` or `\`).
     - **`TestValidatePlanningStepID`**: Test various invalid IDs (empty, containing `/`, `..`).
-
-### `internal/run/planning_supervisor_control.go`
-
-- **Opportunity:** This file has logic for stopping the planning supervisor, which is similar to the execution supervisor but with its own state and worker management.
-- **Suggestions:**
-    - **`TestStopPlanningSupervisor`**:
-        - Test the `repoRoot` guard clause.
-        - Mock `supervisor.LoadPlanningState` to return various states (error, not running, running).
-        - Mock `supervisor.PlanningSupervisorRunning` to return various states (error, not running).
-        - When `opts.StopWorker` is true, mock `stopPlanningWorker` and test its error case.
-        - Mock `TerminateProcess` and test its error case.
-        - Verify that `supervisor.SavePlanningState` is called with the correct final state.
-    - **`TestStopPlanningWorker`**:
-        - Test the case where `workerStateDir` is already present in the state.
-        - Test the case where `workerStateDir` must be retrieved from the inflight store, and mock `inflight.NewStore` and `store.Load` for error handling.
-        - Verify that `killWorkerProcess` is called with the correct parameters.
 
 ### `internal/run/role_assignment_invoker.go`
 

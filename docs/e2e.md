@@ -4,29 +4,20 @@ This document outlines opportunities to add or improve end-to-end (e2e) test cov
 
 ## Areas for e2e Test Enhancement
 
-### 1. Core Supervisors and Orchestration
+### 1. Supervisor and Orchestration
 
-*   **`internal/run/orchestrator.go`**:
-    *   **Objective:** Verify the complete end-to-end lifecycle of a Governator plan, from initial planning phase through execution, commit, and potential merge, ensuring seamless transitions and correct state management across all stages.
+*   **`internal/run/unified_supervisor.go`**:
+    *   **Objective:** Verify the complete end-to-end lifecycle from initial planning through execution, commit, and potential merge, ensuring seamless transitions and correct state management across all stages.
     *   **Scenarios:**
         *   A simple plan with one planning step and one execution task, both completing successfully.
         *   A multi-phase plan involving planning, execution, and a final merge, verifying that outputs from earlier phases correctly influence later ones.
         *   Plans with parallel planning steps or execution tasks, confirming correct concurrency and dependency handling.
         *   A plan where a worker fails but the system retries successfully (if retry configured).
         *   A plan where a worker fails permanently, leading to a gracefully handled failure state for the overall plan.
-    *   **Focus:** Inter-component communication (orchestrator to supervisors), overall workflow correctness, error propagation, and final output state.
+    *   **Focus:** Inter-component communication, overall workflow correctness, error propagation, and final output state.
 
-*   **`internal/run/planning_supervisor.go`**:
-    *   **Objective:** Extend existing planning supervisor tests to cover more complex planning scenarios, including varied validation types and dynamic prompt generation.
-    *   **Scenarios:**
-        *   Planning steps with mixed validation types (file existence, directory existence, content patterns, custom scripts).
-        *   Scenarios where planning prompts are dynamically generated or require inputs from previous steps.
-        *   Tests for planning steps that produce no outputs, ensuring the supervisor correctly handles this.
-        *   Planning with invalid configurations (e.g., missing prompts, unreachable roles) to verify error reporting.
-    *   **Focus:** Input parsing, prompt processing, worker invocation with specific roles, validation execution, and correct index updates.
-
-*   **`internal/run/execution_supervisor.go`**:
-    *   **Objective:** Enhance existing execution supervisor tests to validate complex dependency graphs, varied task types, and robust error handling during execution.
+*   **`internal/run/orchestrator.go`**:
+    *   **Objective:** Validate task orchestration behavior under complex dependency graphs, varied task types, and robust error handling.
     *   **Scenarios:**
         *   Tasks with complex A->B->C dependencies, ensuring correct execution order.
         *   Parallel tasks that depend on a common upstream task.
