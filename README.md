@@ -231,9 +231,9 @@ _governator/
   _durable-state/         # Tracked config (config.json, migrations)
     migrations/           # Config/data migrations
   _local-state/           # Runtime state (gitignored): logs, worktrees, workers
+    index.json            # Canonical task registry (runtime)
   docs/                   # Architecture & planning docs (generated)
   tasks/                  # Execution task files (markdown)
-  _local-state/index.json # Canonical task registry (runtime)
   planning.json           # Planning pipeline spec
   worker-contract.md      # Non-negotiable worker behavior rules
   roles/                  # Role prompts (architect, planner, default, ...)
