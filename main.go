@@ -964,7 +964,7 @@ func runTail(args []string) {
 DESCRIPTION:
     Stream real-time output from all active worker agents.
     Each line is prefixed with [task_id:stream] for identification.
-    Automatically exits when all agents complete. Press Ctrl+C to stop.
+    Automatically exits when all agents complete. Type q then Enter, or press Ctrl+C, to stop.
 
 OPTIONS:
     --stdout      Include stdout stream in addition to stderr
@@ -1007,6 +1007,7 @@ OPTIONS:
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	go handleTailQuitInput(ctx, os.Stdin, os.Stderr, cancel)
 
 	// Setup signal handling
 	sigChan := make(chan os.Signal, 1)
@@ -1059,6 +1060,27 @@ OPTIONS:
 	}
 
 	wg.Wait()
+}
+
+// handleTailQuitInput listens for quit keys during tail streaming.
+func handleTailQuitInput(ctx context.Context, in io.Reader, out io.Writer, cancel context.CancelFunc) {
+	reader := bufio.NewReader(in)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		key, err := reader.ReadByte()
+		if err != nil {
+			return
+		}
+		if key == 'q' || key == 'Q' {
+			fmt.Fprintln(out, "\nquit requested")
+			cancel()
+			return
+		}
+	}
 }
 
 func tailLogFile(ctx context.Context, taskID string, stream string, path string, out io.Writer) {

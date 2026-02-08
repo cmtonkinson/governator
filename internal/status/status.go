@@ -15,6 +15,7 @@ import (
 	"github.com/cmtonkinson/governator/internal/inflight"
 	"github.com/cmtonkinson/governator/internal/run"
 	"github.com/cmtonkinson/governator/internal/supervisor"
+	"github.com/cmtonkinson/governator/internal/worker"
 	"golang.org/x/term"
 )
 
@@ -383,16 +384,13 @@ func GetSummary(repoRoot string) (Summary, error) {
 				LastTransition: state.LastTransition,
 				LogPath:        state.LogPath,
 			})
-			// Collect active workers from the unified supervisor (during triage step)
-			if state.WorkerPID > 0 && state.StepID == "triage" {
-				summary.Workers = append(summary.Workers, WorkerSummary{
-					PID:       state.WorkerPID,
-					Role:      "triage",
-					StartedAt: state.LastTransition,
-				})
+			if workerSummary, ok := activeWorkerSummary(state); ok {
+				summary.Workers = append(summary.Workers, workerSummary)
 			}
 		}
 	}
+	summary.Workers = append(summary.Workers, workersFromInFlight(inflightSet)...)
+	summary.Workers = dedupeWorkers(summary.Workers)
 
 	var mergedRows []StatusRow
 	for _, task := range idx.Tasks {
@@ -543,6 +541,97 @@ func extractNumericPrefix(taskID string) string {
 		return parts[0]
 	}
 	return taskID
+}
+
+// activeWorkerSummary maps unified supervisor worker state to a status worker row.
+func activeWorkerSummary(state supervisor.SupervisorStateInfo) (WorkerSummary, bool) {
+	if state.WorkerPID <= 0 {
+		return WorkerSummary{}, false
+	}
+	switch strings.TrimSpace(state.StepID) {
+	case "plan":
+		return WorkerSummary{
+			PID:       state.WorkerPID,
+			Role:      "plan",
+			StartedAt: state.LastTransition,
+		}, true
+	case "triage":
+		return WorkerSummary{
+			PID:       state.WorkerPID,
+			Role:      "triage",
+			StartedAt: state.LastTransition,
+		}, true
+	default:
+		return WorkerSummary{}, false
+	}
+}
+
+// workersFromInFlight extracts currently running workers from in-flight tracking.
+func workersFromInFlight(inFlight inflight.Set) []WorkerSummary {
+	if len(inFlight) == 0 {
+		return nil
+	}
+	ids := inFlight.IDs()
+	workers := make([]WorkerSummary, 0, len(ids))
+	for _, id := range ids {
+		entry, ok := inFlight.Entry(id)
+		if !ok {
+			continue
+		}
+		pid := 0
+		if strings.TrimSpace(entry.WorkerStateDir) != "" {
+			if foundPID, found, err := worker.ReadAgentPID(entry.WorkerStateDir); err == nil && found {
+				pid = foundPID
+			}
+		}
+		workers = append(workers, WorkerSummary{
+			PID:       pid,
+			Role:      workerRoleFromInFlight(entry),
+			StartedAt: entry.StartedAt,
+		})
+	}
+	return workers
+}
+
+// workerRoleFromInFlight maps an in-flight entry to a display role.
+func workerRoleFromInFlight(entry inflight.Entry) string {
+	id := strings.TrimSpace(entry.ID)
+	if id == "planning" {
+		return "plan"
+	}
+	if strings.HasPrefix(id, "planning-") {
+		return "plan"
+	}
+	stage := strings.TrimSpace(entry.Stage)
+	role := strings.TrimSpace(entry.Role)
+	switch {
+	case stage != "" && role != "":
+		return stage + ":" + role
+	case role != "":
+		return role
+	case stage != "":
+		return stage
+	default:
+		return "worker"
+	}
+}
+
+// dedupeWorkers removes duplicate worker rows while preserving display order.
+func dedupeWorkers(workers []WorkerSummary) []WorkerSummary {
+	if len(workers) < 2 {
+		return workers
+	}
+	seen := make(map[string]struct{}, len(workers))
+	deduped := make([]WorkerSummary, 0, len(workers))
+	for _, w := range workers {
+		key := fmt.Sprintf("%s|%d|%s", strings.TrimSpace(w.Role), w.PID, w.StartedAt.UTC().Format(time.RFC3339Nano))
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		deduped = append(deduped, w)
+	}
+	return deduped
 }
 
 func planningStepSummary(repoRoot string, idx index.Index, supervisors []SupervisorSummary) ([]PlanningStepSummary, error) {

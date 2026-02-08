@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -585,6 +587,50 @@ func TestWhyCommand(t *testing.T) {
 		}
 		if !strings.Contains(got, "=== Task planning (failed) last 2 lines from _governator/_local-state/task-planning/_governator/_local-state/planning-architecture-baseline/stdout.log ===\np-2\np-3\n") {
 			t.Fatalf("missing planning section in output:\n%s", got)
+		}
+	})
+}
+
+func TestHandleTailQuitInput(t *testing.T) {
+	t.Run("cancels on lowercase q", func(t *testing.T) {
+		ctx, baseCancel := context.WithCancel(context.Background())
+		defer baseCancel()
+		cancelled := false
+		cancel := func() {
+			cancelled = true
+			baseCancel()
+		}
+		handleTailQuitInput(ctx, strings.NewReader("abcqxyz"), io.Discard, cancel)
+		if !cancelled {
+			t.Fatal("expected cancel to be called for lowercase q")
+		}
+	})
+
+	t.Run("cancels on uppercase q", func(t *testing.T) {
+		ctx, baseCancel := context.WithCancel(context.Background())
+		defer baseCancel()
+		cancelled := false
+		cancel := func() {
+			cancelled = true
+			baseCancel()
+		}
+		handleTailQuitInput(ctx, strings.NewReader("abQxyz"), io.Discard, cancel)
+		if !cancelled {
+			t.Fatal("expected cancel to be called for uppercase Q")
+		}
+	})
+
+	t.Run("does not cancel without q", func(t *testing.T) {
+		ctx, baseCancel := context.WithCancel(context.Background())
+		defer baseCancel()
+		cancelled := false
+		cancel := func() {
+			cancelled = true
+			baseCancel()
+		}
+		handleTailQuitInput(ctx, strings.NewReader("abcdef"), io.Discard, cancel)
+		if cancelled {
+			t.Fatal("did not expect cancel to be called")
 		}
 	})
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cmtonkinson/governator/internal/index"
+	"github.com/cmtonkinson/governator/internal/inflight"
 	"github.com/cmtonkinson/governator/internal/supervisor"
 )
 
@@ -156,6 +157,200 @@ func TestGetSummarySupervisorFiltering(t *testing.T) {
 		}
 		if !strings.Contains(output, "runtime=") {
 			t.Fatalf("expected runtime field in output: %q", output)
+		}
+	})
+
+	t.Run("running_plan_worker_included", func(t *testing.T) {
+		t.Parallel()
+		repoRoot := t.TempDir()
+		stateDir := filepath.Join(repoRoot, "_governator")
+		if err := os.MkdirAll(stateDir, 0o755); err != nil {
+			t.Fatalf("create state dir: %v", err)
+		}
+		indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+		if err := index.Save(indexPath, index.Index{SchemaVersion: 1}); err != nil {
+			t.Fatalf("save index: %v", err)
+		}
+		now := time.Now().UTC()
+		if err := supervisor.SaveState(repoRoot, supervisor.SupervisorStateInfo{
+			Phase:          "start",
+			PID:            os.Getpid(),
+			WorkerPID:      os.Getpid(),
+			StepID:         "plan",
+			StepName:       "Plan",
+			State:          supervisor.SupervisorStateRunning,
+			StartedAt:      now,
+			LastTransition: now,
+			LogPath:        supervisor.LogPath(repoRoot),
+		}); err != nil {
+			t.Fatalf("save state: %v", err)
+		}
+
+		summary, err := GetSummary(repoRoot)
+		if err != nil {
+			t.Fatalf("GetSummary() failed: %v", err)
+		}
+		if len(summary.Workers) != 1 {
+			t.Fatalf("workers=%d, want 1", len(summary.Workers))
+		}
+		if summary.Workers[0].Role != "plan" {
+			t.Fatalf("worker role=%q, want plan", summary.Workers[0].Role)
+		}
+		if summary.Workers[0].PID != os.Getpid() {
+			t.Fatalf("worker pid=%d, want %d", summary.Workers[0].PID, os.Getpid())
+		}
+	})
+
+	t.Run("running_triage_worker_included", func(t *testing.T) {
+		t.Parallel()
+		repoRoot := t.TempDir()
+		stateDir := filepath.Join(repoRoot, "_governator")
+		if err := os.MkdirAll(stateDir, 0o755); err != nil {
+			t.Fatalf("create state dir: %v", err)
+		}
+		indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+		if err := index.Save(indexPath, index.Index{SchemaVersion: 1}); err != nil {
+			t.Fatalf("save index: %v", err)
+		}
+		now := time.Now().UTC()
+		if err := supervisor.SaveState(repoRoot, supervisor.SupervisorStateInfo{
+			Phase:          "start",
+			PID:            os.Getpid(),
+			WorkerPID:      os.Getpid(),
+			StepID:         "triage",
+			StepName:       "Triage",
+			State:          supervisor.SupervisorStateRunning,
+			StartedAt:      now,
+			LastTransition: now,
+			LogPath:        supervisor.LogPath(repoRoot),
+		}); err != nil {
+			t.Fatalf("save state: %v", err)
+		}
+
+		summary, err := GetSummary(repoRoot)
+		if err != nil {
+			t.Fatalf("GetSummary() failed: %v", err)
+		}
+		if len(summary.Workers) != 1 {
+			t.Fatalf("workers=%d, want 1", len(summary.Workers))
+		}
+		if summary.Workers[0].Role != "triage" {
+			t.Fatalf("worker role=%q, want triage", summary.Workers[0].Role)
+		}
+		if summary.Workers[0].PID != os.Getpid() {
+			t.Fatalf("worker pid=%d, want %d", summary.Workers[0].PID, os.Getpid())
+		}
+	})
+
+	t.Run("planning_inflight_worker_included_when_planning_not_started", func(t *testing.T) {
+		t.Parallel()
+		repoRoot := t.TempDir()
+		stateDir := filepath.Join(repoRoot, "_governator")
+		if err := os.MkdirAll(stateDir, 0o755); err != nil {
+			t.Fatalf("create state dir: %v", err)
+		}
+		indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+		if err := index.Save(indexPath, index.Index{
+			SchemaVersion: 1,
+			Tasks: []index.Task{
+				{ID: "planning", Kind: index.TaskKindPlanning, State: "governator_planning_not_started"},
+			},
+		}); err != nil {
+			t.Fatalf("save index: %v", err)
+		}
+
+		now := time.Now().UTC()
+		store, err := inflight.NewStore(repoRoot)
+		if err != nil {
+			t.Fatalf("new in-flight store: %v", err)
+		}
+		workerStateDir := filepath.Join(repoRoot, "_governator", "_local-state", "task-planning", "_governator", "_local-state", "planning-architecture-baseline")
+		if err := os.MkdirAll(workerStateDir, 0o755); err != nil {
+			t.Fatalf("mkdir worker state dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(workerStateDir, "agent.pid"), []byte("4242\n"), 0o644); err != nil {
+			t.Fatalf("write pidfile: %v", err)
+		}
+		if err := store.Save(inflight.Set{
+			"planning-architecture-baseline": {
+				ID:             "planning-architecture-baseline",
+				StartedAt:      now,
+				WorkerStateDir: workerStateDir,
+				Stage:          "work",
+				Role:           "architect",
+			},
+		}); err != nil {
+			t.Fatalf("save in-flight: %v", err)
+		}
+
+		summary, err := GetSummary(repoRoot)
+		if err != nil {
+			t.Fatalf("GetSummary() failed: %v", err)
+		}
+		if len(summary.Workers) != 1 {
+			t.Fatalf("workers=%d, want 1", len(summary.Workers))
+		}
+		if summary.Workers[0].Role != "plan" {
+			t.Fatalf("worker role=%q, want plan", summary.Workers[0].Role)
+		}
+		if summary.Workers[0].PID != 4242 {
+			t.Fatalf("worker pid=%d, want 4242", summary.Workers[0].PID)
+		}
+	})
+
+	t.Run("execution_inflight_worker_included", func(t *testing.T) {
+		t.Parallel()
+		repoRoot := t.TempDir()
+		stateDir := filepath.Join(repoRoot, "_governator")
+		if err := os.MkdirAll(stateDir, 0o755); err != nil {
+			t.Fatalf("create state dir: %v", err)
+		}
+		indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+		if err := index.Save(indexPath, index.Index{
+			SchemaVersion: 1,
+			Tasks: []index.Task{
+				{ID: "T-001", Kind: index.TaskKindExecution, State: index.TaskStateTriaged, Role: "dev"},
+			},
+		}); err != nil {
+			t.Fatalf("save index: %v", err)
+		}
+
+		now := time.Now().UTC()
+		store, err := inflight.NewStore(repoRoot)
+		if err != nil {
+			t.Fatalf("new in-flight store: %v", err)
+		}
+		workerStateDir := filepath.Join(repoRoot, "_governator", "_local-state", "task-T-001", "_governator", "_local-state", "worker-1-work-dev")
+		if err := os.MkdirAll(workerStateDir, 0o755); err != nil {
+			t.Fatalf("mkdir worker state dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(workerStateDir, "agent.pid"), []byte("5151\n"), 0o644); err != nil {
+			t.Fatalf("write pidfile: %v", err)
+		}
+		if err := store.Save(inflight.Set{
+			"T-001": {
+				ID:             "T-001",
+				StartedAt:      now,
+				WorkerStateDir: workerStateDir,
+				Stage:          "work",
+				Role:           "dev",
+			},
+		}); err != nil {
+			t.Fatalf("save in-flight: %v", err)
+		}
+
+		summary, err := GetSummary(repoRoot)
+		if err != nil {
+			t.Fatalf("GetSummary() failed: %v", err)
+		}
+		if len(summary.Workers) != 1 {
+			t.Fatalf("workers=%d, want 1", len(summary.Workers))
+		}
+		if summary.Workers[0].Role != "work:dev" {
+			t.Fatalf("worker role=%q, want work:dev", summary.Workers[0].Role)
+		}
+		if summary.Workers[0].PID != 5151 {
+			t.Fatalf("worker pid=%d, want 5151", summary.Workers[0].PID)
 		}
 	})
 
