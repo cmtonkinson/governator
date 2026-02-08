@@ -1,6 +1,5 @@
 # Governator
 The agentic anti-swarm (or: just a context management state machine)
-
 [![Status: Beta](https://img.shields.io/badge/Status-Beta-blue.svg)](https://github.com/cmtonkinson/governator)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/cmtonkinson/governator/pulls)
 [![CI Workflow Status](https://img.shields.io/github/actions/workflow/status/cmtonkinson/governator/ci.yml)](https://github.com/cmtonkinson/governator/actions?query=workflow%3ACI)
@@ -8,12 +7,10 @@ The agentic anti-swarm (or: just a context management state machine)
 [![macOS](https://img.shields.io/badge/macOS-supported-lightgrey?logo=apple&logoColor=white)](https://github.com/cmtonkinson/governator)
 [![Linux](https://img.shields.io/badge/Linux-supported-lightgrey?logo=linux&logoColor=white)](https://github.com/cmtonkinson/governator)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.txt)
-
 ![Governator](img/governator_512.png)
 
 ## Overview
-**Problem:**
-Orchestrating agentic software development is Hard&trade; because
+**Problem:** Orchestrating agentic software development is Hard&trade; because
 - Context windows are limited
 - Context rot is a real problem
 - Attention/intent drift can lead to unexplainable choices
@@ -34,7 +31,6 @@ old traditional waterfall process. Sexy? Nope. Effective here? Hell yeah.
 4. Assigns individual tasks to async workers (coding agents)
 5. Uses different agents to verify results against requirements
 6. Merges approved work into `main`
-
 Governator is a file-backed, git-driven, auditable, waterfall orchestration
 framework for converting operator intent into working software. There is no
 shared memory, no long-lived agent state, and no hidden context. All state,
@@ -44,41 +40,36 @@ Governator can be used in a completely blank repository to get something from 0
 to 1, or in an existing project to improve, extend, and refine.
 
 ---
-
 ## Quick Start
-
 ```bash
-# 1. Write your intent
+# 1. Write your intent - document anything and everything you want: scope,
+# context, requirements, boundaries, constraints, assumptions, stack, etc.
 vim GOVERNATOR.md
 
 # 2. Initialize the workspace
 governator init
 
-# 3. Start unified orchestration (planning + execution)
+# 3. Begin orchestration (Governator plans first, then implements)
 governator start
 
-# 4. During orchestration, you may:
+# 4. During orchestration, inspect the system via:
 governator status    # Show workers and tasks
 governator tail      # Stream both stderr/stdout worker logs (q to quit)
 governator why       # Recent supervisor + blocked/failed task logs
 ```
 
 ### Install
-
 **Homebrew** (macOS/Linux):
-
 ```bash
 brew install cmtonkinson/tap/governator
 ```
 
 **Go install** (requires Go 1.25+):
-
 ```bash
 go install github.com/cmtonkinson/governator@latest
 ```
 
 **Debian/Ubuntu** (.deb package):
-
 ```bash
 # Download the latest release for your architecture
 wget https://github.com/cmtonkinson/governator/releases/latest/download/governator_<version>_amd64.deb
@@ -88,7 +79,6 @@ sudo dpkg -i governator_<version>_amd64.deb
 ```
 
 **From source**:
-
 ```bash
 git clone https://github.com/cmtonkinson/governator.git
 cd governator
@@ -97,22 +87,18 @@ sudo mv governator /usr/local/bin/
 ```
 
 ### GOVERNATOR.md
-
 `GOVERNATOR.md` is the single source of project intent. This is your design-time
 prompt: explain what you want. Your vision, goals, non-goals, constraints,
 requirements, assumptions, and definition of done. Workers never modify it.
 
 ### Configuration
-
 Configure during initialization with `governator init` options (see `governator init -h` for full list and defaults):
-
 ```bash
 governator init \
   --agent claude \            # Agent CLI (codex, claude, gemini)
   --concurrency 5 \           # Max concurrent workers
   --reasoning-effort high     # Reasoning level (low, medium, high)
 ```
-
 Or edit `_governator/_durable-state/config.json` post-init:
 
 | Key | Default | Description |
@@ -127,15 +113,11 @@ Or edit `_governator/_durable-state/config.json` post-init:
 Per-role overrides are available for CLI backend, concurrency caps, and reasoning effort.
 
 ---
-
 ## How It Works
-
 Governator orchestrates planning and execution in one unified supervisor flow:
 
 ### Planning (serial)
-
 `governator start` walks through a deterministic planning pipeline defined in `_governator/planning.json`:
-
 1. **Architecture baseline** - analyze/design the system (personas, ASR, Wardley map, arc42, C4, ADRs)
 2. **Gap analysis** - compare current state to stated intent
 3. **Project planning** - decompose the gap into milestones and epics
@@ -145,7 +127,6 @@ Each step runs in an isolated worktree, validates its outputs, and merges back
 to the base branch. Every prompt, artifact, and decision is committed to git.
 
 ### Execution (parallel)
-
 `governator start` then continues through execution. It loads the task index,
 respects concurrency caps, and dispatches workers through the lifecycle:
 
@@ -161,9 +142,7 @@ Each worker:
 - Never merges to `main`, never retains memory between runs
 
 ---
-
 ## CLI Reference
-
 ```
 governator --help
 governator - AI-powered task orchestration engine
@@ -193,7 +172,6 @@ Run 'governator <command> -h' for command-specific help.
 ```
 
 ### Command Options
-
 ```text
 governator init [options]
   -a, --agent <cli>             Set default worker CLI (codex, claude, gemini)
@@ -221,9 +199,7 @@ governator tail [options]
 ```
 
 ---
-
 ## Directory Layout
-
 ```
 _governator/
   .gitignore              # Ignores runtime-only local state
@@ -242,10 +218,8 @@ _governator/
   templates/              # Architecture & planning templates
 ```
 ---
-
 ## Testing
-
-Simply invoke `./test.sh`.
+Execute all automated verification by running `./test.sh`.
 
 ```text
 ./test.sh -h
@@ -268,32 +242,28 @@ Examples:
 ```
 
 ---
-
 ## Core Design
-
-Why did I build this? To get PoCs from zero to one. Plain and simple.
+Why did I build this? To get PoCs from zero to one.
 
 **Determinism by design.** Governator intentionally avoids chat-based
 orchestration, shared agent memory, implicit context, and conversational state.
-If something matters, it exists as a file in git. This makes the system
-auditable, reproducible, debuggable, and safe to automate.
+If something matters, it exists as a file. This makes the system auditable,
+reproducible, debuggable, and safe to automate.
 
 **Separation of concerns.** Governator owns task creation, assignment, review,
 and merging. Workers own executing exactly one task, in exactly one role, on an
 isolated branch, with explicit and reviewable output. All coordination happens
 through the filesystem, git branches, and markdown documents.
 
-**Worker accountability.** Every worker invocation is staged with a deterministic
-prompt stack, environment variables (`GOVERNATOR_TASK_ID`, `GOVERNATOR_WORKTREE_DIR`,
-etc.), and produces an `exit.json` artifact. Audit logs track every state transition.
+**Worker accountability.** Every worker invocation is staged with a
+deterministic prompt stack, environment variables (`GOVERNATOR_TASK_ID`,
+`GOVERNATOR_WORKTREE_DIR`, etc.), and produces an `exit.json` artifact. Audit
+logs track every state transition.
 
-**Operator control.** Operators can override prompts, roles, concurrency caps, even the entire planning phase is
-entirely JSON-configurable.
+**Operator control.** Operators can override prompts, roles, concurrency caps,
+even the entire planning stage itself is entirely JSON-configurable.
 
----
-
-## Philosophy
-
+### Philosophy
 Correctness and bounded execution matter more than speed or cleverness.
 
 Governator treats LLMs as workers, not collaborators. Creativity lives in
@@ -303,7 +273,5 @@ If a task is ambiguous, it should block. If a decision is architectural,
 it should be explicit. If work cannot be reviewed, it should not be merged.
 
 ---
-
 ## License
-
 [MIT](LICENSE.txt)
