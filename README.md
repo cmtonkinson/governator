@@ -128,14 +128,47 @@ You can always edit `_governator/_durable-state/config.json` post-init.
 
 ---
 ## How It Works
-Governator orchestrates planning and execution in one unified supervisor flow:
+Governator orchestrates planning and execution with a process supervisor:
 
-### Planning (serial)
-`governator start` walks through a deterministic planning pipeline defined in `_governator/planning.json`:
-1. **Architecture baseline** - analyze/design the system (personas, ASR, Wardley map, arc42, C4, ADRs)
-2. **Gap analysis** - compare current state to stated intent
+### Planning
+Up front, Governator loads the planning pipeline from
+`_governator/planning.json` and runs each step, serially. Out of the box,
+Governator ships with an opinionated planning pipeline:
+1. **Architecture baseline** - analyze/design the system (personas, ASRs,
+   Wardley map, arc42, C4, ADRs)
+2. **Gap analysis** - compare current project to documented intent
 3. **Project planning** - decompose the gap into milestones and epics
 4. **Task planning** - generate discrete, individually-executable task files
+
+Whether you use the default planning logic or roll your own, the planning
+pipeline is considered successful if-and-only-if there are task files in the
+`tasks/` directory.
+
+### Triage
+Once planning is complete, Governator:
+- Loads all new task files into the backlog.
+- Looks across the backlog (plus any tasks which may have been previously
+  triaged) and generates a Directed Acyclic Graph (the DAG) of dependencies.
+- Writes dependency information to the task index.
+
+_Note: In practice, the DAG usually winds up being the primary limiting factor
+to effective parallelism during execution, so if you have allowed `C` amount of
+concurrency per your config but see `< C` active workers, check the DAG._
+
+### Execution
+With an open set of dependency-ordered tasks, Governator begins dispatching
+non-interactive coding agents ("workers") to implement each task. When a triaged
+task is first dispatched, a branch is created from main and worktree is
+generated, both of which are preserved and reused for the remainder of the
+task's lifecycle.
+
+When a task is completed, the worktree is deleted and the
+branch is merged into main.
+
+Each worker assigned to that task is given its own
+directory for invocation state, logs, etc.
+
+`governator start` walks through a deterministic planning pipeline defined in `_governator/planning.json`:
 
 Each step runs in an isolated worktree, validates its outputs, and merges back
 to the base branch. Every prompt, artifact, and decision is committed to git.
@@ -149,11 +182,9 @@ backlog -> triaged -> implemented -> tested -> reviewed -> mergeable -> merged
 ```
 
 Each worker:
-- Runs non-interactively (Codex, Claude Code, or Gemini CLI)
-- Operates on a dedicated branch in an isolated worktree
+- Runs non-interactively
+- Operates on a task-specific branch in an isolated worktree
 - Reads a deterministic prompt stack (reasoning, contract, role, custom prompts, task)
-- Pushes its branch exactly once and exits
-- Never merges to `main`, never retains memory between runs
 
 ---
 ## CLI Reference
