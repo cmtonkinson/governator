@@ -10,7 +10,7 @@ import (
 const (
 	mergeStageName      = "merge"
 	defaultUnknownToken = "unknown"
-	planRequiredCommand = "governator plan"
+	planRequiredCommand = "governator start"
 	autoReplanCommand   = "auto-replan"
 )
 

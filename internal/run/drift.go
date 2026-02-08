@@ -51,7 +51,7 @@ func CheckPlanningDrift(repoRoot string, stored index.Digests) error {
 		return nil
 	}
 
-	message := fmt.Sprintf("%s\nNext steps: rerun `governator plan` to regenerate planning artifacts and the task index.", report.Message)
+	message := fmt.Sprintf("%s\nNext steps: rerun `governator start` to regenerate planning artifacts and the task index.", report.Message)
 	return fmt.Errorf("%w: %s", ErrPlanningDrift, message)
 }
 

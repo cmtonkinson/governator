@@ -225,23 +225,22 @@ func ExecutionSupervisorRunning(repoRoot string) (ExecutionSupervisorState, bool
 }
 
 // AnySupervisorRunning reports whether any supervisor process is active.
+// It prefers the unified/execution supervisor and treats planning as legacy fallback.
 func AnySupervisorRunning(repoRoot string) (string, bool, error) {
+	_, executionRunning, err := SupervisorRunning(repoRoot, SupervisorKindExecution)
+	if err != nil {
+		return "", false, err
+	}
+	if executionRunning {
+		return string(SupervisorKindExecution), true, nil
+	}
 	planningState, planningRunning, err := SupervisorRunning(repoRoot, SupervisorKindPlanning)
 	if err != nil {
 		return "", false, err
 	}
-	executionState, executionRunning, err := SupervisorRunning(repoRoot, SupervisorKindExecution)
-	if err != nil {
-		return "", false, err
-	}
-	if planningRunning && executionRunning {
-		return "", false, fmt.Errorf("multiple supervisors detected: planning pid %d, execution pid %d", planningState.PID, executionState.PID)
-	}
 	if planningRunning {
+		_ = planningState
 		return string(SupervisorKindPlanning), true, nil
-	}
-	if executionRunning {
-		return string(SupervisorKindExecution), true, nil
 	}
 	return "", false, nil
 }

@@ -55,13 +55,10 @@ vim GOVERNATOR.md
 # 2. Initialize the workspace
 governator init
 
-# 3. Run the planning phase
-governator plan
+# 3. Start unified orchestration (planning + execution)
+governator start
 
-# 4. Execute the plan
-governator execute
-
-# 5. During planning and execution, you may:
+# 4. During orchestration, you may:
 governator status           # Show workers and tasks   
 governator status --watch   # Live view of workers and tasks (q to quit)
 governator tail             # Stream worker logs to your terminal (q to quit)
@@ -134,12 +131,11 @@ Per-role overrides are available for CLI backend, concurrency caps, and reasonin
 
 ## How It Works
 
-Governator splits work into two phases:
+Governator orchestrates planning and execution in one unified supervisor flow:
 
-### Phase 1: Planning (serial)
+### Planning (serial)
 
-`governator plan` launches a background supervisor that walks through a
-deterministic planning pipeline defined in `_governator/planning.json`:
+`governator start` walks through a deterministic planning pipeline defined in `_governator/planning.json`:
 
 1. **Architecture baseline** - analyze/design the system (personas, ASR, Wardley map, arc42, C4, ADRs)
 2. **Gap analysis** - compare current state to stated intent
@@ -149,9 +145,9 @@ deterministic planning pipeline defined in `_governator/planning.json`:
 Each step runs in an isolated worktree, validates its outputs, and merges back
 to the base branch. Every prompt, artifact, and decision is committed to git.
 
-### Phase 2: Execution (parallel)
+### Execution (parallel)
 
-`governator execute` launches the execution supervisor. It loads the task index,
+`governator start` then continues through execution. It loads the task index,
 respects concurrency caps, and dispatches workers through the lifecycle:
 
 ```
@@ -164,6 +160,8 @@ Each worker:
 - Reads a deterministic prompt stack (reasoning, contract, role, custom prompts, task)
 - Pushes its branch exactly once and exits
 - Never merges to `main`, never retains memory between runs
+
+`governator plan` and `governator execute` remain available as deprecated aliases for `governator start`.
 
 ---
 
@@ -183,8 +181,9 @@ GLOBAL OPTIONS:
 
 COMMANDS:
     init             Bootstrap a new governator workspace in the current repository
-    plan             Start the planning supervisor to analyze tasks and generate execution plan
-    execute          Start the execution supervisor to run the generated plan
+    start            Start the unified supervisor to plan, triage, and execute work
+    plan             Deprecated alias for 'start'
+    execute          Deprecated alias for 'start'
     status           Display current supervisor and task status
     dag              Display task dependency graph (DAG)
     stop             Stop the running supervisor gracefully

@@ -355,36 +355,6 @@ func GetSummary(repoRoot string) (Summary, error) {
 	}
 	summary.Aggregates = aggregates
 
-	if supervisorState, ok, err := supervisor.LoadPlanningState(repoRoot); err != nil {
-		return Summary{}, fmt.Errorf("load planning supervisor state: %w", err)
-	} else if ok {
-		state := supervisorState
-		if supervisorState.State == supervisor.SupervisorStateRunning {
-			runningState, running, err := supervisor.PlanningSupervisorRunning(repoRoot)
-			if err != nil {
-				return Summary{}, fmt.Errorf("check planning supervisor: %w", err)
-			}
-			if running {
-				state = runningState
-			} else {
-				state.State = supervisor.SupervisorStateFailed
-			}
-		}
-		if state.State == supervisor.SupervisorStateRunning || state.State == supervisor.SupervisorStateFailed {
-			summary.Supervisors = append(summary.Supervisors, SupervisorSummary{
-				Phase:          strings.TrimSpace(state.Phase),
-				State:          string(state.State),
-				PID:            state.PID,
-				WorkerPID:      state.WorkerPID,
-				ValidationPID:  state.ValidationPID,
-				StepID:         state.StepID,
-				StepName:       state.StepName,
-				StartedAt:      state.StartedAt,
-				LastTransition: state.LastTransition,
-				LogPath:        state.LogPath,
-			})
-		}
-	}
 	if supervisorState, ok, err := supervisor.LoadExecutionState(repoRoot); err != nil {
 		return Summary{}, fmt.Errorf("load execution supervisor state: %w", err)
 	} else if ok {
@@ -413,7 +383,7 @@ func GetSummary(repoRoot string) (Summary, error) {
 				LastTransition: state.LastTransition,
 				LogPath:        state.LogPath,
 			})
-			// Collect active workers from execution supervisor (during triage step)
+			// Collect active workers from the unified supervisor (during triage step)
 			if state.WorkerPID > 0 && state.StepID == "triage" {
 				summary.Workers = append(summary.Workers, WorkerSummary{
 					PID:       state.WorkerPID,
@@ -598,10 +568,10 @@ func planningStepSummary(repoRoot string, idx index.Index, supervisors []Supervi
 		return nil, fmt.Errorf("planning state id %q not found in planning spec", stateID)
 	}
 
-	// Find the planning supervisor to get PID and StartedAt
+	// Find the unified supervisor to expose runtime details for a running plan step.
 	var planningSupervisor *SupervisorSummary
 	for i := range supervisors {
-		if supervisors[i].Phase == "planning" {
+		if supervisors[i].Phase == "start" && supervisors[i].StepID == "plan" {
 			planningSupervisor = &supervisors[i]
 			break
 		}
@@ -618,9 +588,8 @@ func planningStepSummary(repoRoot string, idx index.Index, supervisors []Supervi
 			status = "complete"
 		case i == currentIndex:
 			status = "in-progress"
-			// For the current step, get PID and StartedAt from supervisor
-			// Use LastTransition as it's updated when the worker starts
-			if planningSupervisor != nil && planningSupervisor.StepID == step.ID {
+			// For the current step, use supervisor transition timing while planning runs.
+			if planningSupervisor != nil {
 				pid = planningSupervisor.WorkerPID
 				startedAt = planningSupervisor.LastTransition
 			}

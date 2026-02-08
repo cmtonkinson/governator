@@ -42,8 +42,9 @@ GLOBAL OPTIONS:
 
 COMMANDS:
     init             Bootstrap a new governator workspace in the current repository
-    plan             Start the planning supervisor to analyze tasks and generate execution plan
-    execute          Start the execution supervisor to run the generated plan
+    start            Start the unified supervisor to plan, triage, and execute work
+    plan             Deprecated alias for 'start'
+    execute          Deprecated alias for 'start'
     status           Display current supervisor and task status
     dag              Display task dependency graph (DAG)
     stop             Stop the running supervisor gracefully
@@ -104,6 +105,8 @@ func main() {
 	switch command {
 	case "init":
 		runInit(isVerbose, commandArgs)
+	case "start":
+		runStart(commandArgs)
 	case "plan":
 		runPlan(commandArgs)
 	case "execute":
@@ -260,8 +263,8 @@ func commitInit(repoRoot string) error {
 	return nil
 }
 
-// launchSupervisor extracts common logic for launching planning and execution supervisors.
-func launchSupervisor(kind supervisor.SupervisorKind, commandArg string) {
+// launchSupervisor launches the unified supervisor in the background.
+func launchSupervisor(commandArg string) {
 	repoRoot, err := repo.DiscoverRootFromCWD()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
@@ -279,7 +282,7 @@ func launchSupervisor(kind supervisor.SupervisorKind, commandArg string) {
 		os.Exit(1)
 	}
 
-	logPath := supervisor.LogPath(repoRoot, kind)
+	logPath := supervisor.LogPath(repoRoot, supervisor.SupervisorKindExecution)
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -301,14 +304,14 @@ func launchSupervisor(kind supervisor.SupervisorKind, commandArg string) {
 	}
 	pid := cmd.Process.Pid
 	state := supervisor.SupervisorStateInfo{
-		Phase:          string(kind),
+		Phase:          "start",
 		PID:            pid,
 		State:          supervisor.SupervisorStateRunning,
 		StartedAt:      time.Now().UTC(),
 		LastTransition: time.Now().UTC(),
 		LogPath:        logPath,
 	}
-	if err := supervisor.SaveState(repoRoot, kind, state); err != nil {
+	if err := supervisor.SaveState(repoRoot, supervisor.SupervisorKindExecution, state); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
@@ -316,66 +319,19 @@ func launchSupervisor(kind supervisor.SupervisorKind, commandArg string) {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
-	fmt.Printf("%s supervisor started (pid %d)\n", kind, pid)
+	fmt.Printf("start supervisor started (pid %d)\n", pid)
 }
 
-func runPlan(args []string) {
-	flags := flag.NewFlagSet("plan", flag.ExitOnError)
+func runStart(args []string) {
+	flags := flag.NewFlagSet("start", flag.ExitOnError)
 	supervisorMode := flags.Bool("supervisor", false, "")
 	flags.Usage = func() {
 		fmt.Fprint(os.Stderr, `USAGE:
-    governator plan
+    governator start
 
 DESCRIPTION:
-    Start the planning supervisor in the background.
-    The supervisor analyzes pending tasks, generates an execution DAG, and prepares
-    for execution. Returns immediately after spawning the supervisor process.
-
-    Use 'governator status' to monitor progress and 'governator tail' to stream logs.
-
-OPTIONS:
-    -h, --help    Show this help message
-`)
-	}
-	flags.Parse(args)
-
-	if *supervisorMode {
-		runPlanSupervisor()
-		return
-	}
-
-	if flags.NArg() > 0 {
-		fmt.Fprintf(os.Stderr, "governator plan: unexpected arguments\n\n")
-		flags.Usage()
-		os.Exit(2)
-	}
-
-	launchSupervisor(supervisor.SupervisorKindPlanning, "plan")
-}
-
-func runPlanSupervisor() {
-	repoRoot, err := repo.DiscoverRootFromCWD()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(2)
-	}
-	if err := run.RunPlanningSupervisor(repoRoot, run.PlanningSupervisorOptions{Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-}
-
-func runExecute(args []string) {
-	flags := flag.NewFlagSet("execute", flag.ExitOnError)
-	supervisorMode := flags.Bool("supervisor", false, "")
-	flags.Usage = func() {
-		fmt.Fprint(os.Stderr, `USAGE:
-    governator execute
-
-DESCRIPTION:
-    Start the execution supervisor in the background.
-    The supervisor processes the execution plan created by 'governator plan',
-    dispatching work to agents and managing task orchestration.
+    Start the unified supervisor in the background.
+    The supervisor plans, triages, executes, and auto-replans on ADR drift.
     Returns immediately after spawning the supervisor process.
 
     Use 'governator status' to monitor progress and 'governator tail' to stream logs.
@@ -387,29 +343,39 @@ OPTIONS:
 	flags.Parse(args)
 
 	if *supervisorMode {
-		runExecuteSupervisor()
+		runStartSupervisor()
 		return
 	}
 
 	if flags.NArg() > 0 {
-		fmt.Fprintf(os.Stderr, "governator execute: unexpected arguments\n\n")
+		fmt.Fprintf(os.Stderr, "governator start: unexpected arguments\n\n")
 		flags.Usage()
 		os.Exit(2)
 	}
 
-	launchSupervisor(supervisor.SupervisorKindExecution, "execute")
+	launchSupervisor("start")
 }
 
-func runExecuteSupervisor() {
+func runStartSupervisor() {
 	repoRoot, err := repo.DiscoverRootFromCWD()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(2)
 	}
-	if err := run.RunExecutionSupervisor(repoRoot, run.ExecutionSupervisorOptions{Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
+	if err := run.RunUnifiedSupervisor(repoRoot, run.UnifiedSupervisorOptions{Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
+}
+
+func runPlan(args []string) {
+	fmt.Fprintln(os.Stderr, "warning: 'governator plan' is deprecated; use 'governator start'")
+	runStart(args)
+}
+
+func runExecute(args []string) {
+	fmt.Fprintln(os.Stderr, "warning: 'governator execute' is deprecated; use 'governator start'")
+	runStart(args)
 }
 
 func runStop(args []string) {
@@ -451,18 +417,13 @@ OPTIONS:
 	} else if !running {
 		fmt.Fprintln(os.Stderr, "no supervisor running")
 		os.Exit(1)
-	} else if phase == string(supervisor.SupervisorKindPlanning) {
-		if err := run.StopPlanningSupervisor(repoRoot, run.PlanningSupervisorStopOptions{StopWorker: stopWorker}); err != nil {
-			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
-		}
-		fmt.Println("planning supervisor stopped")
 	} else {
-		if err := run.StopExecutionSupervisor(repoRoot, run.ExecutionSupervisorStopOptions{StopWorker: stopWorker}); err != nil {
+		_ = phase
+		if err := run.StopUnifiedSupervisor(repoRoot, run.UnifiedSupervisorStopOptions{StopWorker: stopWorker}); err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
 		}
-		fmt.Println("execution supervisor stopped")
+		fmt.Println("start supervisor stopped")
 	}
 }
 
@@ -475,8 +436,8 @@ func runRestart(args []string) {
     governator restart [options]
 
 DESCRIPTION:
-    Stop the current supervisor and immediately restart it in the same phase.
-    If no supervisor is running, starts the planning phase.
+    Stop the current supervisor and immediately restart unified orchestration.
+    If no supervisor is running, starts the unified supervisor.
     Useful for picking up configuration changes or recovering from errors.
 
 OPTIONS:
@@ -505,22 +466,15 @@ OPTIONS:
 		os.Exit(1)
 	}
 	if !running {
-		runPlan(nil)
+		runStart(nil)
 		return
 	}
-	if phase == string(supervisor.SupervisorKindPlanning) {
-		if err := run.StopPlanningSupervisor(repoRoot, run.PlanningSupervisorStopOptions{StopWorker: stopWorker}); err != nil && !errors.Is(err, supervisor.ErrSupervisorNotRunning) {
-			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
-		}
-		runPlan(nil)
-		return
-	}
-	if err := run.StopExecutionSupervisor(repoRoot, run.ExecutionSupervisorStopOptions{StopWorker: stopWorker}); err != nil && !errors.Is(err, supervisor.ErrSupervisorNotRunning) {
+	_ = phase
+	if err := run.StopUnifiedSupervisor(repoRoot, run.UnifiedSupervisorStopOptions{StopWorker: stopWorker}); err != nil && !errors.Is(err, supervisor.ErrSupervisorNotRunning) {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
-	runExecute(nil)
+	runStart(nil)
 }
 
 func runReset(args []string) {
@@ -563,14 +517,9 @@ OPTIONS:
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
-	if running && phase == string(supervisor.SupervisorKindPlanning) {
-		if err := run.StopPlanningSupervisor(repoRoot, run.PlanningSupervisorStopOptions{StopWorker: stopWorker}); err != nil && !errors.Is(err, supervisor.ErrSupervisorNotRunning) {
-			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
-		}
-	}
-	if running && phase == string(supervisor.SupervisorKindExecution) {
-		if err := run.StopExecutionSupervisor(repoRoot, run.ExecutionSupervisorStopOptions{StopWorker: stopWorker}); err != nil && !errors.Is(err, supervisor.ErrSupervisorNotRunning) {
+	if running {
+		_ = phase
+		if err := run.StopUnifiedSupervisor(repoRoot, run.UnifiedSupervisorStopOptions{StopWorker: stopWorker}); err != nil && !errors.Is(err, supervisor.ErrSupervisorNotRunning) {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
 		}
@@ -582,19 +531,21 @@ OPTIONS:
 		fmt.Fprintln(os.Stderr, "supervisor still running; retry reset after it exits")
 		os.Exit(1)
 	}
-	if err := supervisor.ClearState(repoRoot, supervisor.SupervisorKindPlanning); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
 	if err := supervisor.ClearState(repoRoot, supervisor.SupervisorKindExecution); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
-	if err := supervisorlock.Remove(repoRoot, supervisor.PlanningSupervisorLockName); err != nil {
+	// Clear legacy planning supervisor state if present.
+	if err := supervisor.ClearState(repoRoot, supervisor.SupervisorKindPlanning); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 	if err := supervisorlock.Remove(repoRoot, supervisor.ExecutionSupervisorLockName); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	// Remove legacy planning lock if present.
+	if err := supervisorlock.Remove(repoRoot, supervisor.PlanningSupervisorLockName); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
@@ -603,15 +554,10 @@ OPTIONS:
 
 // ensureNoSupervisorLocks blocks supervisor startup when any lock is held.
 func ensureNoSupervisorLocks(repoRoot string) error {
-	if held, err := supervisorlock.Held(repoRoot, supervisor.PlanningSupervisorLockName); err != nil {
-		return err
-	} else if held {
-		return errors.New("planning supervisor lock already held; use governator stop or governator reset first")
-	}
 	if held, err := supervisorlock.Held(repoRoot, supervisor.ExecutionSupervisorLockName); err != nil {
 		return err
 	} else if held {
-		return errors.New("execution supervisor lock already held; use governator stop or governator reset first")
+		return errors.New("start supervisor lock already held; use governator stop or governator reset first")
 	}
 	return nil
 }

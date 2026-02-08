@@ -1,4 +1,4 @@
-// Package run provides execution supervisor control helpers.
+// Package run provides supervisor control helpers.
 package run
 
 import (
@@ -10,13 +10,13 @@ import (
 	"github.com/cmtonkinson/governator/internal/supervisor"
 )
 
-// ExecutionSupervisorStopOptions configures stop behavior for the execution supervisor.
-type ExecutionSupervisorStopOptions struct {
+// UnifiedSupervisorStopOptions configures stop behavior for the unified supervisor.
+type UnifiedSupervisorStopOptions struct {
 	StopWorker bool
 }
 
-// StopExecutionSupervisor terminates the execution supervisor and optionally its active workers.
-func StopExecutionSupervisor(repoRoot string, opts ExecutionSupervisorStopOptions) error {
+// StopUnifiedSupervisor terminates the unified supervisor and optionally its active workers.
+func StopUnifiedSupervisor(repoRoot string, opts UnifiedSupervisorStopOptions) error {
 	if strings.TrimSpace(repoRoot) == "" {
 		return fmt.Errorf("repo root is required")
 	}
@@ -53,6 +53,16 @@ func StopExecutionSupervisor(repoRoot string, opts ExecutionSupervisorStopOption
 	state.Error = ""
 	state.LastTransition = time.Now().UTC()
 	return supervisor.SaveExecutionState(repoRoot, state)
+}
+
+// ExecutionSupervisorStopOptions configures stop behavior for the legacy execution supervisor API.
+// Deprecated: use UnifiedSupervisorStopOptions.
+type ExecutionSupervisorStopOptions = UnifiedSupervisorStopOptions
+
+// StopExecutionSupervisor terminates the unified supervisor.
+// Deprecated: use StopUnifiedSupervisor.
+func StopExecutionSupervisor(repoRoot string, opts ExecutionSupervisorStopOptions) error {
+	return StopUnifiedSupervisor(repoRoot, UnifiedSupervisorStopOptions(opts))
 }
 
 // stopExecutionWorkers attempts to terminate all in-flight execution workers.

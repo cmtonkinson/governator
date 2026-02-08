@@ -4,7 +4,6 @@ package supervisor
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
@@ -222,12 +221,15 @@ func TestAnySupervisorRunning(t *testing.T) {
 	}
 	ClearState(repoRoot, SupervisorKindExecution)
 
-	// Both supervisors running (should error)
+	// Both supervisors running (execution should be preferred)
 	SaveState(repoRoot, SupervisorKindPlanning, planningState)
 	SaveState(repoRoot, SupervisorKindExecution, execState)
-	_, _, err = AnySupervisorRunning(repoRoot)
-	if err == nil || !strings.Contains(err.Error(), "multiple supervisors detected") {
-		t.Fatalf("AnySupervisorRunning (both) did not return expected error, got: %v", err)
+	kind, running, err = AnySupervisorRunning(repoRoot)
+	if err != nil {
+		t.Fatalf("AnySupervisorRunning (both) failed: %v", err)
+	}
+	if !running || kind != string(SupervisorKindExecution) {
+		t.Fatalf("AnySupervisorRunning (both) reported %s, running %t, want execution, true", kind, running)
 	}
 	ClearState(repoRoot, SupervisorKindPlanning)
 	ClearState(repoRoot, SupervisorKindExecution)

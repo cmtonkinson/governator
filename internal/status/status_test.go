@@ -129,15 +129,15 @@ func TestGetSummarySupervisorFiltering(t *testing.T) {
 			t.Fatalf("save index: %v", err)
 		}
 		now := time.Now().UTC()
-		if err := supervisor.SavePlanningState(repoRoot, supervisor.PlanningSupervisorState{
-			Phase:          "planning",
+		if err := supervisor.SaveExecutionState(repoRoot, supervisor.ExecutionSupervisorState{
+			Phase:          "start",
 			PID:            os.Getpid(),
 			State:          supervisor.SupervisorStateRunning,
 			StartedAt:      now,
 			LastTransition: now,
-			LogPath:        supervisor.PlanningLogPath(repoRoot),
+			LogPath:        supervisor.ExecutionLogPath(repoRoot),
 		}); err != nil {
-			t.Fatalf("save planning state: %v", err)
+			t.Fatalf("save execution state: %v", err)
 		}
 
 		summary, err := GetSummary(repoRoot)

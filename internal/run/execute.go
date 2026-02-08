@@ -31,7 +31,7 @@ func Execute(repoRoot string, opts Options) (Result, error) {
 		return Result{}, fmt.Errorf("planning index: %w", err)
 	}
 	if !complete {
-		return Result{}, fmt.Errorf("planning incomplete: run `governator plan` before executing")
+		return Result{}, fmt.Errorf("planning incomplete: run `governator start` before executing")
 	}
 
 	return Run(repoRoot, opts)

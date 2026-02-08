@@ -62,7 +62,7 @@ func TestCheckPlanningDriftDetectsChange(t *testing.T) {
 	if !strings.Contains(message, "ADR added") {
 		t.Fatalf("expected drift details, got %q", message)
 	}
-	if !strings.Contains(message, "governator plan") {
+	if !strings.Contains(message, "governator start") {
 		t.Fatalf("expected replanning guidance, got %q", message)
 	}
 }

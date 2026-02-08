@@ -143,7 +143,7 @@ func TestPipelineIntegrationDrift(t *testing.T) {
 	if !strings.Contains(output, "planning=drift status=blocked") {
 		t.Fatalf("stdout = %q, want planning drift prefix", output)
 	}
-	if !strings.Contains(output, "governator plan") {
+	if !strings.Contains(output, "governator start") {
 		t.Fatalf("stdout = %q, want plan guidance", output)
 	}
 }

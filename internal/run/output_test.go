@@ -40,7 +40,7 @@ func TestPlanningDriftMessage(t *testing.T) {
 	var buf bytes.Buffer
 	emitPlanningDriftMessage(&buf, "Planning drift detected")
 	got := buf.String()
-	want := "planning=drift status=blocked reason=\"Planning drift detected\" next_step=\"governator plan\"\n"
+	want := "planning=drift status=blocked reason=\"Planning drift detected\" next_step=\"governator start\"\n"
 	if got != want {
 		t.Fatalf("drift message = %q, want %q", got, want)
 	}
