@@ -46,6 +46,7 @@ COMMANDS:
     plan             Alias for 'start'
     execute          Alias for 'start'
     status           Display current supervisor and task status
+    why              Show the most recent supervisor log lines
     dag              Display task dependency graph (DAG)
     stop             Stop the running supervisor gracefully
     restart          Stop and restart the current supervisor phase
@@ -113,6 +114,8 @@ func main() {
 		runExecute(commandArgs)
 	case "status":
 		runStatus(commandArgs)
+	case "why":
+		runWhy(commandArgs)
 	case "dag":
 		runDAG(commandArgs)
 	case "stop":
@@ -649,6 +652,301 @@ OPTIONS:
 
 	dagSummary := dag.GetSummary(idx)
 	fmt.Println(dagSummary.String())
+}
+
+func runWhy(args []string) {
+	flags := flag.NewFlagSet("why", flag.ExitOnError)
+	supervisorLinesShort := flags.Int("s", 20, "")
+	supervisorLinesLong := flags.Int("supervisor-lines", 20, "")
+	taskLinesShort := flags.Int("t", 20, "")
+	taskLinesLong := flags.Int("task-lines", 20, "")
+	flags.Usage = func() {
+		fmt.Fprint(os.Stderr, `USAGE:
+    governator why [-s <lines>] [-t <lines>]
+
+DESCRIPTION:
+    Print recent supervisor log lines plus recent worker stdout lines for each
+    blocked or failed task.
+
+OPTIONS:
+    -s, --supervisor-lines <lines>    Supervisor trailing lines (default: 20)
+    -t, --task-lines <lines>          Per-task trailing lines (default: 20)
+    -h, --help                        Show this help message
+`)
+	}
+	flags.Parse(args)
+
+	supervisorLines := *supervisorLinesShort
+	if *supervisorLinesLong != 20 {
+		supervisorLines = *supervisorLinesLong
+	}
+	taskLines := *taskLinesShort
+	if *taskLinesLong != 20 {
+		taskLines = *taskLinesLong
+	}
+
+	if flags.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "governator why: unexpected arguments\n\n")
+		flags.Usage()
+		os.Exit(2)
+	}
+	if supervisorLines <= 0 {
+		fmt.Fprintln(os.Stderr, "governator why: -s/--supervisor-lines must be a positive integer")
+		os.Exit(2)
+	}
+	if taskLines <= 0 {
+		fmt.Fprintln(os.Stderr, "governator why: -t/--task-lines must be a positive integer")
+		os.Exit(2)
+	}
+
+	repoRoot, err := repo.DiscoverRootFromCWD()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(2)
+	}
+
+	logPath := supervisor.LogPath(repoRoot)
+	supervisorPID := 0
+	supervisorState := "unknown"
+	state, ok, err := supervisor.LoadState(repoRoot)
+	if err == nil && ok && strings.TrimSpace(state.LogPath) != "" {
+		logPath = state.LogPath
+	}
+	if err == nil && ok {
+		supervisorPID = state.PID
+		if strings.TrimSpace(string(state.State)) != "" {
+			supervisorState = string(state.State)
+		}
+	}
+
+	lastLines, err := readLastLines(logPath, supervisorLines)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	colorizeHeaders := shouldColorizeOutput(os.Stdout)
+	fmt.Fprintln(os.Stdout, formatWhySupervisorHeader(supervisorPID, supervisorState, supervisorLines, colorizeHeaders))
+	if len(lastLines) > 0 {
+		fmt.Fprintln(os.Stdout, strings.Join(lastLines, "\n"))
+	}
+
+	sections, err := collectWhyTaskSections(repoRoot, taskLines, state, ok)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	for _, section := range sections {
+		fmt.Fprintln(os.Stdout)
+		if section.logPath == "" {
+			fmt.Fprintln(os.Stdout, formatWhyTaskMissingHeader(section.taskID, section.kind, colorizeHeaders))
+			continue
+		}
+		displayPath := section.logPath
+		if relPath, relErr := filepath.Rel(repoRoot, section.logPath); relErr == nil {
+			displayPath = filepath.ToSlash(relPath)
+		}
+		fmt.Fprintln(os.Stdout, formatWhyTaskHeader(section.taskID, section.kind, taskLines, displayPath, colorizeHeaders))
+		if len(section.lines) > 0 {
+			fmt.Fprintln(os.Stdout, strings.Join(section.lines, "\n"))
+		}
+	}
+}
+
+const (
+	ansiReset = "\x1b[0m"
+	ansiDim   = "\x1b[2m"
+	ansiRed   = "\x1b[31m"
+)
+
+// shouldColorizeOutput reports whether ANSI styling should be emitted.
+func shouldColorizeOutput(out *os.File) bool {
+	if out == nil || os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
+		return false
+	}
+	info, err := out.Stat()
+	if err != nil {
+		return false
+	}
+	return (info.Mode() & os.ModeCharDevice) != 0
+}
+
+// formatWhySupervisorHeader renders the supervisor section header.
+func formatWhySupervisorHeader(pid int, state string, lines int, colorize bool) string {
+	return formatWhyHeader(
+		fmt.Sprintf("=== Supervisor %d (%s) last %d lines ===", pid, state, lines),
+		state,
+		colorize,
+	)
+}
+
+// formatWhyTaskHeader renders a task section header with log path context.
+func formatWhyTaskHeader(taskID string, kind string, lines int, logPath string, colorize bool) string {
+	return formatWhyHeader(
+		fmt.Sprintf("=== Task %s (%s) last %d lines from %s ===", taskID, kind, lines, logPath),
+		kind,
+		colorize,
+	)
+}
+
+// formatWhyTaskMissingHeader renders a task section header when no log is found.
+func formatWhyTaskMissingHeader(taskID string, kind string, colorize bool) string {
+	return formatWhyHeader(
+		fmt.Sprintf("=== Task %s (%s) no worker stdout log found ===", taskID, kind),
+		kind,
+		colorize,
+	)
+}
+
+// formatWhyHeader applies subtle header styling and failure highlighting.
+func formatWhyHeader(header string, state string, colorize bool) string {
+	if !colorize {
+		return header
+	}
+	styledState := state
+	if strings.EqualFold(strings.TrimSpace(state), "failed") {
+		styledState = ansiRed + state + ansiReset + ansiDim
+	}
+	stateToken := "(" + state + ")"
+	styledToken := "(" + styledState + ")"
+	styledHeader := strings.Replace(header, stateToken, styledToken, 1)
+	return ansiDim + styledHeader + ansiReset
+}
+
+// readLastLines returns up to maxLines trailing lines from path.
+func readLastLines(path string, maxLines int) ([]string, error) {
+	if strings.TrimSpace(path) == "" {
+		return nil, errors.New("log path is required")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("read log %s: %w", path, err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	lines := make([]string, 0, maxLines)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if len(lines) < maxLines {
+			lines = append(lines, line)
+			continue
+		}
+		copy(lines, lines[1:])
+		lines[len(lines)-1] = line
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("scan log %s: %w", path, err)
+	}
+	return lines, nil
+}
+
+// whyTaskSection captures a per-task output section for governator why.
+type whyTaskSection struct {
+	taskID  string
+	kind    string
+	logPath string
+	lines   []string
+}
+
+// collectWhyTaskSections returns per-task sections for blocked/failed execution tasks.
+func collectWhyTaskSections(repoRoot string, taskLines int, supervisorState supervisor.SupervisorStateInfo, hasSupervisorState bool) ([]whyTaskSection, error) {
+	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	idx, err := index.Load(indexPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("load task index: %w", err)
+	}
+
+	sections := make([]whyTaskSection, 0)
+	for _, task := range idx.Tasks {
+		kind := whyTaskKind(task, supervisorState, hasSupervisorState)
+		if kind == "" {
+			continue
+		}
+
+		logPath, err := latestTaskStdoutLog(repoRoot, task.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		section := whyTaskSection{
+			taskID:  task.ID,
+			kind:    kind,
+			logPath: logPath,
+		}
+		if logPath != "" {
+			lines, err := readLastLines(logPath, taskLines)
+			if err != nil {
+				return nil, err
+			}
+			section.lines = lines
+		}
+		sections = append(sections, section)
+	}
+	return sections, nil
+}
+
+// whyTaskKind classifies tasks that should show a task section in governator why.
+func whyTaskKind(task index.Task, supervisorState supervisor.SupervisorStateInfo, hasSupervisorState bool) string {
+	if task.State == index.TaskStateBlocked {
+		return "blocked"
+	}
+	if task.Attempts.Failed > 0 {
+		return "failed"
+	}
+	if task.Kind == index.TaskKindPlanning &&
+		hasSupervisorState &&
+		supervisorState.State == supervisor.SupervisorStateFailed &&
+		strings.TrimSpace(supervisorState.StepID) == "plan" {
+		return "failed"
+	}
+	return ""
+}
+
+// latestTaskStdoutLog returns the most recently modified stdout log for a task.
+func latestTaskStdoutLog(repoRoot string, taskID string) (string, error) {
+	if strings.TrimSpace(taskID) == "" {
+		return "", nil
+	}
+	taskStateDir := filepath.Join(
+		repoRoot,
+		"_governator",
+		"_local-state",
+		"task-"+taskID,
+		"_governator",
+		"_local-state",
+	)
+	entries, err := os.ReadDir(taskStateDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", nil
+		}
+		return "", fmt.Errorf("read task local state %s: %w", taskStateDir, err)
+	}
+
+	latestPath := ""
+	var latestTime time.Time
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		candidate := filepath.Join(taskStateDir, entry.Name(), "stdout.log")
+		info, err := os.Stat(candidate)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return "", fmt.Errorf("stat task stdout log %s: %w", candidate, err)
+		}
+		if latestPath == "" || info.ModTime().After(latestTime) || (info.ModTime().Equal(latestTime) && candidate > latestPath) {
+			latestPath = candidate
+			latestTime = info.ModTime()
+		}
+	}
+	return latestPath, nil
 }
 
 func runVersion() {

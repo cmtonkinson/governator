@@ -1,11 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const usageMessage = "USAGE:\n    governator [global options] <command> [command options]"
@@ -309,6 +311,280 @@ func TestStatusCommand(t *testing.T) {
 			if !strings.Contains(outputStr, id) {
 				t.Fatalf("expected task %s in output, got %q", id, outputStr)
 			}
+		}
+	})
+}
+
+func TestWhyCommand(t *testing.T) {
+	binaryPath := filepath.Join(t.TempDir(), "governator-test")
+	buildCmd := exec.Command("go", "build", "-o", binaryPath, ".")
+	if err := buildCmd.Run(); err != nil {
+		t.Fatalf("Failed to build CLI binary: %v", err)
+	}
+
+	tempDir := t.TempDir()
+	gitInitCmd := exec.Command("git", "init")
+	gitInitCmd.Dir = tempDir
+	if out, err := gitInitCmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init failed: %v, output: %s", err, out)
+	}
+
+	logPath := filepath.Join(tempDir, "_governator", "_local-state", "supervisor", "supervisor.log")
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+		t.Fatalf("mkdir log dir: %v", err)
+	}
+	lines := make([]string, 30)
+	for i := 1; i <= 30; i++ {
+		lines[i-1] = fmt.Sprintf("line-%02d", i)
+	}
+	if err := os.WriteFile(logPath, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		t.Fatalf("write supervisor log: %v", err)
+	}
+
+	t.Run("default line count is 20", func(t *testing.T) {
+		cmd := exec.Command(binaryPath, "why")
+		cmd.Dir = tempDir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("why failed: %v, output: %s", err, output)
+		}
+
+		got := strings.TrimSpace(string(output))
+		want := "=== Supervisor 0 (unknown) last 20 lines ===\n" + strings.Join(lines[10:], "\n")
+		if got != want {
+			t.Fatalf("unexpected output\nwant:\n%s\n\ngot:\n%s", want, got)
+		}
+	})
+
+	t.Run("custom supervisor line count with -s", func(t *testing.T) {
+		cmd := exec.Command(binaryPath, "why", "-s", "5")
+		cmd.Dir = tempDir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("why -s 5 failed: %v, output: %s", err, output)
+		}
+
+		got := strings.TrimSpace(string(output))
+		want := "=== Supervisor 0 (unknown) last 5 lines ===\n" + strings.Join(lines[25:], "\n")
+		if got != want {
+			t.Fatalf("unexpected output\nwant:\n%s\n\ngot:\n%s", want, got)
+		}
+	})
+
+	t.Run("rejects non-positive -s", func(t *testing.T) {
+		cmd := exec.Command(binaryPath, "why", "-s", "0")
+		cmd.Dir = tempDir
+		output, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Fatalf("expected failure for non-positive -s, output: %s", output)
+		}
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("expected ExitError, got %T", err)
+		}
+		if exitErr.ExitCode() != 2 {
+			t.Fatalf("exit code = %d, want 2", exitErr.ExitCode())
+		}
+		if !strings.Contains(string(output), "must be a positive integer") {
+			t.Fatalf("expected validation error, got: %s", output)
+		}
+	})
+
+	t.Run("rejects non-positive -t", func(t *testing.T) {
+		cmd := exec.Command(binaryPath, "why", "-t", "0")
+		cmd.Dir = tempDir
+		output, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Fatalf("expected failure for non-positive -t, output: %s", output)
+		}
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("expected ExitError, got %T", err)
+		}
+		if exitErr.ExitCode() != 2 {
+			t.Fatalf("exit code = %d, want 2", exitErr.ExitCode())
+		}
+		if !strings.Contains(string(output), "must be a positive integer") {
+			t.Fatalf("expected validation error, got: %s", output)
+		}
+	})
+
+	t.Run("shows blocked and failed task sections using most recent stdout", func(t *testing.T) {
+		blockedID := "T-BLOCKED-001"
+		failedID := "T-FAILED-001"
+		openID := "T-OPEN-001"
+
+		indexPath := filepath.Join(tempDir, "_governator", "_local-state", "index.json")
+		indexJSON := fmt.Sprintf(`{
+  "schema_version": 1,
+  "tasks": [
+    {
+      "id": %q,
+      "path": "_governator/tasks/%s.md",
+      "kind": "execution",
+      "state": "blocked",
+      "role": "default",
+      "dependencies": [],
+      "retries": {"max_attempts": 2},
+      "attempts": {"total": 1, "failed": 0},
+      "order": 1,
+      "overlap": []
+    },
+    {
+      "id": %q,
+      "path": "_governator/tasks/%s.md",
+      "kind": "execution",
+      "state": "triaged",
+      "role": "default",
+      "dependencies": [],
+      "retries": {"max_attempts": 2},
+      "attempts": {"total": 2, "failed": 1},
+      "order": 2,
+      "overlap": []
+    },
+    {
+      "id": %q,
+      "path": "_governator/tasks/%s.md",
+      "kind": "execution",
+      "state": "triaged",
+      "role": "default",
+      "dependencies": [],
+      "retries": {"max_attempts": 2},
+      "attempts": {"total": 0, "failed": 0},
+      "order": 3,
+      "overlap": []
+    }
+  ]
+}`, blockedID, blockedID, failedID, failedID, openID, openID)
+		if err := os.WriteFile(indexPath, []byte(indexJSON), 0o644); err != nil {
+			t.Fatalf("write index: %v", err)
+		}
+
+		blockedRoot := filepath.Join(tempDir, "_governator", "_local-state", "task-"+blockedID, "_governator", "_local-state")
+		blockedOldDir := filepath.Join(blockedRoot, "worker-1-work-default")
+		blockedNewDir := filepath.Join(blockedRoot, "worker-2-work-default")
+		if err := os.MkdirAll(blockedOldDir, 0o755); err != nil {
+			t.Fatalf("mkdir blocked old dir: %v", err)
+		}
+		if err := os.MkdirAll(blockedNewDir, 0o755); err != nil {
+			t.Fatalf("mkdir blocked new dir: %v", err)
+		}
+		blockedOldLog := filepath.Join(blockedOldDir, "stdout.log")
+		blockedNewLog := filepath.Join(blockedNewDir, "stdout.log")
+		if err := os.WriteFile(blockedOldLog, []byte("old-1\nold-2\n"), 0o644); err != nil {
+			t.Fatalf("write blocked old log: %v", err)
+		}
+		if err := os.WriteFile(blockedNewLog, []byte("new-1\nnew-2\nnew-3\nnew-4\n"), 0o644); err != nil {
+			t.Fatalf("write blocked new log: %v", err)
+		}
+		oldTime := time.Unix(1000, 0)
+		newTime := time.Unix(2000, 0)
+		if err := os.Chtimes(blockedOldLog, oldTime, oldTime); err != nil {
+			t.Fatalf("chtimes old log: %v", err)
+		}
+		if err := os.Chtimes(blockedNewLog, newTime, newTime); err != nil {
+			t.Fatalf("chtimes new log: %v", err)
+		}
+
+		failedRoot := filepath.Join(tempDir, "_governator", "_local-state", "task-"+failedID, "_governator", "_local-state")
+		failedDir := filepath.Join(failedRoot, "worker-1-test-default")
+		if err := os.MkdirAll(failedDir, 0o755); err != nil {
+			t.Fatalf("mkdir failed dir: %v", err)
+		}
+		failedLog := filepath.Join(failedDir, "stdout.log")
+		if err := os.WriteFile(failedLog, []byte("f-1\nf-2\nf-3\n"), 0o644); err != nil {
+			t.Fatalf("write failed log: %v", err)
+		}
+
+		cmd := exec.Command(binaryPath, "why", "-s", "2", "-t", "3")
+		cmd.Dir = tempDir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("why -s 2 -t 3 failed: %v, output: %s", err, output)
+		}
+		got := string(output)
+
+		if strings.Count(got, "=== ") != 3 {
+			t.Fatalf("expected exactly 3 sections (supervisor + blocked + failed), got output:\n%s", got)
+		}
+		if !strings.Contains(got, "=== Supervisor 0 (unknown) last 2 lines ===\nline-29\nline-30\n") {
+			t.Fatalf("missing supervisor section in output:\n%s", got)
+		}
+		if !strings.Contains(got, "=== Task "+blockedID+" (blocked) last 3 lines from _governator/_local-state/task-"+blockedID+"/_governator/_local-state/worker-2-work-default/stdout.log ===\nnew-2\nnew-3\nnew-4\n") {
+			t.Fatalf("missing blocked section with most recent stdout log in output:\n%s", got)
+		}
+		if !strings.Contains(got, "=== Task "+failedID+" (failed) last 3 lines from _governator/_local-state/task-"+failedID+"/_governator/_local-state/worker-1-test-default/stdout.log ===\nf-1\nf-2\nf-3\n") {
+			t.Fatalf("missing failed section in output:\n%s", got)
+		}
+		if strings.Contains(got, openID) {
+			t.Fatalf("unexpected open task section in output:\n%s", got)
+		}
+	})
+
+	t.Run("includes planning task section when supervisor failed during plan", func(t *testing.T) {
+		indexPath := filepath.Join(tempDir, "_governator", "_local-state", "index.json")
+		indexJSON := `{
+  "schema_version": 1,
+  "tasks": [
+    {
+      "id": "planning",
+      "path": "_governator/planning.json",
+      "kind": "planning",
+      "state": "governator_planning_not_started",
+      "role": "",
+      "dependencies": [],
+      "retries": {"max_attempts": 1},
+      "attempts": {"total": 0, "failed": 0},
+      "order": 0,
+      "overlap": []
+    }
+  ]
+}`
+		if err := os.WriteFile(indexPath, []byte(indexJSON), 0o644); err != nil {
+			t.Fatalf("write planning index: %v", err)
+		}
+
+		statePath := filepath.Join(tempDir, "_governator", "_local-state", "supervisor", "state.json")
+		stateJSON := `{
+  "phase": "start",
+  "pid": 12345,
+  "step_id": "plan",
+  "step_name": "Plan",
+  "state": "failed",
+  "started_at": "2026-02-08T00:00:00Z",
+  "last_transition": "2026-02-08T00:00:01Z",
+  "log_path": "` + filepath.ToSlash(logPath) + `"
+}`
+		if err := os.WriteFile(statePath, []byte(stateJSON), 0o644); err != nil {
+			t.Fatalf("write supervisor state: %v", err)
+		}
+
+		planningRoot := filepath.Join(tempDir, "_governator", "_local-state", "task-planning", "_governator", "_local-state")
+		planningWorkerDir := filepath.Join(planningRoot, "planning-architecture-baseline")
+		if err := os.MkdirAll(planningWorkerDir, 0o755); err != nil {
+			t.Fatalf("mkdir planning worker dir: %v", err)
+		}
+		planningLog := filepath.Join(planningWorkerDir, "stdout.log")
+		if err := os.WriteFile(planningLog, []byte("p-1\np-2\np-3\n"), 0o644); err != nil {
+			t.Fatalf("write planning stdout log: %v", err)
+		}
+
+		cmd := exec.Command(binaryPath, "why", "-s", "1", "-t", "2")
+		cmd.Dir = tempDir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("why with planning failure failed: %v, output: %s", err, output)
+		}
+		got := string(output)
+
+		if strings.Count(got, "=== ") != 2 {
+			t.Fatalf("expected exactly 2 sections (supervisor + planning), got output:\n%s", got)
+		}
+		if !strings.Contains(got, "=== Supervisor 12345 (failed) last 1 lines ===\nline-30\n") {
+			t.Fatalf("missing supervisor section in output:\n%s", got)
+		}
+		if !strings.Contains(got, "=== Task planning (failed) last 2 lines from _governator/_local-state/task-planning/_governator/_local-state/planning-architecture-baseline/stdout.log ===\np-2\np-3\n") {
+			t.Fatalf("missing planning section in output:\n%s", got)
 		}
 	})
 }
