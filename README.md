@@ -143,49 +143,48 @@ Governator ships with an opinionated planning pipeline:
 
 Whether you use the default planning logic or roll your own, the planning
 pipeline is considered successful if-and-only-if there are task files in the
-`tasks/` directory.
+`_governator/tasks/` directory.
 
 ### Triage
 Once planning is complete, Governator:
-- Loads all new task files into the backlog.
-- Looks across the backlog (plus any tasks which may have been previously
-  triaged) and generates a Directed Acyclic Graph (the DAG) of dependencies.
-- Writes dependency information to the task index.
+1. Loads all new task files into the backlog.
+2. Looks across the backlog (plus any tasks which may have been previously
+   triaged) and generates a Directed Acyclic Graph (the DAG) of dependencies.
+3. Writes dependency information to the task index.
+4. Dependency-resolved backlog tasks are moved into triage (the ready queue).
+
+### Execution
+With intent, a plan, and an open set of dependency-ordered tasks, Governator
+begins dispatching non-interactive coding agents ("workers") asynchronously to
+implement each task.
+
+When a triaged task is first dispatched, a branch is created from main and
+worktree is generated, both of which are preserved and reused for the remainder
+of the task's lifecycle. When a task is completed, the worktree is deleted and
+the branch is merged into main. Each worker assigned to that task is given its
+own directory for invocation state, logs, etc.
 
 _Note: In practice, the DAG usually winds up being the primary limiting factor
 to effective parallelism during execution, so if you have allowed `C` amount of
 concurrency per your config but see `< C` active workers, check the DAG._
 
-### Execution
-With an open set of dependency-ordered tasks, Governator begins dispatching
-non-interactive coding agents ("workers") to implement each task. When a triaged
-task is first dispatched, a branch is created from main and worktree is
-generated, both of which are preserved and reused for the remainder of the
-task's lifecycle.
-
-When a task is completed, the worktree is deleted and the
-branch is merged into main.
-
-Each worker assigned to that task is given its own
-directory for invocation state, logs, etc.
-
-`governator start` walks through a deterministic planning pipeline defined in `_governator/planning.json`:
-
-Each step runs in an isolated worktree, validates its outputs, and merges back
-to the base branch. Every prompt, artifact, and decision is committed to git.
-
-### Execution (parallel)
-`governator start` then continues through execution. It loads the task index,
-respects concurrency caps, and dispatches workers through the lifecycle:
-
+### Lifecycle
+On the happy path, tasks progress through the followig states:
 ```
 backlog -> triaged -> implemented -> tested -> reviewed -> mergeable -> merged
 ```
 
-Each worker:
-- Runs non-interactively
-- Operates on a task-specific branch in an isolated worktree
-- Reads a deterministic prompt stack (reasoning, contract, role, custom prompts, task)
+### Re-planning
+Governator is billed as a "waterfall" system but of course you don't get
+everything right up front. When a worker needs to change architecture or
+planning documents, Governator will detect those changes using file digests.
+When that occurs, it will cease new task dispatch. Once all active workers have
+stopped, Governator will restart planning and triage.
+
+In practice, this likely only happens when a worker needs to add a new ADR, but
+since those are core architectural documents and may invalidate or modify
+exsiting data (not just add new work to the end of the project), the safe thing
+to do is replan.
 
 ---
 ## CLI Reference
