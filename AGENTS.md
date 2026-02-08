@@ -1,5 +1,5 @@
 # Rules for operating within this project
-For full context, read `./README.md`.
+Read `./README.md` now.
 
 Never run `governator init` in this repository. This repo must not contain a
 generated `./_governator/` workspace. If initialization is needed for
