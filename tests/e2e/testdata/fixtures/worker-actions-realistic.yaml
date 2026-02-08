@@ -264,6 +264,19 @@ rules:
             - [ ] Repository layout documented
             - [ ] Build command specified
 
+  # Unified supervisor triage step
+  # Matches: triage DAG ordering prompt and writes mapping consumed by triage.
+  - pattern: 'Create a DAG among those issues|Write the DAG to `_governator/_local-state/dag.json`'
+    actions:
+      - write:
+          path: '_governator/_local-state/dag.json'
+          content: |
+            {
+              "001-output-format-contract-architect": [],
+              "002-metadata-error-policies-architect": [],
+              "003-repository-layout-build-planner": []
+            }
+
   # Generic planning completion marker
   - pattern: 'planning.*complete|task.*complete'
     actions:

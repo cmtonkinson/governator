@@ -16,11 +16,6 @@ func TestExecuteReviewMergeFlow_Success(t *testing.T) {
 	repo := testrepos.New(t)
 	repoRoot := repo.Root
 
-	originRoot := filepath.Join(repoRoot, "origin.git")
-	repo.RunGit(t, "init", "--bare", originRoot)
-	repo.RunGit(t, "remote", "add", "origin", originRoot)
-	repo.RunGit(t, "push", "-u", "origin", "main")
-
 	task := index.Task{
 		ID:    "T-MERGE-001",
 		Title: "Add merge flow coverage",
@@ -77,7 +72,7 @@ func TestExecuteReviewMergeFlow_Success(t *testing.T) {
 			}
 			fields := strings.Fields(line)
 			path := fields[len(fields)-1]
-			if strings.HasPrefix(path, "_governator/") || strings.HasPrefix(path, "origin.git/") {
+			if strings.HasPrefix(path, "_governator/") {
 				continue
 			}
 			t.Fatalf("repo root dirty after merge: %q", status)

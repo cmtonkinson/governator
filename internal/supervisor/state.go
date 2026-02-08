@@ -13,30 +13,16 @@ import (
 )
 
 const (
-	localStateDirName          = "_governator/_local-state"
-	planningSupervisorDirName  = "planning_supervisor"
-	executionSupervisorDirName = "execution_supervisor"
-	supervisorStateFile        = "state.json"
-	supervisorLogFile          = "supervisor.log"
-	supervisorDirMode          = 0o755
-	supervisorFileMode         = 0o644
+	localStateDirName   = "_governator/_local-state"
+	supervisorDirName   = "supervisor"
+	supervisorStateFile = "state.json"
+	supervisorLogFile   = "supervisor.log"
+	supervisorDirMode   = 0o755
+	supervisorFileMode  = 0o644
 )
 
-// SupervisorKind represents the type of supervisor (planning or execution).
-type SupervisorKind string
-
-const (
-	// SupervisorKindPlanning denotes the planning supervisor.
-	SupervisorKindPlanning SupervisorKind = "planning"
-	// SupervisorKindExecution denotes the execution supervisor.
-	SupervisorKindExecution SupervisorKind = "execution"
-)
-
-// PlanningSupervisorLockName is the lockfile name for planning supervision.
-const PlanningSupervisorLockName = "planning_supervisor.lock"
-
-// ExecutionSupervisorLockName is the lockfile name for execution supervision.
-const ExecutionSupervisorLockName = "execution_supervisor.lock"
+// SupervisorLockName is the lockfile name for unified supervision.
+const SupervisorLockName = "supervisor.lock"
 
 // SupervisorState labels the lifecycle state for a supervisor.
 type SupervisorState string
@@ -52,7 +38,7 @@ const (
 	SupervisorStateCompleted SupervisorState = "completed"
 )
 
-// SupervisorStateInfo captures persisted supervisor metadata, unified for both planning and execution.
+// SupervisorStateInfo captures persisted supervisor metadata.
 type SupervisorStateInfo struct {
 	Phase          string          `json:"phase"`
 	PID            int             `json:"pid"`
@@ -68,31 +54,71 @@ type SupervisorStateInfo struct {
 	WorkerStateDir string          `json:"worker_state_dir,omitempty"`
 }
 
-// PlanningSupervisorState is a type alias for SupervisorStateInfo.
-type PlanningSupervisorState = SupervisorStateInfo
-
-// ExecutionSupervisorState is a type alias for SupervisorStateInfo.
-type ExecutionSupervisorState = SupervisorStateInfo
-
-// ErrSupervisorNotRunning indicates no supervisor is active for the given kind.
+// ErrSupervisorNotRunning indicates no supervisor is active.
 var ErrSupervisorNotRunning = errors.New("supervisor not running")
 
-// StatePath returns the path to the supervisor state file for a given kind.
-func StatePath(repoRoot string, kind SupervisorKind) string {
-	return filepath.Join(repoRoot, localStateDirName, supervisorDirName(kind), supervisorStateFile)
+// StatePath returns the path to the unified supervisor state file.
+func StatePath(repoRoot string) string {
+	return filepath.Join(repoRoot, localStateDirName, supervisorDirName, supervisorStateFile)
 }
 
-// LogPath returns the path to the supervisor log file for a given kind.
-func LogPath(repoRoot string, kind SupervisorKind) string {
-	return filepath.Join(repoRoot, localStateDirName, supervisorDirName(kind), supervisorLogFile)
+// LogPath returns the path to the unified supervisor log file.
+func LogPath(repoRoot string) string {
+	return filepath.Join(repoRoot, localStateDirName, supervisorDirName, supervisorLogFile)
 }
 
-// LoadState reads the supervisor state for a given kind when present.
-func LoadState(repoRoot string, kind SupervisorKind) (SupervisorStateInfo, bool, error) {
+// LoadState reads the persisted supervisor state when present.
+func LoadState(repoRoot string) (SupervisorStateInfo, bool, error) {
+	return loadSupervisorState(repoRoot, StatePath(repoRoot), "supervisor")
+}
+
+// SaveState persists the supervisor state to disk.
+func SaveState(repoRoot string, state SupervisorStateInfo) error {
+	return saveSupervisorState(repoRoot, StatePath(repoRoot), "supervisor", state)
+}
+
+// ClearState removes persisted supervisor state and logs.
+func ClearState(repoRoot string) error {
+	if strings.TrimSpace(repoRoot) == "" {
+		return errors.New("repo root is required")
+	}
+	dir := filepath.Join(repoRoot, localStateDirName, supervisorDirName)
+	if err := os.RemoveAll(dir); err != nil {
+		return fmt.Errorf("remove supervisor state %s: %w", dir, err)
+	}
+	return nil
+}
+
+// SupervisorRunning reports whether the unified supervisor process is active.
+func SupervisorRunning(repoRoot string) (SupervisorStateInfo, bool, error) {
+	state, ok, err := LoadState(repoRoot)
+	if err != nil {
+		return SupervisorStateInfo{}, false, err
+	}
+	if !ok || state.PID <= 0 {
+		return state, false, nil
+	}
+	alive, err := processExists(state.PID)
+	if err != nil {
+		return state, false, err
+	}
+	return state, alive, nil
+}
+
+// AnyRunning reports whether any supervisor process is active.
+func AnyRunning(repoRoot string) (string, bool, error) {
+	if _, running, err := SupervisorRunning(repoRoot); err != nil {
+		return "", false, err
+	} else if running {
+		return "supervisor", true, nil
+	}
+	return "", false, nil
+}
+
+func loadSupervisorState(repoRoot, path, kind string) (SupervisorStateInfo, bool, error) {
 	if strings.TrimSpace(repoRoot) == "" {
 		return SupervisorStateInfo{}, false, errors.New("repo root is required")
 	}
-	path := StatePath(repoRoot, kind)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -110,12 +136,10 @@ func LoadState(repoRoot string, kind SupervisorKind) (SupervisorStateInfo, bool,
 	return state, true, nil
 }
 
-// SaveState persists the supervisor state for a given kind to disk.
-func SaveState(repoRoot string, kind SupervisorKind, state SupervisorStateInfo) error {
+func saveSupervisorState(repoRoot, path, kind string, state SupervisorStateInfo) error {
 	if strings.TrimSpace(repoRoot) == "" {
 		return errors.New("repo root is required")
 	}
-	path := StatePath(repoRoot, kind)
 	if err := os.MkdirAll(filepath.Dir(path), supervisorDirMode); err != nil {
 		return fmt.Errorf("create %s supervisor directory %s: %w", kind, filepath.Dir(path), err)
 	}
@@ -128,121 +152,6 @@ func SaveState(repoRoot string, kind SupervisorKind, state SupervisorStateInfo) 
 		return fmt.Errorf("write %s supervisor state %s: %w", kind, path, err)
 	}
 	return nil
-}
-
-// ClearState removes persisted supervisor state and logs for a given kind.
-func ClearState(repoRoot string, kind SupervisorKind) error {
-	if strings.TrimSpace(repoRoot) == "" {
-		return errors.New("repo root is required")
-	}
-	dir := filepath.Join(repoRoot, localStateDirName, supervisorDirName(kind))
-	if err := os.RemoveAll(dir); err != nil {
-		return fmt.Errorf("remove %s supervisor state %s: %w", kind, dir, err)
-	}
-	return nil
-}
-
-// SupervisorRunning reports whether a supervisor process of a given kind is active.
-func SupervisorRunning(repoRoot string, kind SupervisorKind) (SupervisorStateInfo, bool, error) {
-	state, ok, err := LoadState(repoRoot, kind)
-	if err != nil {
-		return SupervisorStateInfo{}, false, err
-	}
-	if !ok || state.PID <= 0 {
-		return state, false, nil
-	}
-	alive, err := processExists(state.PID)
-	if err != nil {
-		return state, false, err
-	}
-	return state, alive, nil
-}
-
-// Thin wrappers for backward compatibility //
-
-// PlanningStatePath returns the path to the planning supervisor state file.
-func PlanningStatePath(repoRoot string) string {
-	return StatePath(repoRoot, SupervisorKindPlanning)
-}
-
-// PlanningLogPath returns the path to the planning supervisor log file.
-func PlanningLogPath(repoRoot string) string {
-	return LogPath(repoRoot, SupervisorKindPlanning)
-}
-
-// ExecutionStatePath returns the path to the execution supervisor state file.
-func ExecutionStatePath(repoRoot string) string {
-	return StatePath(repoRoot, SupervisorKindExecution)
-}
-
-// ExecutionLogPath returns the path to the execution supervisor log file.
-func ExecutionLogPath(repoRoot string) string {
-	return LogPath(repoRoot, SupervisorKindExecution)
-}
-
-// LoadPlanningState reads the planning supervisor state when present.
-func LoadPlanningState(repoRoot string) (PlanningSupervisorState, bool, error) {
-	state, ok, err := LoadState(repoRoot, SupervisorKindPlanning)
-	return PlanningSupervisorState(state), ok, err
-}
-
-// LoadExecutionState reads the execution supervisor state when present.
-func LoadExecutionState(repoRoot string) (ExecutionSupervisorState, bool, error) {
-	state, ok, err := LoadState(repoRoot, SupervisorKindExecution)
-	return ExecutionSupervisorState(state), ok, err
-}
-
-// SavePlanningState persists the planning supervisor state to disk.
-func SavePlanningState(repoRoot string, state PlanningSupervisorState) error {
-	return SaveState(repoRoot, SupervisorKindPlanning, SupervisorStateInfo(state))
-}
-
-// SaveExecutionState persists the execution supervisor state to disk.
-func SaveExecutionState(repoRoot string, state ExecutionSupervisorState) error {
-	return SaveState(repoRoot, SupervisorKindExecution, SupervisorStateInfo(state))
-}
-
-// ClearPlanningState removes persisted planning supervisor state and logs.
-func ClearPlanningState(repoRoot string) error {
-	return ClearState(repoRoot, SupervisorKindPlanning)
-}
-
-// ClearExecutionState removes persisted execution supervisor state and logs.
-func ClearExecutionState(repoRoot string) error {
-	return ClearState(repoRoot, SupervisorKindExecution)
-}
-
-// PlanningSupervisorRunning reports whether a planning supervisor process is active.
-func PlanningSupervisorRunning(repoRoot string) (PlanningSupervisorState, bool, error) {
-	state, ok, err := SupervisorRunning(repoRoot, SupervisorKindPlanning)
-	return PlanningSupervisorState(state), ok, err
-}
-
-// ExecutionSupervisorRunning reports whether an execution supervisor process is active.
-func ExecutionSupervisorRunning(repoRoot string) (ExecutionSupervisorState, bool, error) {
-	state, ok, err := SupervisorRunning(repoRoot, SupervisorKindExecution)
-	return ExecutionSupervisorState(state), ok, err
-}
-
-// AnySupervisorRunning reports whether any supervisor process is active.
-// It prefers the unified/execution supervisor and treats planning as legacy fallback.
-func AnySupervisorRunning(repoRoot string) (string, bool, error) {
-	_, executionRunning, err := SupervisorRunning(repoRoot, SupervisorKindExecution)
-	if err != nil {
-		return "", false, err
-	}
-	if executionRunning {
-		return string(SupervisorKindExecution), true, nil
-	}
-	planningState, planningRunning, err := SupervisorRunning(repoRoot, SupervisorKindPlanning)
-	if err != nil {
-		return "", false, err
-	}
-	if planningRunning {
-		_ = planningState
-		return string(SupervisorKindPlanning), true, nil
-	}
-	return "", false, nil
 }
 
 func processExists(pid int) (bool, error) {
@@ -260,15 +169,4 @@ func processExists(pid int) (bool, error) {
 		return true, nil
 	}
 	return false, err
-}
-
-func supervisorDirName(kind SupervisorKind) string {
-	switch kind {
-	case SupervisorKindPlanning:
-		return planningSupervisorDirName
-	case SupervisorKindExecution:
-		return executionSupervisorDirName
-	default:
-		return string(kind)
-	}
 }

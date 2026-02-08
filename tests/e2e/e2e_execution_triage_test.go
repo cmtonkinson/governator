@@ -161,7 +161,6 @@ func TestE2EExecutionTriage(t *testing.T) {
 
 	repo.RunGit(t, "add", "GOVERNATOR.md", "_governator")
 	repo.RunGit(t, "commit", "-m", "Seed execution triage test data")
-	repo.RunGit(t, "remote", "add", "origin", repoRoot)
 
 	originalDir, err := os.Getwd()
 	if err != nil {
@@ -174,12 +173,12 @@ func TestE2EExecutionTriage(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	if err := run.RunExecutionSupervisor(repoRoot, run.ExecutionSupervisorOptions{
+	if err := run.RunUnifiedSupervisor(repoRoot, run.UnifiedSupervisorOptions{
 		Stdout:       &stdout,
 		Stderr:       &stderr,
 		PollInterval: 10 * time.Millisecond,
 	}); err != nil {
-		t.Fatalf("run execution supervisor: %v", err)
+		t.Fatalf("run unified supervisor: %v", err)
 	}
 
 	finalIndex, err := index.Load(filepath.Join(repoRoot, "_governator/_local-state/index.json"))

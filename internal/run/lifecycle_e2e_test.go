@@ -905,7 +905,6 @@ func setupLifecycleRepo(t *testing.T, workerCommand []string, timeoutSeconds int
 	repo.RunGit(t, "add", filepath.Join("_governator", "roles", "reviewer.md"))
 	repo.RunGit(t, "add", filepath.Join("_governator", "prompts", "role-assignment.md"))
 	repo.RunGit(t, "commit", "-m", "Initialize lifecycle fixture")
-	repo.RunGit(t, "remote", "add", "origin", repo.Root)
 
 	return repo
 }
@@ -1249,10 +1248,7 @@ func assertFileContent(t *testing.T, repoRoot, relativePath, expected string) {
 // resolveLifecycleConflict rebases on main and resolves conflicts by overwriting conflicted files.
 func resolveLifecycleConflict() error {
 	const baseBranch = "main"
-	if err := runLifecycleGit("fetch", "origin", baseBranch); err != nil {
-		return err
-	}
-	if err := runLifecycleGit("rebase", "origin/"+baseBranch); err == nil {
+	if err := runLifecycleGit("rebase", baseBranch); err == nil {
 		return nil
 	}
 	conflicted, err := runLifecycleGitOutput("diff", "--name-only", "--diff-filter=U")

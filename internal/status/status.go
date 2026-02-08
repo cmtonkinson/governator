@@ -355,14 +355,14 @@ func GetSummary(repoRoot string) (Summary, error) {
 	}
 	summary.Aggregates = aggregates
 
-	if supervisorState, ok, err := supervisor.LoadExecutionState(repoRoot); err != nil {
-		return Summary{}, fmt.Errorf("load execution supervisor state: %w", err)
+	if supervisorState, ok, err := supervisor.LoadState(repoRoot); err != nil {
+		return Summary{}, fmt.Errorf("load supervisor state: %w", err)
 	} else if ok {
 		state := supervisorState
 		if supervisorState.State == supervisor.SupervisorStateRunning {
-			runningState, running, err := supervisor.ExecutionSupervisorRunning(repoRoot)
+			runningState, running, err := supervisor.SupervisorRunning(repoRoot)
 			if err != nil {
-				return Summary{}, fmt.Errorf("check execution supervisor: %w", err)
+				return Summary{}, fmt.Errorf("check supervisor: %w", err)
 			}
 			if running {
 				state = runningState

@@ -45,23 +45,9 @@ func (blm *BranchLifecycleManager) CreateTaskBranch(task index.Task, baseBranch 
 		return nil
 	}
 
-	// Ensure we're on the base branch and it's up to date
+	// Ensure we're on the base branch.
 	if err := blm.runGit("checkout", baseBranch); err != nil {
 		return fmt.Errorf("checkout base branch %s: %w", baseBranch, err)
-	}
-
-	if err := blm.runGit("pull", "origin", baseBranch); err != nil {
-		// Log warning but don't fail - might be working offline
-		if blm.auditor != nil {
-			_ = blm.auditor.Log(audit.Entry{
-				TaskID: task.ID,
-				Role:   string(task.Role),
-				Event:  "branch.create.warning",
-				Fields: []audit.Field{
-					{Key: "message", Value: fmt.Sprintf("failed to pull %s: %v", baseBranch, err)},
-				},
-			})
-		}
 	}
 
 	// Create the new branch
@@ -77,7 +63,7 @@ func (blm *BranchLifecycleManager) CreateTaskBranch(task index.Task, baseBranch 
 	return nil
 }
 
-// PrepareBaseBranch checks out and updates the base branch.
+// PrepareBaseBranch checks out the base branch.
 // This should be called before batch branch creation operations to ensure
 // all branches are created from the same consistent base.
 func (blm *BranchLifecycleManager) PrepareBaseBranch(baseBranch string) error {
@@ -88,19 +74,6 @@ func (blm *BranchLifecycleManager) PrepareBaseBranch(baseBranch string) error {
 	// Checkout the base branch
 	if err := blm.runGit("checkout", baseBranch); err != nil {
 		return fmt.Errorf("checkout base branch %s: %w", baseBranch, err)
-	}
-
-	// Pull latest changes (non-fatal if offline)
-	if err := blm.runGit("pull", "origin", baseBranch); err != nil {
-		if blm.auditor != nil {
-			_ = blm.auditor.Log(audit.Entry{
-				Event: "branch.prepare.warning",
-				Fields: []audit.Field{
-					{Key: "message", Value: fmt.Sprintf("failed to pull %s: %v", baseBranch, err)},
-				},
-			})
-		}
-		// Continue anyway - might be working offline
 	}
 
 	return nil

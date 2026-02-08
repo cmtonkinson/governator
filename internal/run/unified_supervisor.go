@@ -29,6 +29,15 @@ type UnifiedSupervisorOptions struct {
 	LogPath      string
 }
 
+var (
+	runFunc               = Run
+	runBacklogTriageFunc  = RunBacklogTriage
+	detectADRDriftFunc    = DetectADRDrift
+	planningCompleteFunc  = planningComplete
+	countBacklogFunc      = countBacklog
+	executionCompleteFunc = executionComplete
+)
+
 // RunUnifiedSupervisor runs the unified supervisor loop until orchestration completes or fails.
 func RunUnifiedSupervisor(repoRoot string, opts UnifiedSupervisorOptions) error {
 	if strings.TrimSpace(repoRoot) == "" {
@@ -46,7 +55,7 @@ func RunUnifiedSupervisor(repoRoot string, opts UnifiedSupervisorOptions) error 
 		stderr = io.Discard
 	}
 
-	lock, err := supervisorlock.Acquire(repoRoot, supervisor.ExecutionSupervisorLockName)
+	lock, err := supervisorlock.Acquire(repoRoot, supervisor.SupervisorLockName)
 	if err != nil {
 		return err
 	}
@@ -64,7 +73,7 @@ func RunUnifiedSupervisor(repoRoot string, opts UnifiedSupervisorOptions) error 
 	}
 
 	state := newUnifiedSupervisorState(repoRoot, opts.LogPath)
-	if err := supervisor.SaveExecutionState(repoRoot, state); err != nil {
+	if err := supervisor.SaveState(repoRoot, state); err != nil {
 		return err
 	}
 
@@ -78,7 +87,7 @@ func RunUnifiedSupervisor(repoRoot string, opts UnifiedSupervisorOptions) error 
 			state.State = supervisor.SupervisorStateStopped
 			state.Error = ""
 			state = MarkSupervisorTransition(state)
-			return supervisor.SaveExecutionState(repoRoot, state)
+			return supervisor.SaveState(repoRoot, state)
 		default:
 		}
 
@@ -98,7 +107,7 @@ func RunUnifiedSupervisor(repoRoot string, opts UnifiedSupervisorOptions) error 
 			inFlight = inflight.Set{}
 		}
 
-		adrDrift, err := DetectADRDrift(repoRoot, idx.Digests)
+		adrDrift, err := detectADRDriftFunc(repoRoot, idx.Digests)
 		if err != nil {
 			return failUnifiedSupervisor(repoRoot, &state, err)
 		}
@@ -112,7 +121,7 @@ func RunUnifiedSupervisor(repoRoot string, opts UnifiedSupervisorOptions) error 
 			}
 			emitADRReplanMessage(stdout, adrDrift.Message)
 			if len(inFlight) > 0 {
-				if _, err := Run(repoRoot, Options{Stdout: stdout, Stderr: stderr, DisableDispatch: true, SkipPlanningDrift: true}); err != nil {
+				if _, err := runFunc(repoRoot, Options{Stdout: stdout, Stderr: stderr, DisableDispatch: true, SkipPlanningDrift: true}); err != nil {
 					return failUnifiedSupervisor(repoRoot, &state, err)
 				}
 				time.Sleep(opts.PollInterval)
@@ -125,7 +134,7 @@ func RunUnifiedSupervisor(repoRoot string, opts UnifiedSupervisorOptions) error 
 			continue
 		}
 
-		complete, err := planningComplete(idx, planning)
+		complete, err := planningCompleteFunc(idx, planning)
 		if err != nil {
 			return failUnifiedSupervisor(repoRoot, &state, fmt.Errorf("planning index: %w", err))
 		}
@@ -137,14 +146,14 @@ func RunUnifiedSupervisor(repoRoot string, opts UnifiedSupervisorOptions) error 
 			if err := maybePersistUnifiedSupervisorState(repoRoot, &state); err != nil {
 				return err
 			}
-			if _, err := Run(repoRoot, Options{Stdout: stdout, Stderr: stderr, SkipPlanningDrift: true}); err != nil {
+			if _, err := runFunc(repoRoot, Options{Stdout: stdout, Stderr: stderr, SkipPlanningDrift: true}); err != nil {
 				return failUnifiedSupervisor(repoRoot, &state, err)
 			}
 			time.Sleep(opts.PollInterval)
 			continue
 		}
 
-		backlogCount := countBacklog(idx)
+		backlogCount := countBacklogFunc(idx)
 		if backlogCount > 0 {
 			if len(inFlight) > 0 {
 				state.StepID = "drain"
@@ -152,7 +161,7 @@ func RunUnifiedSupervisor(repoRoot string, opts UnifiedSupervisorOptions) error 
 				if err := maybePersistUnifiedSupervisorState(repoRoot, &state); err != nil {
 					return err
 				}
-				if _, err := Run(repoRoot, Options{Stdout: stdout, Stderr: stderr, DisableDispatch: true, SkipPlanningDrift: true}); err != nil {
+				if _, err := runFunc(repoRoot, Options{Stdout: stdout, Stderr: stderr, DisableDispatch: true, SkipPlanningDrift: true}); err != nil {
 					return failUnifiedSupervisor(repoRoot, &state, err)
 				}
 				time.Sleep(opts.PollInterval)
@@ -164,7 +173,7 @@ func RunUnifiedSupervisor(repoRoot string, opts UnifiedSupervisorOptions) error 
 			if err := maybePersistUnifiedSupervisorState(repoRoot, &state); err != nil {
 				return err
 			}
-			triageResult, err := RunBacklogTriage(repoRoot, &idx, cfg, Options{Stdout: stdout, Stderr: stderr})
+			triageResult, err := runBacklogTriageFunc(repoRoot, &idx, cfg, Options{Stdout: stdout, Stderr: stderr})
 			if err != nil {
 				return failUnifiedSupervisor(repoRoot, &state, err)
 			}
@@ -179,7 +188,7 @@ func RunUnifiedSupervisor(repoRoot string, opts UnifiedSupervisorOptions) error 
 			continue
 		}
 
-		done, err := executionComplete(idx)
+		done, err := executionCompleteFunc(idx)
 		if err != nil {
 			return failUnifiedSupervisor(repoRoot, &state, err)
 		}
@@ -192,7 +201,7 @@ func RunUnifiedSupervisor(repoRoot string, opts UnifiedSupervisorOptions) error 
 		if err := maybePersistUnifiedSupervisorState(repoRoot, &state); err != nil {
 			return err
 		}
-		if _, err := Run(repoRoot, Options{Stdout: stdout, Stderr: stderr, SkipPlanningDrift: true}); err != nil {
+		if _, err := runFunc(repoRoot, Options{Stdout: stdout, Stderr: stderr, SkipPlanningDrift: true}); err != nil {
 			return failUnifiedSupervisor(repoRoot, &state, err)
 		}
 
@@ -201,12 +210,12 @@ func RunUnifiedSupervisor(repoRoot string, opts UnifiedSupervisorOptions) error 
 }
 
 // newUnifiedSupervisorState builds the initial unified supervisor state payload.
-func newUnifiedSupervisorState(repoRoot string, logPath string) supervisor.ExecutionSupervisorState {
+func newUnifiedSupervisorState(repoRoot string, logPath string) supervisor.SupervisorStateInfo {
 	if strings.TrimSpace(logPath) == "" {
-		logPath = supervisor.ExecutionLogPath(repoRoot)
+		logPath = supervisor.LogPath(repoRoot)
 	}
 	now := time.Now().UTC()
-	return supervisor.ExecutionSupervisorState{
+	return supervisor.SupervisorStateInfo{
 		Phase:          "start",
 		PID:            os.Getpid(),
 		State:          supervisor.SupervisorStateRunning,
@@ -217,7 +226,7 @@ func newUnifiedSupervisorState(repoRoot string, logPath string) supervisor.Execu
 }
 
 // completeUnifiedSupervisor clears persisted supervisor state after a healthy completion.
-func completeUnifiedSupervisor(repoRoot string, state *supervisor.ExecutionSupervisorState) error {
+func completeUnifiedSupervisor(repoRoot string, state *supervisor.SupervisorStateInfo) error {
 	if state == nil {
 		return errors.New("unified supervisor state is required")
 	}
@@ -230,8 +239,8 @@ func completeUnifiedSupervisor(repoRoot string, state *supervisor.ExecutionSuper
 	state.Error = ""
 	updated := MarkSupervisorTransition(*state)
 	*state = updated
-	if err := supervisor.ClearExecutionState(repoRoot); err != nil {
-		if saveErr := supervisor.SaveExecutionState(repoRoot, updated); saveErr != nil {
+	if err := supervisor.ClearState(repoRoot); err != nil {
+		if saveErr := supervisor.SaveState(repoRoot, updated); saveErr != nil {
 			return fmt.Errorf("clear supervisor state: %w; save fallback failed: %v", err, saveErr)
 		}
 		return fmt.Errorf("clear supervisor state: %w", err)
@@ -240,11 +249,11 @@ func completeUnifiedSupervisor(repoRoot string, state *supervisor.ExecutionSuper
 }
 
 // maybePersistUnifiedSupervisorState persists state changes when data differs from disk.
-func maybePersistUnifiedSupervisorState(repoRoot string, state *supervisor.ExecutionSupervisorState) error {
+func maybePersistUnifiedSupervisorState(repoRoot string, state *supervisor.SupervisorStateInfo) error {
 	if state == nil {
 		return errors.New("unified supervisor state is required")
 	}
-	current, _, err := supervisor.LoadExecutionState(repoRoot)
+	current, _, err := supervisor.LoadState(repoRoot)
 	if err != nil {
 		return err
 	}
@@ -252,11 +261,11 @@ func maybePersistUnifiedSupervisorState(repoRoot string, state *supervisor.Execu
 		return nil
 	}
 	state.LastTransition = time.Now().UTC()
-	return supervisor.SaveExecutionState(repoRoot, *state)
+	return supervisor.SaveState(repoRoot, *state)
 }
 
 // failUnifiedSupervisor persists failure metadata and returns the root error.
-func failUnifiedSupervisor(repoRoot string, state *supervisor.ExecutionSupervisorState, err error) error {
+func failUnifiedSupervisor(repoRoot string, state *supervisor.SupervisorStateInfo, err error) error {
 	if state == nil {
 		return err
 	}
@@ -264,7 +273,7 @@ func failUnifiedSupervisor(repoRoot string, state *supervisor.ExecutionSuperviso
 	state.Error = err.Error()
 	updated := MarkSupervisorTransition(*state)
 	*state = updated
-	if saveErr := supervisor.SaveExecutionState(repoRoot, updated); saveErr != nil {
+	if saveErr := supervisor.SaveState(repoRoot, updated); saveErr != nil {
 		return fmt.Errorf("%w; supervisor state save failed: %v", err, saveErr)
 	}
 	return err

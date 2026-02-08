@@ -195,8 +195,8 @@ func TestE2EPlanning(t *testing.T) {
 	repo.RunGit(t, "add", "GOVERNATOR.md", "_governator")
 	repo.RunGit(t, "commit", "-m", "Add governator configuration")
 
-	// Run planning supervisor
-	err = run.RunPlanningSupervisor(repoRoot, run.PlanningSupervisorOptions{
+	// Run unified supervisor
+	err = run.RunUnifiedSupervisor(repoRoot, run.UnifiedSupervisorOptions{
 		Stdout:       os.Stdout,
 		Stderr:       os.Stderr,
 		PollInterval: 1 * time.Second, // Slower polling to give worker time to finish
@@ -204,7 +204,7 @@ func TestE2EPlanning(t *testing.T) {
 
 	// Debug: Check what was created even if supervisor failed
 	if err != nil {
-		t.Logf("Planning supervisor error: %v", err)
+		t.Logf("Unified supervisor error: %v", err)
 
 		// Give a moment for background processes to finish
 		time.Sleep(500 * time.Millisecond)
@@ -291,7 +291,7 @@ func TestE2EPlanning(t *testing.T) {
 			t.Logf("No stderr.log found")
 		}
 
-		t.Fatalf("run planning supervisor: %v", err)
+		t.Fatalf("run unified supervisor: %v", err)
 	}
 
 	// Verify Step 1: Architecture Baseline outputs

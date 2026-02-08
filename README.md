@@ -161,8 +161,6 @@ Each worker:
 - Pushes its branch exactly once and exits
 - Never merges to `main`, never retains memory between runs
 
-`governator plan` and `governator execute` remain available as deprecated aliases for `governator start`.
-
 ---
 
 ## CLI Reference

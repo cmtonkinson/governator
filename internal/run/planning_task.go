@@ -24,9 +24,9 @@ func (task planningTask) stepForID(id string) (workstreamStep, bool) {
 	return step, ok
 }
 
-// stepForPhase returns the planning step that corresponds to the given phase (legacy compatibility).
+// stepForPhase returns the planning step that corresponds to the given phase enum value.
 func (task planningTask) stepForPhase(p phase.Phase) (workstreamStep, bool) {
-	// Map legacy phases to step IDs for backward compatibility
+	// Map phase values to planning step IDs.
 	var stepID string
 	switch p {
 	case phase.PhaseArchitectureBaseline:

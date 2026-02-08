@@ -43,8 +43,8 @@ GLOBAL OPTIONS:
 COMMANDS:
     init             Bootstrap a new governator workspace in the current repository
     start            Start the unified supervisor to plan, triage, and execute work
-    plan             Deprecated alias for 'start'
-    execute          Deprecated alias for 'start'
+    plan             Alias for 'start'
+    execute          Alias for 'start'
     status           Display current supervisor and task status
     dag              Display task dependency graph (DAG)
     stop             Stop the running supervisor gracefully
@@ -270,7 +270,7 @@ func launchSupervisor(commandArg string) {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(2)
 	}
-	if _, running, err := supervisor.AnySupervisorRunning(repoRoot); err != nil {
+	if _, running, err := supervisor.AnyRunning(repoRoot); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	} else if running {
@@ -282,7 +282,7 @@ func launchSupervisor(commandArg string) {
 		os.Exit(1)
 	}
 
-	logPath := supervisor.LogPath(repoRoot, supervisor.SupervisorKindExecution)
+	logPath := supervisor.LogPath(repoRoot)
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -311,7 +311,7 @@ func launchSupervisor(commandArg string) {
 		LastTransition: time.Now().UTC(),
 		LogPath:        logPath,
 	}
-	if err := supervisor.SaveState(repoRoot, supervisor.SupervisorKindExecution, state); err != nil {
+	if err := supervisor.SaveState(repoRoot, state); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
@@ -369,12 +369,10 @@ func runStartSupervisor() {
 }
 
 func runPlan(args []string) {
-	fmt.Fprintln(os.Stderr, "warning: 'governator plan' is deprecated; use 'governator start'")
 	runStart(args)
 }
 
 func runExecute(args []string) {
-	fmt.Fprintln(os.Stderr, "warning: 'governator execute' is deprecated; use 'governator start'")
 	runStart(args)
 }
 
@@ -411,7 +409,7 @@ OPTIONS:
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(2)
 	}
-	if phase, running, err := supervisor.AnySupervisorRunning(repoRoot); err != nil {
+	if phase, running, err := supervisor.AnyRunning(repoRoot); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	} else if !running {
@@ -460,7 +458,7 @@ OPTIONS:
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(2)
 	}
-	phase, running, err := supervisor.AnySupervisorRunning(repoRoot)
+	phase, running, err := supervisor.AnyRunning(repoRoot)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -512,7 +510,7 @@ OPTIONS:
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(2)
 	}
-	phase, running, err := supervisor.AnySupervisorRunning(repoRoot)
+	phase, running, err := supervisor.AnyRunning(repoRoot)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -524,28 +522,18 @@ OPTIONS:
 			os.Exit(1)
 		}
 	}
-	if _, runningAfter, err := supervisor.AnySupervisorRunning(repoRoot); err != nil {
+	if _, runningAfter, err := supervisor.AnyRunning(repoRoot); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	} else if runningAfter {
 		fmt.Fprintln(os.Stderr, "supervisor still running; retry reset after it exits")
 		os.Exit(1)
 	}
-	if err := supervisor.ClearState(repoRoot, supervisor.SupervisorKindExecution); err != nil {
+	if err := supervisor.ClearState(repoRoot); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
-	// Clear legacy planning supervisor state if present.
-	if err := supervisor.ClearState(repoRoot, supervisor.SupervisorKindPlanning); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-	if err := supervisorlock.Remove(repoRoot, supervisor.ExecutionSupervisorLockName); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-	// Remove legacy planning lock if present.
-	if err := supervisorlock.Remove(repoRoot, supervisor.PlanningSupervisorLockName); err != nil {
+	if err := supervisorlock.Remove(repoRoot, supervisor.SupervisorLockName); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
@@ -554,7 +542,7 @@ OPTIONS:
 
 // ensureNoSupervisorLocks blocks supervisor startup when any lock is held.
 func ensureNoSupervisorLocks(repoRoot string) error {
-	if held, err := supervisorlock.Held(repoRoot, supervisor.ExecutionSupervisorLockName); err != nil {
+	if held, err := supervisorlock.Held(repoRoot, supervisor.SupervisorLockName); err != nil {
 		return err
 	} else if held {
 		return errors.New("start supervisor lock already held; use governator stop or governator reset first")

@@ -135,8 +135,7 @@ func (runner *phaseRunner) dispatchPhase(step workstreamStep) error {
 		Role: step.role,
 	}
 
-	// Map step name to legacy phase for backward compatibility
-	legacyPhase := stepToPhase(step.name)
+	phaseName := stepToPhase(step.name)
 
 	branchName := step.branchName()
 	baseBranch := strings.TrimSpace(runner.cfg.Branches.Base)
@@ -191,7 +190,7 @@ func (runner *phaseRunner) dispatchPhase(step workstreamStep) error {
 		return err
 	}
 
-	runner.emitPhaseDispatched(legacyPhase, dispatchResult.PID)
+	runner.emitPhaseDispatched(phaseName, dispatchResult.PID)
 	return nil
 }
 
@@ -207,13 +206,8 @@ func (runner *phaseRunner) completePhase(step workstreamStep) error {
 	// New validation engine doesn't use phase-based gating
 	// Validations are run after worker completion in the controller
 
-	// Legacy phase completion for backward compatibility
-	// In new architecture, this would be handled by planning state updates
-
-	// Map step name to legacy phase for backward compatibility
-	legacyPhase := stepToPhase(step.name)
-
-	runner.emitPhaseComplete(legacyPhase)
+	phaseName := stepToPhase(step.name)
+	runner.emitPhaseComplete(phaseName)
 	return nil
 }
 

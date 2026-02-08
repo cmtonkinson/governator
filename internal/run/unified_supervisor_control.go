@@ -1,4 +1,4 @@
-// Package run provides supervisor control helpers.
+// Package run provides unified supervisor control helpers.
 package run
 
 import (
@@ -20,14 +20,14 @@ func StopUnifiedSupervisor(repoRoot string, opts UnifiedSupervisorStopOptions) e
 	if strings.TrimSpace(repoRoot) == "" {
 		return fmt.Errorf("repo root is required")
 	}
-	state, ok, err := supervisor.LoadExecutionState(repoRoot)
+	state, ok, err := supervisor.LoadState(repoRoot)
 	if err != nil {
 		return err
 	}
 	if !ok || state.PID <= 0 {
 		return supervisor.ErrSupervisorNotRunning
 	}
-	_, running, err := supervisor.ExecutionSupervisorRunning(repoRoot)
+	_, running, err := supervisor.SupervisorRunning(repoRoot)
 	if err != nil {
 		return err
 	}
@@ -35,7 +35,7 @@ func StopUnifiedSupervisor(repoRoot string, opts UnifiedSupervisorStopOptions) e
 		state.State = supervisor.SupervisorStateStopped
 		state.Error = ""
 		state.LastTransition = time.Now().UTC()
-		_ = supervisor.SaveExecutionState(repoRoot, state)
+		_ = supervisor.SaveState(repoRoot, state)
 		return supervisor.ErrSupervisorNotRunning
 	}
 
@@ -52,17 +52,7 @@ func StopUnifiedSupervisor(repoRoot string, opts UnifiedSupervisorStopOptions) e
 	state.State = supervisor.SupervisorStateStopped
 	state.Error = ""
 	state.LastTransition = time.Now().UTC()
-	return supervisor.SaveExecutionState(repoRoot, state)
-}
-
-// ExecutionSupervisorStopOptions configures stop behavior for the legacy execution supervisor API.
-// Deprecated: use UnifiedSupervisorStopOptions.
-type ExecutionSupervisorStopOptions = UnifiedSupervisorStopOptions
-
-// StopExecutionSupervisor terminates the unified supervisor.
-// Deprecated: use StopUnifiedSupervisor.
-func StopExecutionSupervisor(repoRoot string, opts ExecutionSupervisorStopOptions) error {
-	return StopUnifiedSupervisor(repoRoot, UnifiedSupervisorStopOptions(opts))
+	return supervisor.SaveState(repoRoot, state)
 }
 
 // stopExecutionWorkers attempts to terminate all in-flight execution workers.

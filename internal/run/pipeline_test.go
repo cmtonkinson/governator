@@ -201,7 +201,6 @@ func setupPipelineRepo(t *testing.T, workerCommand []string) *testrepos.TempRepo
 	repo.RunGit(t, "add", filepath.Join("_governator", "roles", "worker.md"))
 	repo.RunGit(t, "commit", "-m", "Add worker role prompt")
 	writePipelineConfig(t, repo.Root, workerCommand)
-	repo.RunGit(t, "remote", "add", "origin", repo.Root)
 	return repo
 }
 

@@ -72,7 +72,7 @@ var allowedTransitions = map[TaskState]map[TaskState]struct{}{
 }
 
 const (
-	// Deprecated aliases for legacy state names.
+	// Compatibility aliases for older state names.
 	TaskStateOpen   = TaskStateTriaged
 	TaskStateWorked = TaskStateImplemented
 	TaskStateDone   = TaskStateMerged

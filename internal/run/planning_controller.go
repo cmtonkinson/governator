@@ -208,16 +208,14 @@ func (controller *planningController) EmitRunning(step workstreamStep, pids []in
 	if len(pids) == 0 {
 		return
 	}
-	// Map step name to legacy phase for backward compatibility
-	legacyPhase := stepToPhase(step.name)
-	controller.runner.emitPhaseRunning(legacyPhase, pids[0])
+	phaseName := stepToPhase(step.name)
+	controller.runner.emitPhaseRunning(phaseName, pids[0])
 }
 
 // EmitAgentComplete logs that the phase worker has exited.
 func (controller *planningController) EmitAgentComplete(step workstreamStep, collect workstreamCollectResult) {
-	// Map step name to legacy phase for backward compatibility
-	legacyPhase := stepToPhase(step.name)
-	controller.runner.emitPhaseAgentComplete(legacyPhase, collect.CompletedPID)
+	phaseName := stepToPhase(step.name)
+	controller.runner.emitPhaseAgentComplete(phaseName, collect.CompletedPID)
 }
 
 // reloadIndex refreshes the planning index state from disk.

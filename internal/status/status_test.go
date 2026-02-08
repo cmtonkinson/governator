@@ -129,13 +129,13 @@ func TestGetSummarySupervisorFiltering(t *testing.T) {
 			t.Fatalf("save index: %v", err)
 		}
 		now := time.Now().UTC()
-		if err := supervisor.SaveExecutionState(repoRoot, supervisor.ExecutionSupervisorState{
+		if err := supervisor.SaveState(repoRoot, supervisor.SupervisorStateInfo{
 			Phase:          "start",
 			PID:            os.Getpid(),
 			State:          supervisor.SupervisorStateRunning,
 			StartedAt:      now,
 			LastTransition: now,
-			LogPath:        supervisor.ExecutionLogPath(repoRoot),
+			LogPath:        supervisor.LogPath(repoRoot),
 		}); err != nil {
 			t.Fatalf("save execution state: %v", err)
 		}
@@ -171,13 +171,13 @@ func TestGetSummarySupervisorFiltering(t *testing.T) {
 			t.Fatalf("save index: %v", err)
 		}
 		now := time.Now().UTC()
-		if err := supervisor.SaveExecutionState(repoRoot, supervisor.ExecutionSupervisorState{
+		if err := supervisor.SaveState(repoRoot, supervisor.SupervisorStateInfo{
 			Phase:          "execution",
 			PID:            os.Getpid(),
 			State:          supervisor.SupervisorStateStopped,
 			StartedAt:      now,
 			LastTransition: now,
-			LogPath:        supervisor.ExecutionLogPath(repoRoot),
+			LogPath:        supervisor.LogPath(repoRoot),
 		}); err != nil {
 			t.Fatalf("save execution state: %v", err)
 		}
@@ -203,13 +203,13 @@ func TestGetSummarySupervisorFiltering(t *testing.T) {
 			t.Fatalf("save index: %v", err)
 		}
 		now := time.Now().UTC()
-		if err := supervisor.SaveExecutionState(repoRoot, supervisor.ExecutionSupervisorState{
+		if err := supervisor.SaveState(repoRoot, supervisor.SupervisorStateInfo{
 			Phase:          "execution",
 			PID:            0,
 			State:          supervisor.SupervisorStateFailed,
 			StartedAt:      now,
 			LastTransition: now,
-			LogPath:        supervisor.ExecutionLogPath(repoRoot),
+			LogPath:        supervisor.LogPath(repoRoot),
 		}); err != nil {
 			t.Fatalf("save execution state: %v", err)
 		}
@@ -238,13 +238,13 @@ func TestGetSummarySupervisorFiltering(t *testing.T) {
 			t.Fatalf("save index: %v", err)
 		}
 		now := time.Now().UTC()
-		if err := supervisor.SaveExecutionState(repoRoot, supervisor.ExecutionSupervisorState{
+		if err := supervisor.SaveState(repoRoot, supervisor.SupervisorStateInfo{
 			Phase:          "execution",
 			PID:            999999,
 			State:          supervisor.SupervisorStateRunning,
 			StartedAt:      now,
 			LastTransition: now,
-			LogPath:        supervisor.ExecutionLogPath(repoRoot),
+			LogPath:        supervisor.LogPath(repoRoot),
 		}); err != nil {
 			t.Fatalf("save execution state: %v", err)
 		}
