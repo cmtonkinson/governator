@@ -11,6 +11,33 @@ The agentic anti-swarm (or: just a context management state machine)
 
 ![Governator](img/governator_512.png)
 
+---
+## Quick Start
+```bash
+# 0. Install
+brew install cmtonkinson/tap/governator
+
+# 1. Write your intent - document anything and everything you want: scope,
+# context, requirements, boundaries, constraints, assumptions, stack, etc.
+vim GOVERNATOR.md
+
+# 2. Initialize the workspace
+governator init
+
+# 3. Begin orchestration (Governator plans first, then implements)
+governator start
+
+# 4a. (Optional)
+# Say "Hasta la vista, baby," and go do something else for a while.
+
+# 4b. (Optional) During orchestration, inspect the system via:
+governator status    # Show workers and tasks
+governator tail      # Stream both stderr/stdout worker logs (q to quit)
+governator why       # Recent supervisor + blocked/failed task logs
+
+# 5. Profit?
+```
+
 ## Overview
 **Problem:** Orchestrating agentic software development is Hard&trade; because
 - Context windows are limited
@@ -40,33 +67,6 @@ intent, decisions, and artifacts live on disk and in git.
 
 Governator can be used in a completely blank repository to get something from 0
 to 1, or in an existing project to improve, extend, and refine.
-
----
-## Quick Start
-```bash
-# 0. Install
-brew install cmtonkinson/tap/governator
-
-# 1. Write your intent - document anything and everything you want: scope,
-# context, requirements, boundaries, constraints, assumptions, stack, etc.
-vim GOVERNATOR.md
-
-# 2. Initialize the workspace
-governator init
-
-# 3. Begin orchestration (Governator plans first, then implements)
-governator start
-
-# 4a. (Optional)
-# Say "Hasta la vista, baby," and go do something else for a while.
-
-# 4b. (Optional) During orchestration, inspect the system via:
-governator status    # Show workers and tasks
-governator tail      # Stream both stderr/stdout worker logs (q to quit)
-governator why       # Recent supervisor + blocked/failed task logs
-
-# 5. Profit?
-```
 
 ### Installation Options
 **Homebrew** (macOS/Linux):
@@ -112,8 +112,8 @@ truth for system behavior. Consider including:
 - Example input/output
 - References to existing work
 
-The more detailed, specific, and precise you are, the more effective Governator
-will be. That's just LLMs for you ¯\\\_(ツ)\_/¯.
+The more detailed and precise you are, the more effective Governator will be.
+That's just LLMs for you ¯\\\_(ツ)\_/¯.
 
 ### Configuration
 Configure during initialization with `governator init` options (see `governator
