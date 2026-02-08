@@ -44,6 +44,9 @@ to 1, or in an existing project to improve, extend, and refine.
 ---
 ## Quick Start
 ```bash
+# 0. Install
+brew install cmtonkinson/tap/governator
+
 # 1. Write your intent - document anything and everything you want: scope,
 # context, requirements, boundaries, constraints, assumptions, stack, etc.
 vim GOVERNATOR.md
@@ -60,7 +63,7 @@ governator tail      # Stream both stderr/stdout worker logs (q to quit)
 governator why       # Recent supervisor + blocked/failed task logs
 ```
 
-### Install
+### Installation Options
 **Homebrew** (macOS/Linux):
 ```bash
 brew install cmtonkinson/tap/governator
