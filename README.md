@@ -179,11 +179,11 @@ GLOBAL OPTIONS:
 COMMANDS:
     init             Bootstrap a new governator workspace in the current repository
     start            Start the unified supervisor to plan, triage, and execute work
-    plan             Alias for 'start'
-    execute          Alias for 'start'
+    plan             Deprecated alias for 'start'
+    execute          Deprecated alias for 'start'
     status           Display current supervisor and task status
     why              Show the most recent supervisor log lines
-    dag              Display task dependency graph (DAG)
+    dag              Display task dependency graph
     stop             Stop the running supervisor gracefully
     restart          Stop and restart the current supervisor phase
     reset            Stop supervisor and clear all state (nuclear option)
