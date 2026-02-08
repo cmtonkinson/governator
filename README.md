@@ -92,12 +92,14 @@ sudo mv governator /usr/local/bin/
 ```
 
 ### GOVERNATOR.md
-`GOVERNATOR.md` is the single source of project intent. This is your design-time
-prompt: explain what you want. Your vision, goals, non-goals, constraints,
-requirements, assumptions, and definition of done. Workers never modify it.
+`GOVERNATOR.md` is the Prime Directive for system behavior; the single source of
+project intent. This is your design-time prompt: explain what you want. Your
+vision, goals, non-goals, constraints, requirements, assumptions, and definition
+of done. Workers never modify it.
 
 ### Configuration
-Configure during initialization with `governator init` options (see `governator init -h` for full list and defaults):
+Configure during initialization with `governator init` options (see `governator
+init -h` for full list and defaults):
 ```bash
 governator init \
   --agent claude \            # Agent CLI (codex, claude, gemini)
