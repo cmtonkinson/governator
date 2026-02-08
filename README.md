@@ -58,9 +58,9 @@ governator init
 governator start
 
 # 4a. (Optional)
-Say 'Hasta la vista, baby' and go do something else.
+Say "Hasta la vista, baby," then go do something else.
 
-# 4b. During orchestration, inspect the system via:
+# 4b. (Optional) During orchestration, inspect the system via:
 governator status    # Show workers and tasks
 governator tail      # Stream both stderr/stdout worker logs (q to quit)
 governator why       # Recent supervisor + blocked/failed task logs
