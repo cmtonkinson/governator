@@ -57,10 +57,15 @@ governator init
 # 3. Begin orchestration (Governator plans first, then implements)
 governator start
 
-# 4. During orchestration, inspect the system via:
+# 4a. (Optional)
+Say 'Hasta la vista, baby' and go do something else.
+
+# 4b. During orchestration, inspect the system via:
 governator status    # Show workers and tasks
 governator tail      # Stream both stderr/stdout worker logs (q to quit)
 governator why       # Recent supervisor + blocked/failed task logs
+
+# 5. Profit?
 ```
 
 ### Installation Options
@@ -92,10 +97,22 @@ sudo mv governator /usr/local/bin/
 ```
 
 ### GOVERNATOR.md
-`GOVERNATOR.md` is the Prime Directive for system behavior; the single source of
-project intent. This is your design-time prompt: explain what you want. Your
-vision, goals, non-goals, constraints, requirements, assumptions, and definition
-of done. Workers never modify it.
+`GOVERNATOR.md` is your design-time prompt; the north star and single source of
+truth for system behavior. Consider including:
+- Scope
+- Context
+- Use-cases
+- Requirements
+- Boundaries
+- Constraints
+- Assumptions
+- Goals
+- Non-goals
+- Stack
+- Example input/output
+- References to existing work
+The more detailed, specific, and precise you are, the more effective Governator
+will be. That's just LLMs, baby.
 
 ### Configuration
 Configure during initialization with `governator init` options (see `governator
