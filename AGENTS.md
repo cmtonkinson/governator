@@ -15,7 +15,7 @@ You have full authority to inspect, modify, and operate within the testbed, but
 must NEVER perform a full restart-from-scratch without explicit operator
 approval. The way to perform a full reset is:
 ```
-TB="~/repo/governator-testbed" \
+TB="$HOME/repo/governator-testbed" && \
   rm -rf $TB && \
   mkdir -p $TB && \
   cp ./docs/GOVERNATOR.md.sample.toyls $TB/GOVERNATOR.md && \
