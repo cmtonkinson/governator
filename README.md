@@ -278,13 +278,10 @@ logs track every state transition.
 even the entire planning stage itself is entirely JSON-configurable.
 
 ### Philosophy
-Correctness and bounded execution matter more than speed or cleverness.
-
-Governator treats LLMs as workers, not collaborators. Creativity lives in
-planning and review; execution is mechanical.
-
-If a task is ambiguous, it should block. If a decision is architectural,
-it should be explicit. If work cannot be reviewed, it should not be merged.
+- Correctness and bounded execution matter more than speed or cleverness.
+- If a task is ambiguous, it should block.
+- If a decision is architectural, it should be explicit.
+- If work cannot be verified, it should not be merged.
 
 ---
 ## License
