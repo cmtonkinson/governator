@@ -113,7 +113,7 @@ truth for system behavior. Consider including:
 - References to existing work
 
 The more detailed, specific, and precise you are, the more effective Governator
-will be. That's just LLMs for you ¯\\_(ツ)_/¯.
+will be. That's just LLMs for you ¯\\\_(ツ)\_/¯.
 
 ### Configuration
 Configure during initialization with `governator init` options (see `governator
