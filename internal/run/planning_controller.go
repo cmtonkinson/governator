@@ -133,7 +133,9 @@ func (controller *planningController) Advance(step workstreamStep, collect works
 		}
 
 		if inventoryResult.TasksAdded == 0 {
-			return false, fmt.Errorf("planning completion requires at least one task file in _governator/tasks")
+			if !hasExecutionTasks(*controller.idx) {
+				return false, fmt.Errorf("planning completion requires at least one execution task in the task index after inventory")
+			}
 		}
 
 		indexPath := filepath.Join(controller.runner.repoRoot, indexFilePath)
