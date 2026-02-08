@@ -11,7 +11,6 @@ The agentic anti-swarm (or: just a context management state machine)
 
 ![Governator](img/governator_512.png)
 
----
 ## Quick Start
 ```bash
 # 0. Install
@@ -66,7 +65,8 @@ shared memory, no long-lived agent state, and no hidden context. All state,
 intent, decisions, and artifacts live on disk and in git.
 
 Governator can be used in a completely blank repository to get something from 0
-to 1, or in an existing project to improve, extend, and refine.
+to 1 (this is why it was initially built), or in an existing project to improve,
+extend, refine, and maintain.
 
 ### Installation Options
 **Homebrew** (macOS/Linux):
@@ -113,29 +113,18 @@ truth for system behavior. Consider including:
 - References to existing work
 
 The more detailed and precise you are, the more effective Governator will be.
-That's just LLMs for you ¯\\\_(ツ)\_/¯.
+That's just LLMs for you ¯\\\_(ツ)\_/¯
 
 ### Configuration
-Configure during initialization with `governator init` options (see `governator
-init -h` for full list and defaults):
+Some settings can be tuned during initialization with `governator init` options
+(see `governator init -h` for full list and defaults):
 ```bash
 governator init \
-  --agent claude \            # Agent CLI (codex, claude, gemini)
-  --concurrency 5 \           # Max concurrent workers
-  --reasoning-effort high     # Reasoning level (low, medium, high)
+  --agent claude \            # Use Claude Code as the default agent 
+  --concurrency 5 \           # Allow up to 5 concurrent agents
+  --reasoning-effort high     # API budget? What's that?
 ```
-Or edit `_governator/_durable-state/config.json` post-init:
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `workers.cli.default` | `"codex"` | AI CLI backend (`codex`, `claude`, or `gemini`) |
-| `concurrency.global` | `1` | Max concurrent workers |
-| `timeouts.worker_seconds` | `900` | Worker timeout (15 min) |
-| `retries.max_attempts` | `2` | Auto-retries before blocking a task |
-| `branches.base` | `"main"` | Branch that worktrees merge into |
-| `reasoning_effort.default` | `"medium"` | Reasoning level (`low`, `medium`, `high`) |
-
-Per-role overrides are available for CLI backend, concurrency caps, and reasoning effort.
+You can always edit `_governator/_durable-state/config.json` post-init.
 
 ---
 ## How It Works
