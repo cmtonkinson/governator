@@ -28,8 +28,8 @@ func TestCheckPlanningDriftNoChanges(t *testing.T) {
 	}
 }
 
-// TestCheckPlanningDriftDetectsChange ensures drift stops the run with guidance.
-func TestCheckPlanningDriftDetectsChange(t *testing.T) {
+// TestCheckPlanningDriftDetectsPlanningDocChange ensures changed planning docs trigger replanning.
+func TestCheckPlanningDriftDetectsPlanningDocChange(t *testing.T) {
 	root := t.TempDir()
 	if err := writeRepoFixture(root); err != nil {
 		t.Fatalf("write repo: %v", err)
@@ -40,30 +40,75 @@ func TestCheckPlanningDriftDetectsChange(t *testing.T) {
 		t.Fatalf("Compute error: %v", err)
 	}
 
-	adrDir := filepath.Join(root, "_governator", "docs", "adr")
-	if err := os.MkdirAll(adrDir, 0o755); err != nil {
-		t.Fatalf("create ADR dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(adrDir, "adr-0002-test.md"), []byte("# ADR\n"), 0o644); err != nil {
-		t.Fatalf("write ADR: %v", err)
+	roadmapPath := filepath.Join(root, "_governator", "docs", "roadmap.md")
+	if err := os.WriteFile(roadmapPath, []byte("changed plan\n"), 0o644); err != nil {
+		t.Fatalf("update roadmap: %v", err)
 	}
 
 	err = CheckPlanningDrift(root, stored)
+	assertPlanningDriftError(t, err)
+	assertErrorContains(t, err, "planning doc changed: _governator/docs/roadmap.md")
+}
+
+// TestCheckPlanningDriftDetectsPlanningDocDeletion ensures deleted planning docs trigger replanning.
+func TestCheckPlanningDriftDetectsPlanningDocDeletion(t *testing.T) {
+	root := t.TempDir()
+	if err := writeRepoFixture(root); err != nil {
+		t.Fatalf("write repo: %v", err)
+	}
+
+	stored, err := digests.Compute(root)
+	if err != nil {
+		t.Fatalf("Compute error: %v", err)
+	}
+
+	roadmapPath := filepath.Join(root, "_governator", "docs", "roadmap.md")
+	if err := os.Remove(roadmapPath); err != nil {
+		t.Fatalf("remove roadmap: %v", err)
+	}
+
+	err = CheckPlanningDrift(root, stored)
+	assertPlanningDriftError(t, err)
+	assertErrorContains(t, err, "planning doc missing: _governator/docs/roadmap.md")
+}
+
+// TestCheckPlanningDriftDetectsNonADRDocAddition ensures non-ADR additions trigger replanning.
+func TestCheckPlanningDriftDetectsNonADRDocAddition(t *testing.T) {
+	root := t.TempDir()
+	if err := writeRepoFixture(root); err != nil {
+		t.Fatalf("write repo: %v", err)
+	}
+
+	stored, err := digests.Compute(root)
+	if err != nil {
+		t.Fatalf("Compute error: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(root, "_governator", "docs", "implementation-plan.md"), []byte("# plan\n"), 0o644); err != nil {
+		t.Fatalf("write planning doc: %v", err)
+	}
+
+	err = CheckPlanningDrift(root, stored)
+	assertPlanningDriftError(t, err)
+	assertErrorContains(t, err, "planning doc added: _governator/docs/implementation-plan.md")
+}
+
+func assertPlanningDriftError(t *testing.T, err error) {
+	t.Helper()
 	if err == nil {
 		t.Fatal("expected drift error")
 	}
 	if !errors.Is(err, ErrPlanningDrift) {
 		t.Fatalf("expected ErrPlanningDrift, got %v", err)
 	}
-	message := err.Error()
-	if !strings.Contains(message, "ADR drift detected") {
-		t.Fatalf("expected drift message, got %q", message)
-	}
-	if !strings.Contains(message, "ADR added") {
-		t.Fatalf("expected drift details, got %q", message)
-	}
-	if !strings.Contains(message, "governator start") {
-		t.Fatalf("expected replanning guidance, got %q", message)
+	assertErrorContains(t, err, "Planning drift detected; replan required.")
+	assertErrorContains(t, err, "governator start")
+}
+
+func assertErrorContains(t *testing.T, err error, expected string) {
+	t.Helper()
+	if !strings.Contains(err.Error(), expected) {
+		t.Fatalf("expected error to contain %q, got %q", expected, err.Error())
 	}
 }
 

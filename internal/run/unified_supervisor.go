@@ -32,7 +32,7 @@ type UnifiedSupervisorOptions struct {
 var (
 	runFunc               = Run
 	runBacklogTriageFunc  = RunBacklogTriage
-	detectADRDriftFunc    = DetectADRDrift
+	detectPlanningDriftFn = DetectPlanningDrift
 	planningCompleteFunc  = planningComplete
 	countBacklogFunc      = countBacklog
 	executionCompleteFunc = executionComplete
@@ -107,11 +107,11 @@ func RunUnifiedSupervisor(repoRoot string, opts UnifiedSupervisorOptions) error 
 			inFlight = inflight.Set{}
 		}
 
-		adrDrift, err := detectADRDriftFunc(repoRoot, idx.Digests)
+		planningDrift, err := detectPlanningDriftFn(repoRoot, idx.Digests)
 		if err != nil {
 			return failUnifiedSupervisor(repoRoot, &state, err)
 		}
-		if len(adrDrift.Added) > 0 {
+		if planningDrift.HasDrift {
 			state.StepID = "drain"
 			state.StepName = "Drain"
 			state.WorkerPID = 0
@@ -119,7 +119,7 @@ func RunUnifiedSupervisor(repoRoot string, opts UnifiedSupervisorOptions) error 
 			if err := maybePersistUnifiedSupervisorState(repoRoot, &state); err != nil {
 				return err
 			}
-			emitADRReplanMessage(stdout, adrDrift.Message)
+			emitDriftReplanMessage(stdout, planningDrift.Message)
 			if len(inFlight) > 0 {
 				if _, err := runFunc(repoRoot, Options{Stdout: stdout, Stderr: stderr, DisableDispatch: true, SkipPlanningDrift: true}); err != nil {
 					return failUnifiedSupervisor(repoRoot, &state, err)

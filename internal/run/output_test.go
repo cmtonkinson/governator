@@ -46,11 +46,11 @@ func TestPlanningDriftMessage(t *testing.T) {
 	}
 }
 
-func TestADRReplanMessage(t *testing.T) {
+func TestDriftReplanMessage(t *testing.T) {
 	var buf bytes.Buffer
-	emitADRReplanMessage(&buf, "ADR drift detected")
+	emitDriftReplanMessage(&buf, "Planning drift detected")
 	got := buf.String()
-	want := "planning=drift status=drain reason=\"ADR drift detected\" next_step=\"auto-replan\"\n"
+	want := "planning=drift status=drain reason=\"Planning drift detected\" next_step=\"auto-replan\"\n"
 	if got != want {
 		t.Fatalf("replan message = %q, want %q", got, want)
 	}

@@ -81,14 +81,14 @@ func emitPlanningMessage(out io.Writer, detail string) {
 	))
 }
 
-// emitADRReplanMessage reports that ADR drift triggered an automatic replan.
-func emitADRReplanMessage(out io.Writer, detail string) {
+// emitDriftReplanMessage reports that planning drift triggered an automatic replan.
+func emitDriftReplanMessage(out io.Writer, detail string) {
 	if out == nil {
 		return
 	}
 	detail = strings.TrimSpace(detail)
 	if detail == "" {
-		detail = "ADR drift detected; auto-replan initiated"
+		detail = "Planning drift detected; auto-replan initiated"
 	}
 	_, _ = out.Write([]byte(
 		"planning=drift status=drain reason=" +

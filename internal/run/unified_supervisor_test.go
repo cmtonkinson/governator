@@ -39,7 +39,7 @@ func TestRunUnifiedSupervisor_ClearsStateOnCompletion(t *testing.T) {
 	}
 }
 
-func TestRunUnifiedSupervisor_ADRDriftDrainsAndReplans(t *testing.T) {
+func TestRunUnifiedSupervisor_PlanningDriftDrainsAndReplans(t *testing.T) {
 	repoRoot := setupUnifiedTestRepo(t)
 	setPlanningState(t, repoRoot, PlanningCompleteState)
 
@@ -53,7 +53,7 @@ func TestRunUnifiedSupervisor_ADRDriftDrainsAndReplans(t *testing.T) {
 	}
 
 	prevRun := runFunc
-	prevDetect := detectADRDriftFunc
+	prevDetect := detectPlanningDriftFn
 	driftChecks := 0
 	sawGapAnalysis := false
 	runFunc = func(repoRoot string, opts Options) (Result, error) {
@@ -74,19 +74,20 @@ func TestRunUnifiedSupervisor_ADRDriftDrainsAndReplans(t *testing.T) {
 		}
 		return Result{}, nil
 	}
-	detectADRDriftFunc = func(repoRoot string, base index.Digests) (ADRDriftReport, error) {
+	detectPlanningDriftFn = func(repoRoot string, base index.Digests) (PlanningDriftReport, error) {
 		if driftChecks == 0 {
 			driftChecks++
-			return ADRDriftReport{
-				Added:   []string{"_governator/docs/adr/adr-0001-test.md"},
-				Message: "adr drift detected",
+			return PlanningDriftReport{
+				HasDrift: true,
+				Details:  []string{"planning doc changed: _governator/docs/roadmap.md"},
+				Message:  "planning drift detected",
 			}, nil
 		}
-		return ADRDriftReport{}, nil
+		return PlanningDriftReport{}, nil
 	}
 	t.Cleanup(func() {
 		runFunc = prevRun
-		detectADRDriftFunc = prevDetect
+		detectPlanningDriftFn = prevDetect
 	})
 
 	if err := RunUnifiedSupervisor(repoRoot, UnifiedSupervisorOptions{
