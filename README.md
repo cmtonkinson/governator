@@ -128,7 +128,8 @@ You can always edit `_governator/_durable-state/config.json` post-init.
 
 ---
 ## How It Works
-Governator orchestrates planning and execution with a process supervisor:
+Governator works in three discrete "phases": planning, traige, and execution. A
+supervisor process is responsible for orchestrating these phases.
 
 ### Planning
 Up front, Governator loads the planning pipeline from
@@ -168,7 +169,7 @@ _Note: In practice, the DAG usually winds up being the primary limiting factor
 to effective parallelism during execution, so if you have allowed `C` amount of
 concurrency per your config but see `< C` active workers, check the DAG._
 
-### Lifecycle
+### Task Lifecycle
 On the happy path, tasks progress through the followig states:
 ```
 backlog -> triaged -> implemented -> tested -> reviewed -> mergeable -> merged
