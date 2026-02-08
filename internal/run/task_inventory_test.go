@@ -156,6 +156,47 @@ func TestTaskInventoryIdempotent(t *testing.T) {
 	}
 }
 
+func TestTaskInventoryUsesPathAsCanonicalIdentity(t *testing.T) {
+	repo := testrepos.New(t)
+
+	tasksDir := filepath.Join(repo.Root, "_governator", "tasks")
+	if err := os.MkdirAll(tasksDir, 0755); err != nil {
+		t.Fatalf("create tasks dir: %v", err)
+	}
+
+	taskPath := filepath.Join(tasksDir, "001-task.md")
+	if err := os.WriteFile(taskPath, []byte("# Task Title\n\nContent."), 0644); err != nil {
+		t.Fatalf("write task file: %v", err)
+	}
+
+	idx := &index.Index{
+		Tasks: []index.Task{
+			{
+				ID:           "legacy-id-does-not-matter-for-identity",
+				Path:         "_governator/tasks/001-task.md",
+				Kind:         index.TaskKindExecution,
+				State:        index.TaskStateBacklog,
+				Role:         index.Role("default"),
+				Dependencies: []string{},
+				Retries:      index.RetryPolicy{MaxAttempts: 3},
+				Attempts:     index.AttemptCounters{},
+			},
+		},
+	}
+
+	inventory := NewTaskInventory(repo.Root, idx)
+	result, err := inventory.InventoryTasks()
+	if err != nil {
+		t.Fatalf("inventory error: %v", err)
+	}
+	if result.TasksAdded != 0 {
+		t.Fatalf("TasksAdded = %d, want 0", result.TasksAdded)
+	}
+	if len(idx.Tasks) != 1 {
+		t.Fatalf("len(idx.Tasks) = %d, want 1", len(idx.Tasks))
+	}
+}
+
 func TestTaskInventoryTitleExtraction(t *testing.T) {
 	repo := testrepos.New(t)
 

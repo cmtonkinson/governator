@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/cmtonkinson/governator/internal/index"
@@ -62,65 +63,78 @@ func (inventory *TaskInventory) InventoryTasks() (TaskInventoryResult, error) {
 		return result, fmt.Errorf("no task markdown files found in %s", tasksDir)
 	}
 
+	existingPaths := make(map[string]struct{}, len(inventory.idx.Tasks))
+	for _, existingTask := range inventory.idx.Tasks {
+		canonicalPath := canonicalTaskPath(existingTask.Path)
+		if canonicalPath == "" {
+			continue
+		}
+		existingPaths[canonicalPath] = struct{}{}
+	}
+
+	sort.Strings(taskFiles)
+
 	// Process each task file
 	for _, filename := range taskFiles {
 		filePath := filepath.Join(tasksDir, filename)
+		relativePath, err := filepath.Rel(inventory.repoRoot, filePath)
+		if err != nil {
+			result.Errors = append(result.Errors, fmt.Errorf("compute relative path for %s: %w", filename, err))
+			continue
+		}
 
-		// Parse task metadata from markdown
-		task, err := inventory.parseTaskFile(filePath)
+		canonicalPath := canonicalTaskPath(relativePath)
+		if _, exists := existingPaths[canonicalPath]; exists {
+			continue
+		}
+
+		// Parse task title and initialize index-owned execution defaults.
+		task, err := inventory.parseTaskFile(filePath, canonicalPath)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("parse task %s: %w", filename, err))
 			continue
 		}
-
-		// Check if task already exists in index
-		exists := false
-		for _, existingTask := range inventory.idx.Tasks {
-			if existingTask.Path == task.Path {
-				exists = true
-				break
-			}
-		}
-
-		if !exists {
-			// Add new task to index
-			inventory.idx.Tasks = append(inventory.idx.Tasks, task)
-			result.TasksAdded++
-		}
+		inventory.idx.Tasks = append(inventory.idx.Tasks, task)
+		existingPaths[canonicalPath] = struct{}{}
+		result.TasksAdded++
 	}
 
 	return result, nil
 }
 
-// parseTaskFile extracts task metadata from a markdown file.
-func (inventory *TaskInventory) parseTaskFile(filePath string) (index.Task, error) {
+// parseTaskFile extracts task title from a markdown file and builds an execution task.
+func (inventory *TaskInventory) parseTaskFile(filePath, taskPath string) (index.Task, error) {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return index.Task{}, fmt.Errorf("read task file: %w", err)
 	}
 
-	// Basic parsing - in a real implementation, this would parse frontend matter or
-	// specific markdown sections to extract title, dependencies, etc.
-
-	// For now, we'll create a basic task with default values
-	relativePath, err := filepath.Rel(inventory.repoRoot, filePath)
-	if err != nil {
-		return index.Task{}, fmt.Errorf("compute relative path: %w", err)
-	}
-
-	taskID := strings.TrimSuffix(filepath.Base(filePath), ".md")
-
 	return index.Task{
-		ID:       taskID,
+		ID:       taskIDFromPath(taskPath),
 		Title:    extractTitleFromMarkdown(string(content)),
-		Path:     relativePath,
+		Path:     taskPath,
 		Kind:     index.TaskKindExecution,
 		State:    index.TaskStateBacklog,
 		Role:     index.Role("default"),
 		Retries:  index.RetryPolicy{MaxAttempts: 3},
 		Attempts: index.AttemptCounters{Total: 0, Failed: 0},
-		Order:    len(inventory.idx.Tasks) + 1, // Simple ordering
+		Order:    len(inventory.idx.Tasks) + 1,
 	}, nil
+}
+
+// canonicalTaskPath normalizes a task path for identity comparisons.
+func canonicalTaskPath(path string) string {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return ""
+	}
+	return filepath.ToSlash(filepath.Clean(trimmed))
+}
+
+// taskIDFromPath derives the workstream identifier from the canonical task path.
+func taskIDFromPath(taskPath string) string {
+	base := filepath.Base(taskPath)
+	return strings.TrimSuffix(base, filepath.Ext(base))
 }
 
 // extractTitleFromMarkdown extracts the title from markdown content.
