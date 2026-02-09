@@ -117,6 +117,23 @@ func Run(repoRoot string, opts Options) (Result, error) {
 		return Result{}, fmt.Errorf("create audit logger: %w", err)
 	}
 
+	// Hold the index write lock across execution-stage read/modify/write to avoid stale overwrites.
+	indexWriteLock, err := index.AcquireWriteLock(indexPath)
+	if err != nil {
+		return Result{}, fmt.Errorf("acquire task index lock: %w", err)
+	}
+	defer func() {
+		if releaseErr := indexWriteLock.Release(); releaseErr != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to release task index lock: %v\n", releaseErr)
+		}
+	}()
+
+	// Reload index after acquiring the lock so this run mutates the latest on-disk state.
+	idx, err = index.Load(indexPath)
+	if err != nil {
+		return Result{}, fmt.Errorf("reload task index: %w", err)
+	}
+
 	// Detect resume candidates
 	candidates, err := DetectResumeCandidates(repoRoot, idx, cfg)
 	if err != nil {
@@ -165,7 +182,7 @@ func Run(repoRoot string, opts Options) (Result, error) {
 
 	// Save updated index
 	if len(resumedTasks) > 0 || len(blockedTasks) > 0 || workResult.TasksWorked > 0 || workResult.TasksBlocked > 0 || testResult.TasksTested > 0 || testResult.TasksBlocked > 0 || reviewResult.TasksReviewed > 0 || reviewResult.TasksBlocked > 0 || conflictResult.TasksResolved > 0 || conflictResult.TasksBlocked > 0 || mergeResult.TasksProcessed > 0 {
-		if err := index.Save(indexPath, idx); err != nil {
+		if err := index.SaveWithLock(indexPath, idx, indexWriteLock); err != nil {
 			return Result{}, fmt.Errorf("save task index: %w", err)
 		}
 	}

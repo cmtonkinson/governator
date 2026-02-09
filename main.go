@@ -618,17 +618,16 @@ OPTIONS:
 		os.Exit(2)
 	}
 
-	if _, running, err := supervisor.AnyRunning(repoRoot); err != nil {
+	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexWriteLock, err := index.AcquireWriteLock(indexPath)
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	} else if running {
-		fmt.Fprintln(os.Stderr, "supervisor is running; stop it before using retry")
 		os.Exit(1)
 	}
 
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
 	idx, err := index.Load(indexPath)
 	if err != nil {
+		_ = indexWriteLock.Release()
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
@@ -652,11 +651,17 @@ OPTIONS:
 	}
 
 	if !found {
+		_ = indexWriteLock.Release()
 		fmt.Fprintf(os.Stderr, "governator retry: task %q not found\n", taskID)
 		os.Exit(1)
 	}
 
-	if err := index.Save(indexPath, idx); err != nil {
+	if err := index.SaveWithLock(indexPath, idx, indexWriteLock); err != nil {
+		_ = indexWriteLock.Release()
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	if err := indexWriteLock.Release(); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}

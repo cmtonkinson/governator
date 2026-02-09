@@ -48,6 +48,24 @@ func Save(path string, idx Index) (err error) {
 		}
 	}()
 
+	if err := saveWithHeldLock(path, idx); err != nil {
+		return err
+	}
+	return nil
+}
+
+// SaveWithLock writes a task index while holding an externally-acquired write lock.
+func SaveWithLock(path string, idx Index, lock *WriteLock) error {
+	if lock == nil || lock.inner == nil {
+		return fmt.Errorf("write lock is required")
+	}
+	if err := saveWithHeldLock(path, idx); err != nil {
+		return err
+	}
+	return nil
+}
+
+func saveWithHeldLock(path string, idx Index) error {
 	encoded, err := encodeIndex(idx)
 	if err != nil {
 		return fmt.Errorf("encode task index %s: %w", path, err)
