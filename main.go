@@ -45,6 +45,7 @@ COMMANDS:
     start            Start the unified supervisor to plan, triage, and execute work
     plan             Alias for 'start'
     execute          Alias for 'start'
+    retry            Increase retry limit for a specific task by 1
     status           Display current supervisor and task status
     why              Show the most recent supervisor log lines
     dag              Display task dependency graph (DAG)
@@ -112,6 +113,8 @@ func main() {
 		runPlan(commandArgs)
 	case "execute":
 		runExecute(commandArgs)
+	case "retry":
+		runRetry(commandArgs)
 	case "status":
 		runStatus(commandArgs)
 	case "why":
@@ -579,6 +582,86 @@ OPTIONS:
 		os.Exit(1)
 	}
 	fmt.Println("supervisor reset")
+}
+
+func runRetry(args []string) {
+	flags := flag.NewFlagSet("retry", flag.ExitOnError)
+	flags.Usage = func() {
+		fmt.Fprint(os.Stderr, `USAGE:
+    governator retry <task-id>
+
+DESCRIPTION:
+    Increase retries.max_attempts for a specific task by 1.
+    This is a targeted operator override used to re-arm a retry-exhausted task.
+
+OPTIONS:
+    -h, --help    Show this help message
+`)
+	}
+	flags.Parse(args)
+
+	if flags.NArg() != 1 {
+		fmt.Fprintf(os.Stderr, "governator retry: expected exactly 1 task id\n\n")
+		flags.Usage()
+		os.Exit(2)
+	}
+
+	taskID := strings.TrimSpace(flags.Arg(0))
+	if taskID == "" {
+		fmt.Fprintln(os.Stderr, "governator retry: task id cannot be empty")
+		os.Exit(2)
+	}
+
+	repoRoot, err := repo.DiscoverRootFromCWD()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(2)
+	}
+
+	if _, running, err := supervisor.AnyRunning(repoRoot); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	} else if running {
+		fmt.Fprintln(os.Stderr, "supervisor is running; stop it before using retry")
+		os.Exit(1)
+	}
+
+	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	idx, err := index.Load(indexPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	found := false
+	before := 0
+	after := 0
+	for i := range idx.Tasks {
+		if idx.Tasks[i].ID != taskID {
+			continue
+		}
+		found = true
+		before = idx.Tasks[i].Retries.MaxAttempts
+		if before <= 0 {
+			after = 1
+		} else {
+			after = before + 1
+		}
+		idx.Tasks[i].Retries.MaxAttempts = after
+		break
+	}
+
+	if !found {
+		fmt.Fprintf(os.Stderr, "governator retry: task %q not found\n", taskID)
+		os.Exit(1)
+	}
+
+	if err := index.Save(indexPath, idx); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	fmt.Printf("retry ok: %s max_attempts %d -> %d\n", taskID, before, after)
 }
 
 // ensureNoSupervisorLocks blocks supervisor startup when any lock is held.

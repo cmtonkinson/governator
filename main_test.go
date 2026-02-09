@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cmtonkinson/governator/internal/config"
+	"github.com/cmtonkinson/governator/internal/index"
 )
 
 const usageMessage = "USAGE:\n    governator [global options] <command> [command options]"
@@ -265,6 +266,78 @@ func TestInitCommand(t *testing.T) {
 	if strings.TrimSpace(string(logOut)) != "Governator initialized" {
 		t.Errorf("expected commit message %q, got %q", "Governator initialized", strings.TrimSpace(string(logOut)))
 	}
+}
+
+func TestRetryCommand(t *testing.T) {
+	tempDir := t.TempDir()
+
+	binaryPath := filepath.Join(t.TempDir(), "governator-test")
+	buildCmd := exec.Command("go", "build", "-o", binaryPath, ".")
+	if err := buildCmd.Run(); err != nil {
+		t.Fatalf("Failed to build CLI binary: %v", err)
+	}
+
+	gitInitCmd := exec.Command("git", "init")
+	gitInitCmd.Dir = tempDir
+	if out, err := gitInitCmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init failed: %v, output: %s", err, out)
+	}
+
+	initCmd := exec.Command(binaryPath, "init")
+	initCmd.Dir = tempDir
+	if out, err := initCmd.CombinedOutput(); err != nil {
+		t.Fatalf("init failed: %v, output: %s", err, out)
+	}
+
+	t.Run("increments max attempts for existing task", func(t *testing.T) {
+		cmd := exec.Command(binaryPath, "retry", "planning")
+		cmd.Dir = tempDir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("retry planning failed: %v, output: %s", err, output)
+		}
+		if !strings.Contains(string(output), "retry ok: planning max_attempts 1 -> 2") {
+			t.Fatalf("unexpected retry output: %q", strings.TrimSpace(string(output)))
+		}
+
+		idxPath := filepath.Join(tempDir, "_governator", "_local-state", "index.json")
+		idx, err := index.Load(idxPath)
+		if err != nil {
+			t.Fatalf("load index: %v", err)
+		}
+		var planningFound bool
+		for _, task := range idx.Tasks {
+			if task.ID != "planning" {
+				continue
+			}
+			planningFound = true
+			if task.Retries.MaxAttempts != 2 {
+				t.Fatalf("planning retries.max_attempts = %d, want 2", task.Retries.MaxAttempts)
+			}
+		}
+		if !planningFound {
+			t.Fatal("planning task not found in index")
+		}
+	})
+
+	t.Run("fails for unknown task", func(t *testing.T) {
+		cmd := exec.Command(binaryPath, "retry", "does-not-exist")
+		cmd.Dir = tempDir
+		output, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Fatalf("expected retry failure, output: %s", output)
+		}
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("expected ExitError, got %T", err)
+		}
+		if exitErr.ExitCode() != 1 {
+			t.Fatalf("exit code = %d, want 1", exitErr.ExitCode())
+		}
+		if !strings.Contains(string(output), `task "does-not-exist" not found`) {
+			t.Fatalf("unexpected output: %q", strings.TrimSpace(string(output)))
+		}
+	})
 }
 
 func TestStatusCommand(t *testing.T) {
