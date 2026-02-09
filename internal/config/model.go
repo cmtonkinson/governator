@@ -72,7 +72,7 @@ const (
 func BuiltInCommand(cli string) ([]string, bool) {
 	switch cli {
 	case CLICodex:
-		return []string{"codex", "--ask-for-approval=never", "--sandbox=workspace-write", "exec", "{prompt_path}"}, true
+		return []string{"codex", "--full-auto", "exec", "{prompt_path}"}, true
 	case CLIClaude:
 		// Note: dispatch.sh generation will transform this to use stdin piping:
 		// cat {prompt_path} | claude --print --output-format=text

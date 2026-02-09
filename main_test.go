@@ -589,6 +589,55 @@ func TestWhyCommand(t *testing.T) {
 			t.Fatalf("missing planning section in output:\n%s", got)
 		}
 	})
+
+	t.Run("falls back to stderr log when stdout log is empty", func(t *testing.T) {
+		indexPath := filepath.Join(tempDir, "_governator", "_local-state", "index.json")
+		indexJSON := `{
+  "schema_version": 1,
+  "tasks": [
+    {
+      "id": "T-ERR-001",
+      "path": "_governator/tasks/T-ERR-001.md",
+      "kind": "execution",
+      "state": "triaged",
+      "role": "default",
+      "dependencies": [],
+      "retries": {"max_attempts": 1},
+      "attempts": {"total": 1, "failed": 1},
+      "order": 1,
+      "overlap": []
+    }
+  ]
+}`
+		if err := os.WriteFile(indexPath, []byte(indexJSON), 0o644); err != nil {
+			t.Fatalf("write index: %v", err)
+		}
+
+		workerDir := filepath.Join(tempDir, "_governator", "_local-state", "task-T-ERR-001", "_governator", "_local-state", "worker-1-work-default")
+		if err := os.MkdirAll(workerDir, 0o755); err != nil {
+			t.Fatalf("mkdir worker dir: %v", err)
+		}
+		stdoutLog := filepath.Join(workerDir, "stdout.log")
+		stderrLog := filepath.Join(workerDir, "stderr.log")
+		if err := os.WriteFile(stdoutLog, []byte(""), 0o644); err != nil {
+			t.Fatalf("write stdout log: %v", err)
+		}
+		if err := os.WriteFile(stderrLog, []byte("x-1\nx-2\n"), 0o644); err != nil {
+			t.Fatalf("write stderr log: %v", err)
+		}
+
+		cmd := exec.Command(binaryPath, "why", "-s", "1", "-t", "2")
+		cmd.Dir = tempDir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("why with stderr fallback failed: %v, output: %s", err, output)
+		}
+		got := string(output)
+
+		if !strings.Contains(got, "from _governator/_local-state/task-T-ERR-001/_governator/_local-state/worker-1-work-default/stderr.log ===\nx-1\nx-2\n") {
+			t.Fatalf("missing stderr fallback section in output:\n%s", got)
+		}
+	})
 }
 
 func TestHandleTailQuitInput(t *testing.T) {

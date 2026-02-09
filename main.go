@@ -906,7 +906,8 @@ func whyTaskKind(task index.Task, supervisorState supervisor.SupervisorStateInfo
 	return ""
 }
 
-// latestTaskStdoutLog returns the most recently modified stdout log for a task.
+// latestTaskStdoutLog returns the most relevant worker log for a task.
+// Prefer stdout when present and non-empty; otherwise fall back to stderr.
 func latestTaskStdoutLog(repoRoot string, taskID string) (string, error) {
 	if strings.TrimSpace(taskID) == "" {
 		return "", nil
@@ -933,17 +934,39 @@ func latestTaskStdoutLog(repoRoot string, taskID string) (string, error) {
 		if !entry.IsDir() {
 			continue
 		}
-		candidate := filepath.Join(taskStateDir, entry.Name(), "stdout.log")
-		info, err := os.Stat(candidate)
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			return "", fmt.Errorf("stat task stdout log %s: %w", candidate, err)
+		workerDir := filepath.Join(taskStateDir, entry.Name())
+		stdoutPath := filepath.Join(workerDir, "stdout.log")
+		stderrPath := filepath.Join(workerDir, "stderr.log")
+
+		preferredPath := ""
+		var preferredInfo os.FileInfo
+
+		stdoutInfo, stdoutErr := os.Stat(stdoutPath)
+		stderrInfo, stderrErr := os.Stat(stderrPath)
+		if stdoutErr != nil && !errors.Is(stdoutErr, os.ErrNotExist) {
+			return "", fmt.Errorf("stat task stdout log %s: %w", stdoutPath, stdoutErr)
 		}
-		if latestPath == "" || info.ModTime().After(latestTime) || (info.ModTime().Equal(latestTime) && candidate > latestPath) {
-			latestPath = candidate
-			latestTime = info.ModTime()
+		if stderrErr != nil && !errors.Is(stderrErr, os.ErrNotExist) {
+			return "", fmt.Errorf("stat task stderr log %s: %w", stderrPath, stderrErr)
+		}
+
+		if stdoutErr == nil && stdoutInfo.Size() > 0 {
+			preferredPath = stdoutPath
+			preferredInfo = stdoutInfo
+		} else if stderrErr == nil {
+			preferredPath = stderrPath
+			preferredInfo = stderrInfo
+		} else if stdoutErr == nil {
+			preferredPath = stdoutPath
+			preferredInfo = stdoutInfo
+		}
+
+		if preferredPath == "" {
+			continue
+		}
+		if latestPath == "" || preferredInfo.ModTime().After(latestTime) || (preferredInfo.ModTime().Equal(latestTime) && preferredPath > latestPath) {
+			latestPath = preferredPath
+			latestTime = preferredInfo.ModTime()
 		}
 	}
 	return latestPath, nil

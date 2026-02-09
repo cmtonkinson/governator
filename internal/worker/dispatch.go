@@ -267,7 +267,6 @@ func writeDispatchWrapper(workerStateDir string, taskID string, stage roles.Stag
 	if len(pidPaths) == 0 {
 		return "", errors.New("pid paths are required")
 	}
-
 	if strings.TrimSpace(workerStateDir) == "" {
 		return "", errors.New("worker state dir is required")
 	}

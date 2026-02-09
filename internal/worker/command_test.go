@@ -130,7 +130,7 @@ func TestResolveCommandWithCLI(t *testing.T) {
 				},
 			},
 			role: "worker",
-			want: []string{"codex", "--ask-for-approval=never", "--sandbox=workspace-write", "exec", "/tmp/prompt.md"},
+			want: []string{"codex", "--full-auto", "exec", "/tmp/prompt.md"},
 		},
 		{
 			name: "claude-default",
@@ -253,9 +253,9 @@ func TestIsCodexCommand(t *testing.T) {
 // TestApplyCodexReasoningFlag verifies the reasoning config flag is added only for codex/high|low.
 func TestApplyCodexReasoningFlag(t *testing.T) {
 	t.Parallel()
-	command := []string{"codex", "--ask-for-approval=never", "--sandbox=workspace-write", "exec", "{prompt_path}"}
+	command := []string{"codex", "--full-auto", "exec", "{prompt_path}"}
 	got := applyCodexReasoningFlag(command, "high")
-	want := []string{"codex", "--config", "model_reasoning_effort=\"high\"", "--ask-for-approval=never", "--sandbox=workspace-write", "exec", "{prompt_path}"}
+	want := []string{"codex", "--config", "model_reasoning_effort=\"high\"", "--full-auto", "exec", "{prompt_path}"}
 	if !stringSlicesEqual(got, want) {
 		t.Fatalf("applyCodexReasoningFlag high = %v, want %v", got, want)
 	}
@@ -353,21 +353,21 @@ func TestApplyCodexReasoningFlagMultipleCLIs(t *testing.T) {
 	}{
 		{
 			name:    "codex-high",
-			command: []string{"codex", "--ask-for-approval=never", "--sandbox=workspace-write", "exec", "{prompt_path}"},
+			command: []string{"codex", "--full-auto", "exec", "{prompt_path}"},
 			level:   "high",
-			want:    []string{"codex", "--config", "model_reasoning_effort=\"high\"", "--ask-for-approval=never", "--sandbox=workspace-write", "exec", "{prompt_path}"},
+			want:    []string{"codex", "--config", "model_reasoning_effort=\"high\"", "--full-auto", "exec", "{prompt_path}"},
 		},
 		{
 			name:    "codex-low",
-			command: []string{"codex", "--ask-for-approval=never", "--sandbox=workspace-write", "exec", "{prompt_path}"},
+			command: []string{"codex", "--full-auto", "exec", "{prompt_path}"},
 			level:   "low",
-			want:    []string{"codex", "--config", "model_reasoning_effort=\"low\"", "--ask-for-approval=never", "--sandbox=workspace-write", "exec", "{prompt_path}"},
+			want:    []string{"codex", "--config", "model_reasoning_effort=\"low\"", "--full-auto", "exec", "{prompt_path}"},
 		},
 		{
 			name:    "codex-medium",
-			command: []string{"codex", "--ask-for-approval=never", "--sandbox=workspace-write", "exec", "{prompt_path}"},
+			command: []string{"codex", "--full-auto", "exec", "{prompt_path}"},
 			level:   "medium",
-			want:    []string{"codex", "--ask-for-approval=never", "--sandbox=workspace-write", "exec", "{prompt_path}"},
+			want:    []string{"codex", "--full-auto", "exec", "{prompt_path}"},
 		},
 		{
 			name:    "claude-high",
