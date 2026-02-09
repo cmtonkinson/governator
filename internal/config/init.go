@@ -191,6 +191,7 @@ var planningPromptTemplates = []struct {
 	{name: "gap-analysis.md", template: "planning/gap-analysis.md"},
 	{name: "roadmap.md", template: "planning/roadmap.md"},
 	{name: "task-planning.md", template: "planning/plan-tasks.md"},
+	{name: "conflict-resolution.md", template: "planning/conflict-resolution.md"},
 }
 
 func ensurePlanningPrompts(repoRoot string, opts InitOptions) error {

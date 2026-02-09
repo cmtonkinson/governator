@@ -30,3 +30,9 @@ TB="$HOME/repo/governator-testbed" && \
 _Note: I have `alias gov='~/repo/governator/governator'` in my shell so I'm
 always using the latest local build._
 
+## Migration E2E Testing Policy
+All migrations MUST include specific, comprehensive E2E coverage.
+- Every migration requires its own dedicated E2E test file.
+- Use explicit per-migration naming in `tests/e2e/`: `migration_<migration-id>_test.go`
+- The migration's E2E tests MUST cover both happy- and sad-path behavior.
+- Migration tests MUST assert durable side effects.

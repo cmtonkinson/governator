@@ -284,6 +284,15 @@ func launchSupervisor(commandArg string) {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
+	applyMigrations, err := confirmPendingMigrations(repoRoot, os.Stdin, os.Stdout)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	if !applyMigrations {
+		fmt.Fprintln(os.Stderr, "start canceled: pending migrations were not approved")
+		os.Exit(1)
+	}
 
 	logPath := supervisor.LogPath(repoRoot)
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
@@ -323,6 +332,35 @@ func launchSupervisor(commandArg string) {
 		os.Exit(1)
 	}
 	fmt.Printf("start supervisor started (pid %d)\n", pid)
+}
+
+// confirmPendingMigrations prompts the operator before starting if repo migrations are pending.
+func confirmPendingMigrations(repoRoot string, in io.Reader, out io.Writer) (bool, error) {
+	pending, err := config.PendingRepoMigrations(repoRoot)
+	if err != nil {
+		return false, fmt.Errorf("check pending migrations: %w", err)
+	}
+	if len(pending) == 0 {
+		return true, nil
+	}
+
+	fmt.Fprintln(out, "Identified pending migrations!")
+	for _, migrationID := range pending {
+		fmt.Fprintln(out, migrationID)
+	}
+	fmt.Fprint(out, "Apply these? ([y]/n) ")
+
+	reader := bufio.NewReader(in)
+	reply, readErr := reader.ReadString('\n')
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return false, fmt.Errorf("read migration confirmation: %w", readErr)
+	}
+
+	answer := strings.ToLower(strings.TrimSpace(reply))
+	if answer == "n" || answer == "no" {
+		return false, nil
+	}
+	return true, nil
 }
 
 func runStart(args []string) {

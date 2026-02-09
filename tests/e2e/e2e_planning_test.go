@@ -82,6 +82,9 @@ func TestE2EPlanning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("init full layout: %v", err)
 	}
+	if err := config.ApplyRepoMigrations(repoRoot, config.InitOptions{}); err != nil {
+		t.Fatalf("apply repo migrations: %v", err)
+	}
 
 	// Write config to the expected location
 	configPath := filepath.Join(repoRoot, "_governator/_durable-state/config.json")

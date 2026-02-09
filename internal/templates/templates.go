@@ -36,6 +36,7 @@ var requiredTemplates = []string{
 	"planning/epics.md",
 	"planning/roadmap.md",
 	"planning/plan-tasks.md",
+	"planning/conflict-resolution.md",
 	"planning/planning.json",
 	"roles/architect.md",
 	"roles/default.md",

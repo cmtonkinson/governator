@@ -63,6 +63,10 @@ func RunUnifiedSupervisor(repoRoot string, opts UnifiedSupervisorOptions) error 
 		_ = lock.Release()
 	}()
 
+	if err := config.ApplyRepoMigrations(repoRoot, config.InitOptions{}); err != nil {
+		return fmt.Errorf("apply repo migrations: %w", err)
+	}
+
 	cfg, err := config.Load(repoRoot, nil, nil)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)

@@ -26,6 +26,9 @@ func TestE2EExecutionTriage(t *testing.T) {
 	if err := config.InitFullLayout(repoRoot, config.InitOptions{}); err != nil {
 		t.Fatalf("init full layout: %v", err)
 	}
+	if err := config.ApplyRepoMigrations(repoRoot, config.InitOptions{}); err != nil {
+		t.Fatalf("apply repo migrations: %v", err)
+	}
 
 	testWorkerPath, err := filepath.Abs("test-worker.sh")
 	if err != nil {

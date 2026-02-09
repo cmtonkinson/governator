@@ -486,6 +486,64 @@ func TestStageEnvAndPromptsAllStages(t *testing.T) {
 	}
 }
 
+// TestStageEnvAndPromptsTaskPromptOverride ensures task prompt and extra context
+// prompts can be overridden for specialized stages like conflict resolution.
+func TestStageEnvAndPromptsTaskPromptOverride(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "_governator", "roles", "worker.md"), "role prompt")
+	writeFile(t, filepath.Join(root, "_governator", "worker-contract.md"), "worker contract")
+	writeFile(t, filepath.Join(root, "_governator", "tasks", "T-001.md"), "original task content")
+	writeFile(t, filepath.Join(root, "_governator", "prompts", "conflict-resolution.md"), "conflict prompt content")
+
+	writeFile(t, filepath.Join(root, "_governator", "_local-state", "worker-test", "conflict-context.md"), "conflict context content")
+
+	task := index.Task{
+		ID:   "T-001",
+		Path: "_governator/tasks/T-001.md",
+		Role: "worker",
+	}
+
+	result, err := StageEnvAndPrompts(StageInput{
+		RepoRoot:        root,
+		WorktreeRoot:    root,
+		Task:            task,
+		TaskPromptPath:  "_governator/prompts/conflict-resolution.md",
+		ExtraPromptPath: []string{"_governator/_local-state/worker-test/conflict-context.md"},
+		ExtraEnv: map[string]string{
+			"GOVERNATOR_CONFLICT_BRANCH": "task-branch",
+		},
+		Stage:           roles.StageResolve,
+		ReasoningEffort: "medium",
+		WorkerStateDir:  workerStateDirPath(root),
+	})
+	if err != nil {
+		t.Fatalf("stage env and prompts: %v", err)
+	}
+
+	if got := result.Env["GOVERNATOR_TASK_PATH"]; got != "_governator/prompts/conflict-resolution.md" {
+		t.Fatalf("GOVERNATOR_TASK_PATH = %q, want conflict prompt path", got)
+	}
+	if got := result.Env["GOVERNATOR_CONFLICT_BRANCH"]; got != "task-branch" {
+		t.Fatalf("GOVERNATOR_CONFLICT_BRANCH = %q, want task-branch", got)
+	}
+
+	promptBytes, err := os.ReadFile(result.PromptPath)
+	if err != nil {
+		t.Fatalf("read prompt file: %v", err)
+	}
+	prompt := string(promptBytes)
+	if !strings.Contains(prompt, "conflict prompt content") {
+		t.Fatalf("prompt missing conflict prompt content: %q", prompt)
+	}
+	if !strings.Contains(prompt, "conflict context content") {
+		t.Fatalf("prompt missing conflict context content: %q", prompt)
+	}
+	if strings.Contains(prompt, "original task content") {
+		t.Fatalf("prompt unexpectedly contains original task content: %q", prompt)
+	}
+}
+
 // writeFile creates the file and parent directories with content.
 func writeFile(t *testing.T, path string, content string) {
 	t.Helper()

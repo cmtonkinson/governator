@@ -27,6 +27,9 @@ type StageInput struct {
 	RepoRoot        string
 	WorktreeRoot    string
 	Task            index.Task
+	TaskPromptPath  string
+	ExtraPromptPath []string
+	ExtraEnv        map[string]string
 	Stage           roles.Stage
 	Role            index.Role
 	ReasoningEffort string
@@ -63,7 +66,10 @@ func StageEnvAndPrompts(input StageInput) (StageResult, error) {
 	if taskID == "" {
 		return StageResult{}, errors.New("task id is required")
 	}
-	taskPath := strings.TrimSpace(input.Task.Path)
+	taskPath := strings.TrimSpace(input.TaskPromptPath)
+	if taskPath == "" {
+		taskPath = strings.TrimSpace(input.Task.Path)
+	}
 	if taskPath == "" {
 		return StageResult{}, errors.New("task path is required")
 	}
@@ -90,7 +96,7 @@ func StageEnvAndPrompts(input StageInput) (StageResult, error) {
 	}
 	reasoningLevel := normalizeReasoningLevel(input.ReasoningEffort)
 	includeReasoning := shouldIncludeReasoningPrompt(reasoningLevel, input.AgentUsesCodex)
-	promptFiles, err := orderedPromptFiles(absRepoRoot, registry, role, reasoningLevel, taskPath, includeReasoning)
+	promptFiles, err := orderedPromptFiles(absRepoRoot, registry, role, reasoningLevel, taskPath, input.ExtraPromptPath, includeReasoning)
 	if err != nil {
 		return StageResult{}, err
 	}
@@ -118,7 +124,7 @@ func StageEnvAndPrompts(input StageInput) (StageResult, error) {
 	}
 
 	envPath := filepath.Join(stageDir, envFileName(input.Stage))
-	env := buildEnvMap(absWorktree, taskID, taskPath, role, input.Stage, promptPath, promptListPath, stageDir)
+	env := buildEnvMap(absWorktree, taskID, taskPath, role, input.Stage, promptPath, promptListPath, stageDir, input.ExtraEnv)
 	if err := writeEnvFile(envPath, env); err != nil {
 		return StageResult{}, err
 	}
@@ -142,7 +148,8 @@ func StageEnvAndPrompts(input StageInput) (StageResult, error) {
 //  4. _governator/custom-prompts/_global.md (optional)
 //  5. _governator/custom-prompts/<role>.md (optional)
 //  6. <task path>
-func orderedPromptFiles(repoRoot string, registry roles.Registry, role index.Role, reasoningLevel string, taskPath string, includeReasoning bool) ([]string, error) {
+//  7. Any extra prompt files in provided order.
+func orderedPromptFiles(repoRoot string, registry roles.Registry, role index.Role, reasoningLevel string, taskPath string, extraPromptPaths []string, includeReasoning bool) ([]string, error) {
 	rolePrompt, ok := registry.RolePromptPath(role)
 	if !ok {
 		return nil, fmt.Errorf("missing role prompt for %q", role)
@@ -152,7 +159,7 @@ func orderedPromptFiles(repoRoot string, registry roles.Registry, role index.Rol
 		return nil, fmt.Errorf("role prompt %s missing from prompt order", rolePrompt)
 	}
 
-	promptFiles := make([]string, 0, len(rolePrompts)+3)
+	promptFiles := make([]string, 0, len(rolePrompts)+len(extraPromptPaths)+3)
 	if includeReasoning {
 		promptFiles = append(promptFiles, reasoningPromptPath(reasoningLevel))
 	}
@@ -161,8 +168,15 @@ func orderedPromptFiles(repoRoot string, registry roles.Registry, role index.Rol
 
 	taskPath = filepath.ToSlash(taskPath)
 	promptFiles = append(promptFiles, taskPath)
+	for _, extra := range extraPromptPaths {
+		extraPath := strings.TrimSpace(extra)
+		if extraPath == "" {
+			continue
+		}
+		promptFiles = append(promptFiles, filepath.ToSlash(extraPath))
+	}
 	for _, prompt := range promptFiles {
-		abs := filepath.Join(repoRoot, filepath.FromSlash(prompt))
+		abs := resolvePromptPath(repoRoot, prompt)
 		if err := ensurePromptFile(abs); err != nil {
 			return nil, err
 		}
@@ -257,7 +271,7 @@ func buildPromptContent(repoRoot string, prompts []string) (string, error) {
 		if i > 0 {
 			builder.WriteString("\n\n")
 		}
-		path := filepath.Join(repoRoot, filepath.FromSlash(prompt))
+		path := resolvePromptPath(repoRoot, prompt)
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return "", fmt.Errorf("read prompt %s: %w", prompt, err)
@@ -268,7 +282,7 @@ func buildPromptContent(repoRoot string, prompts []string) (string, error) {
 }
 
 // buildEnvMap assembles the environment variables for worker execution.
-func buildEnvMap(worktreeRoot string, taskID string, taskPath string, role index.Role, stage roles.Stage, promptPath string, promptListPath string, workerStateDir string) map[string]string {
+func buildEnvMap(worktreeRoot string, taskID string, taskPath string, role index.Role, stage roles.Stage, promptPath string, promptListPath string, workerStateDir string, extraEnv map[string]string) map[string]string {
 	env := map[string]string{
 		"GOVERNATOR_PROMPT_LIST":  repoRelativePath(worktreeRoot, promptListPath),
 		"GOVERNATOR_PROMPT_PATH":  repoRelativePath(worktreeRoot, promptPath),
@@ -282,7 +296,23 @@ func buildEnvMap(worktreeRoot string, taskID string, taskPath string, role index
 		env["GOVERNATOR_WORKER_STATE_PATH"] = workerStateDir
 		env["GOVERNATOR_WORKER_STATE_DIR"] = repoRelativePath(worktreeRoot, workerStateDir)
 	}
+	for key, value := range extraEnv {
+		trimmedKey := strings.TrimSpace(key)
+		if trimmedKey == "" {
+			continue
+		}
+		env[trimmedKey] = strings.TrimSpace(value)
+	}
 	return env
+}
+
+// resolvePromptPath converts a prompt path to an absolute filesystem path.
+func resolvePromptPath(repoRoot string, prompt string) string {
+	normalized := filepath.FromSlash(prompt)
+	if filepath.IsAbs(normalized) {
+		return normalized
+	}
+	return filepath.Join(repoRoot, normalized)
 }
 
 // writeEnvFile writes a dotenv-style file for worker execution context.

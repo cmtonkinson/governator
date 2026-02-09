@@ -85,6 +85,54 @@ func TestExecuteConflictResolutionAgent_Success(t *testing.T) {
 	}
 }
 
+func TestConfigureConflictResolutionStageInput(t *testing.T) {
+	tempDir := t.TempDir()
+	task := index.Task{
+		ID:    "010-task",
+		Title: "Resolve merge conflict",
+		Path:  "_governator/tasks/010-task.md",
+	}
+	stageInput := newWorkerStageInput(
+		tempDir,
+		tempDir,
+		task,
+		"resolve",
+		"default",
+		1,
+		config.Defaults(),
+		nil,
+	)
+
+	if err := configureConflictResolutionStageInput(tempDir, task, &stageInput); err != nil {
+		t.Fatalf("configureConflictResolutionStageInput: %v", err)
+	}
+	if stageInput.TaskPromptPath != conflictResolutionPromptPath {
+		t.Fatalf("TaskPromptPath = %q, want %q", stageInput.TaskPromptPath, conflictResolutionPromptPath)
+	}
+	if got := stageInput.ExtraEnv["GOVERNATOR_CONFLICT_BRANCH"]; got != TaskBranchName(task) {
+		t.Fatalf("GOVERNATOR_CONFLICT_BRANCH = %q, want %q", got, TaskBranchName(task))
+	}
+	if got := stageInput.ExtraEnv["GOVERNATOR_CONFLICT_TASK_PATH"]; got != task.Path {
+		t.Fatalf("GOVERNATOR_CONFLICT_TASK_PATH = %q, want %q", got, task.Path)
+	}
+	if len(stageInput.ExtraPromptPath) != 1 {
+		t.Fatalf("ExtraPromptPath len = %d, want 1", len(stageInput.ExtraPromptPath))
+	}
+
+	contextPrompt := filepath.Join(tempDir, filepath.FromSlash(stageInput.ExtraPromptPath[0]))
+	content, err := os.ReadFile(contextPrompt)
+	if err != nil {
+		t.Fatalf("read conflict context prompt: %v", err)
+	}
+	got := string(content)
+	if !strings.Contains(got, TaskBranchName(task)) {
+		t.Fatalf("context prompt missing branch name: %q", got)
+	}
+	if !strings.Contains(got, task.Path) {
+		t.Fatalf("context prompt missing task path: %q", got)
+	}
+}
+
 func TestSelectRoleForConflictResolution_Success(t *testing.T) {
 	// Create temporary directory for test
 	tempDir := t.TempDir()

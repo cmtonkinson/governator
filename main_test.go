@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/cmtonkinson/governator/internal/config"
 )
 
 const usageMessage = "USAGE:\n    governator [global options] <command> [command options]"
@@ -101,6 +104,75 @@ func TestVersionCommandWithMetadata(t *testing.T) {
 	if outputStr != expected {
 		t.Fatalf("Expected %q, got %q", expected, outputStr)
 	}
+}
+
+func TestConfirmPendingMigrations(t *testing.T) {
+	t.Run("returns true without output when no migrations are pending", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(repoRoot, "_governator", "prompts"), 0o755); err != nil {
+			t.Fatalf("mkdir prompts: %v", err)
+		}
+		if err := config.ApplyRepoMigrations(repoRoot, config.InitOptions{}); err != nil {
+			t.Fatalf("apply repo migrations: %v", err)
+		}
+
+		var out bytes.Buffer
+		ok, err := confirmPendingMigrations(repoRoot, strings.NewReader(""), &out)
+		if err != nil {
+			t.Fatalf("confirmPendingMigrations: %v", err)
+		}
+		if !ok {
+			t.Fatal("expected confirmation to proceed when nothing is pending")
+		}
+		if out.Len() != 0 {
+			t.Fatalf("expected no output when no migrations are pending, got: %q", out.String())
+		}
+	})
+
+	t.Run("prompts and proceeds on default confirmation", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		var out bytes.Buffer
+
+		ok, err := confirmPendingMigrations(repoRoot, strings.NewReader("\n"), &out)
+		if err != nil {
+			t.Fatalf("confirmPendingMigrations: %v", err)
+		}
+		if !ok {
+			t.Fatal("expected confirmation to proceed on default input")
+		}
+
+		output := out.String()
+		if !strings.Contains(output, "Identified pending migrations!") {
+			t.Fatalf("expected pending migration banner, got: %q", output)
+		}
+		if !strings.Contains(output, "20260209_add_conflict_resolution_prompt") {
+			t.Fatalf("expected migration id in prompt output, got: %q", output)
+		}
+		if !strings.Contains(output, "Apply these? ([y]/n)") {
+			t.Fatalf("expected apply confirmation prompt, got: %q", output)
+		}
+	})
+
+	t.Run("prompts and aborts on explicit no", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		var out bytes.Buffer
+
+		ok, err := confirmPendingMigrations(repoRoot, strings.NewReader("n\n"), &out)
+		if err != nil {
+			t.Fatalf("confirmPendingMigrations: %v", err)
+		}
+		if ok {
+			t.Fatal("expected confirmation to abort on explicit no")
+		}
+
+		output := out.String()
+		if !strings.Contains(output, "Identified pending migrations!") {
+			t.Fatalf("expected pending migration banner, got: %q", output)
+		}
+		if !strings.Contains(output, "Apply these? ([y]/n)") {
+			t.Fatalf("expected apply confirmation prompt, got: %q", output)
+		}
+	})
 }
 
 func TestInitCommand(t *testing.T) {

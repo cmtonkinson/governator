@@ -23,6 +23,8 @@ import (
 const (
 	// indexFilePath is the relative path to the task index file.
 	indexFilePath = "_governator/_local-state/index.json"
+	// conflictResolutionPromptPath is the task prompt used for resolve-stage workers.
+	conflictResolutionPromptPath = "_governator/prompts/conflict-resolution.md"
 )
 
 // Options defines the configuration for a run execution.
@@ -1500,6 +1502,24 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 				fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
 			},
 		)
+		if err := configureConflictResolutionStageInput(repoRoot, task, &stageInput); err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: failed to prepare conflict resolution prompt context for task %s: %v\n", task.ID, err)
+			failedResult := worker.IngestResult{
+				Success:     false,
+				NewState:    index.TaskStateBlocked,
+				BlockReason: fmt.Sprintf("conflict resolution staging failed: %v", err),
+			}
+			if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
+			}
+			if updateErr := UpdateTaskStateFromConflictResolution(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
+			} else {
+				result.TasksBlocked++
+				emitTaskFailure(opts.Stdout, task.ID, roleForLogs, string(roles.StageResolve), failedResult.BlockReason)
+			}
+			continue
+		}
 		stageResult, err := worker.StageEnvAndPrompts(stageInput)
 		if err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to stage resolve environment for task %s: %v\n", task.ID, err)
@@ -1520,7 +1540,9 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 			continue
 		}
 
-		dispatchResult, err := worker.DispatchWorkerFromConfig(cfg, task, stageResult, worktreePath, roles.StageResolve, func(msg string) {
+		resolveDispatchTask := task
+		resolveDispatchTask.Path = conflictResolutionPromptPath
+		dispatchResult, err := worker.DispatchWorkerFromConfig(cfg, resolveDispatchTask, stageResult, worktreePath, roles.StageResolve, func(msg string) {
 			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
 		})
 		if err != nil {
@@ -1582,6 +1604,9 @@ func ExecuteConflictResolutionAgent(repoRoot, worktreePath string, task index.Ta
 			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
 		},
 	)
+	if err := configureConflictResolutionStageInput(repoRoot, task, &stageInput); err != nil {
+		return worker.IngestResult{}, roleResult, fmt.Errorf("prepare conflict resolution prompt context: %w", err)
+	}
 
 	stageResult, err := worker.StageEnvAndPrompts(stageInput)
 	if err != nil {
@@ -1596,7 +1621,9 @@ func ExecuteConflictResolutionAgent(repoRoot, worktreePath string, task index.Ta
 	})
 
 	// Execute the conflict resolution worker
-	execResult, err := worker.ExecuteWorkerFromConfigWithAudit(cfg, task, stageResult, worktreePath, func(msg string) {
+	resolveDispatchTask := task
+	resolveDispatchTask.Path = conflictResolutionPromptPath
+	execResult, err := worker.ExecuteWorkerFromConfigWithAudit(cfg, resolveDispatchTask, stageResult, worktreePath, func(msg string) {
 		fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
 	}, auditor, worktreePath)
 	if err != nil {
@@ -1735,6 +1762,65 @@ func resolveRoleForLogs(primary index.Role, fallback index.Role) string {
 		return role
 	}
 	return ""
+}
+
+// configureConflictResolutionStageInput rewrites resolve-stage prompt context to use
+// the dedicated conflict prompt and a generated branch/task context fragment.
+func configureConflictResolutionStageInput(repoRoot string, task index.Task, stageInput *worker.StageInput) error {
+	if stageInput == nil {
+		return fmt.Errorf("stage input is required")
+	}
+	stageInput.TaskPromptPath = conflictResolutionPromptPath
+	stageInput.ExtraEnv = map[string]string{
+		"GOVERNATOR_CONFLICT_BRANCH":    TaskBranchName(task),
+		"GOVERNATOR_CONFLICT_TASK_PATH": task.Path,
+	}
+
+	contextPromptPath, err := ensureConflictContextPrompt(repoRoot, stageInput.WorkerStateDir, task)
+	if err != nil {
+		return err
+	}
+	stageInput.ExtraPromptPath = []string{contextPromptPath}
+	return nil
+}
+
+// ensureConflictContextPrompt writes a deterministic context prompt for resolve workers.
+func ensureConflictContextPrompt(repoRoot string, workerStateDir string, task index.Task) (string, error) {
+	if strings.TrimSpace(workerStateDir) == "" {
+		return "", fmt.Errorf("worker state dir is required")
+	}
+	absoluteWorkerStateDir, err := filepath.Abs(workerStateDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve worker state dir %s: %w", workerStateDir, err)
+	}
+	if err := os.MkdirAll(absoluteWorkerStateDir, 0o755); err != nil {
+		return "", fmt.Errorf("create worker state dir %s: %w", absoluteWorkerStateDir, err)
+	}
+
+	contextPath := filepath.Join(absoluteWorkerStateDir, "conflict-context.md")
+	content := fmt.Sprintf(
+		"# Conflict Context\n- Task ID: `%s`\n- Task Title: `%s`\n- Conflicted branch: `%s`\n- Original task file: `%s`\n",
+		task.ID,
+		task.Title,
+		TaskBranchName(task),
+		task.Path,
+	)
+	if err := os.WriteFile(contextPath, []byte(content), 0o644); err != nil {
+		return "", fmt.Errorf("write conflict context prompt %s: %w", contextPath, err)
+	}
+
+	absoluteRepoRoot, err := filepath.Abs(repoRoot)
+	if err != nil {
+		return "", fmt.Errorf("resolve repo root %s: %w", repoRoot, err)
+	}
+	relativePath, err := filepath.Rel(absoluteRepoRoot, contextPath)
+	if err != nil {
+		return contextPath, nil
+	}
+	if strings.HasPrefix(relativePath, "..") {
+		return contextPath, nil
+	}
+	return filepath.ToSlash(relativePath), nil
 }
 
 func baseBranchName(cfg config.Config) string {
