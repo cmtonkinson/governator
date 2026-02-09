@@ -605,16 +605,6 @@ func TestExecuteConflictResolutionStage_WithConflictTasks(t *testing.T) {
 		t.Fatalf("failed to create task file: %v", err)
 	}
 
-	// Create role assignment prompt
-	promptDir := filepath.Join(tempDir, "_governator", "prompts")
-	if err := os.MkdirAll(promptDir, 0755); err != nil {
-		t.Fatalf("failed to create prompt dir: %v", err)
-	}
-	promptPath := filepath.Join(promptDir, "role-assignment.md")
-	if err := os.WriteFile(promptPath, []byte("# Role Assignment\nSelect appropriate role"), 0644); err != nil {
-		t.Fatalf("failed to create role assignment prompt: %v", err)
-	}
-
 	// Create roles directory with a test role
 	rolesDir := filepath.Join(tempDir, "_governator", "roles")
 	if err := os.MkdirAll(rolesDir, 0755); err != nil {

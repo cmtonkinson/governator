@@ -2,7 +2,6 @@
 package run
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -1468,26 +1467,7 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 			continue
 		}
 
-		roleResult, err := SelectRoleForConflictResolution(repoRoot, task, cfg, *idx, workerAuditor, opts)
-		if err != nil {
-			fmt.Fprintf(opts.Stderr, "Warning: failed to select conflict resolution role for task %s: %v\n", task.ID, err)
-			failedResult := worker.IngestResult{
-				Success:     false,
-				NewState:    index.TaskStateBlocked,
-				BlockReason: fmt.Sprintf("conflict resolution role selection failed: %v", err),
-			}
-			if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
-				fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
-			}
-			if updateErr := UpdateTaskStateFromConflictResolution(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
-				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
-			} else {
-				result.TasksBlocked++
-				emitTaskFailure(opts.Stdout, task.ID, resolveRoleForLogs(roleResult.Role, task.Role), string(roles.StageResolve), failedResult.BlockReason)
-			}
-			continue
-		}
-
+		roleResult := SelectRoleForConflictResolution(task)
 		roleForLogs := resolveRoleForLogs(roleResult.Role, task.Role)
 
 		stageInput := newWorkerStageInput(
@@ -1585,11 +1565,7 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 
 // ExecuteConflictResolutionAgent runs the conflict resolution agent for a specific task.
 func ExecuteConflictResolutionAgent(repoRoot, worktreePath string, task index.Task, cfg config.Config, idx index.Index, auditor *audit.Logger, opts Options) (worker.IngestResult, roles.RoleAssignmentResult, error) {
-	// Use role assignment to select appropriate role for conflict resolution
-	roleResult, err := SelectRoleForConflictResolution(repoRoot, task, cfg, idx, auditor, opts)
-	if err != nil {
-		return worker.IngestResult{}, roleResult, fmt.Errorf("select role for conflict resolution: %w", err)
-	}
+	roleResult := SelectRoleForConflictResolution(task)
 
 	// Stage environment and prompts for conflict resolution execution
 	stageInput := newWorkerStageInput(
@@ -1680,77 +1656,16 @@ func UpdateTaskStateFromConflictResolution(idx *index.Index, taskID string, reso
 }
 
 // SelectRoleForConflictResolution uses the role assignment LLM to select an appropriate role for conflict resolution.
-func SelectRoleForConflictResolution(repoRoot string, task index.Task, cfg config.Config, idx index.Index, auditor *audit.Logger, opts Options) (roles.RoleAssignmentResult, error) {
-	// Load role assignment prompt
-	promptTemplate, err := roles.LoadRoleAssignmentPrompt(repoRoot)
-	if err != nil {
-		return roles.RoleAssignmentResult{}, fmt.Errorf("load role assignment prompt: %w", err)
+func SelectRoleForConflictResolution(task index.Task) roles.RoleAssignmentResult {
+	selected := task.Role
+	if strings.TrimSpace(string(selected)) == "" {
+		selected = "default"
 	}
-
-	// Load role registry to get available roles
-	registry, err := roles.LoadRegistry(repoRoot, func(msg string) {
-		fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
-	})
-	if err != nil {
-		return roles.RoleAssignmentResult{}, fmt.Errorf("load role registry: %w", err)
+	return roles.RoleAssignmentResult{
+		Role:      selected,
+		Rationale: "deterministic conflict resolution role selection",
+		Fallback:  true,
 	}
-
-	availableRoles := registry.Roles()
-	if len(availableRoles) == 0 {
-		return roles.RoleAssignmentResult{}, fmt.Errorf("no roles available for conflict resolution")
-	}
-
-	// Read task content for role assignment
-	taskContent, err := os.ReadFile(filepath.Join(repoRoot, task.Path))
-	if err != nil {
-		return roles.RoleAssignmentResult{}, fmt.Errorf("read task file %s: %w", task.Path, err)
-	}
-
-	// Build role assignment request
-	request := roles.RoleAssignmentRequest{
-		Task: roles.RoleAssignmentTask{
-			ID:      task.ID,
-			Title:   task.Title,
-			Path:    task.Path,
-			Content: string(taskContent),
-		},
-		Stage:          roles.StageResolve,
-		AvailableRoles: availableRoles,
-		Caps: roles.RoleAssignmentCaps{
-			Global:      cfg.Concurrency.Global,
-			DefaultRole: cfg.Concurrency.DefaultRole,
-			Roles:       make(map[index.Role]int),
-			InFlight:    buildRoleInFlightCounts(idx),
-		},
-	}
-
-	// Copy role-specific caps
-	for role, cap := range cfg.Concurrency.Roles {
-		request.Caps.Roles[index.Role(role)] = cap
-	}
-
-	invoker, err := newWorkerCommandInvoker(cfg, repoRoot, func(msg string) {
-		fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
-	})
-	if err != nil {
-		return roles.RoleAssignmentResult{}, fmt.Errorf("create role assignment invoker: %w", err)
-	}
-
-	result, err := roles.SelectRole(
-		context.Background(),
-		invoker,
-		promptTemplate,
-		request,
-		func(msg string) {
-			fmt.Fprintf(opts.Stderr, "Warning: %s\n", msg)
-		},
-		auditor,
-	)
-	if err != nil {
-		return roles.RoleAssignmentResult{}, fmt.Errorf("select role for conflict resolution: %w", err)
-	}
-
-	return result, nil
 }
 
 // resolveRoleForLogs selects the best role string for logging purposes.

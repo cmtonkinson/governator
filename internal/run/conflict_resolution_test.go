@@ -2,7 +2,6 @@
 package run
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,16 +21,6 @@ func TestExecuteConflictResolutionAgent_Success(t *testing.T) {
 	taskPath := filepath.Join(tempDir, "task-01.md")
 	if err := os.WriteFile(taskPath, []byte("# Task 1\nTest task content"), 0644); err != nil {
 		t.Fatalf("failed to create task file: %v", err)
-	}
-
-	// Create role assignment prompt
-	promptDir := filepath.Join(tempDir, "_governator", "prompts")
-	if err := os.MkdirAll(promptDir, 0755); err != nil {
-		t.Fatalf("failed to create prompt dir: %v", err)
-	}
-	promptPath := filepath.Join(promptDir, "role-assignment.md")
-	if err := os.WriteFile(promptPath, []byte("# Role Assignment\nSelect appropriate role"), 0644); err != nil {
-		t.Fatalf("failed to create role assignment prompt: %v", err)
 	}
 
 	// Create roles directory with a test role
@@ -134,221 +123,34 @@ func TestConfigureConflictResolutionStageInput(t *testing.T) {
 }
 
 func TestSelectRoleForConflictResolution_Success(t *testing.T) {
-	// Create temporary directory for test
-	tempDir := t.TempDir()
-
-	// Create task file
-	taskPath := filepath.Join(tempDir, "task-01.md")
-	if err := os.WriteFile(taskPath, []byte("# Task 1\nTest task content"), 0644); err != nil {
-		t.Fatalf("failed to create task file: %v", err)
-	}
-
-	// Create role assignment prompt
-	promptDir := filepath.Join(tempDir, "_governator", "prompts")
-	if err := os.MkdirAll(promptDir, 0755); err != nil {
-		t.Fatalf("failed to create prompt dir: %v", err)
-	}
-	promptPath := filepath.Join(promptDir, "role-assignment.md")
-	if err := os.WriteFile(promptPath, []byte("# Role Assignment\nSelect appropriate role"), 0644); err != nil {
-		t.Fatalf("failed to create role assignment prompt: %v", err)
-	}
-
-	// Create roles directory with test roles
-	rolesDir := filepath.Join(tempDir, "_governator", "roles")
-	if err := os.MkdirAll(rolesDir, 0755); err != nil {
-		t.Fatalf("failed to create roles dir: %v", err)
-	}
-
-	roles := []string{"default", "architect", "reviewer"}
-	for _, role := range roles {
-		rolePath := filepath.Join(rolesDir, role+".md")
-		if err := os.WriteFile(rolePath, []byte("# "+role+" Role\n"+role+" role description"), 0644); err != nil {
-			t.Fatalf("failed to create role file: %v", err)
-		}
-	}
-
 	task := index.Task{
 		ID:    "task-01",
 		Kind:  index.TaskKindExecution,
 		State: index.TaskStateConflict,
-		Role:  "default",
+		Role:  "architect",
 		Title: "Test Task 1",
 		Path:  "task-01.md",
 	}
 
-	cfg := config.Config{
-		Concurrency: config.ConcurrencyConfig{
-			Global:      10,
-			DefaultRole: 5,
-			Roles:       map[string]int{"default": 3, "architect": 2},
-		},
+	result := SelectRoleForConflictResolution(task)
+	if result.Role != "architect" {
+		t.Fatalf("role = %q, want %q", result.Role, "architect")
 	}
-
-	cfg.Workers.Commands.Default = helperRoleAssignmentCommand()
-	t.Setenv("GO_ROLE_ASSIGNMENT_HELPER", "1")
-	t.Setenv("GO_ROLE_ASSIGNMENT_MODE", "valid")
-
-	var stdout strings.Builder
-	var stderr strings.Builder
-	opts := Options{
-		Stdout: &stdout,
-		Stderr: &stderr,
-	}
-
-	result, err := SelectRoleForConflictResolution(tempDir, task, cfg, index.Index{Tasks: []index.Task{task}}, nil, opts)
-	if err != nil {
-		t.Fatalf("SelectRoleForConflictResolution failed: %v", err)
-	}
-
-	// Verify we got a valid role
-	if result.Role == "" {
-		t.Error("expected non-empty role")
-	}
-
-	// Verify the role is one of the available roles
-	validRoles := []index.Role{"default", "architect", "reviewer"}
-	found := false
-	for _, validRole := range validRoles {
-		if result.Role == validRole {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("selected role %s is not in available roles %v", result.Role, validRoles)
-	}
-}
-
-func TestSelectRoleForConflictResolution_LLMFallback(t *testing.T) {
-	tempDir := t.TempDir()
-
-	taskPath := filepath.Join(tempDir, "task-01.md")
-	if err := os.WriteFile(taskPath, []byte("# Task 1\nTest task content"), 0644); err != nil {
-		t.Fatalf("failed to create task file: %v", err)
-	}
-
-	promptDir := filepath.Join(tempDir, "_governator", "prompts")
-	if err := os.MkdirAll(promptDir, 0755); err != nil {
-		t.Fatalf("failed to create prompt dir: %v", err)
-	}
-	promptPath := filepath.Join(promptDir, "role-assignment.md")
-	if err := os.WriteFile(promptPath, []byte("# Role Assignment\nSelect appropriate role"), 0644); err != nil {
-		t.Fatalf("failed to create role assignment prompt: %v", err)
-	}
-
-	rolesDir := filepath.Join(tempDir, "_governator", "roles")
-	if err := os.MkdirAll(rolesDir, 0755); err != nil {
-		t.Fatalf("failed to create roles dir: %v", err)
-	}
-	rolePath := filepath.Join(rolesDir, "default.md")
-	if err := os.WriteFile(rolePath, []byte("# Generalist Role\nGeneral purpose role"), 0644); err != nil {
-		t.Fatalf("failed to create role file: %v", err)
-	}
-
-	task := index.Task{
-		ID:   "task-01",
-		Kind: index.TaskKindExecution,
-		Path: "task-01.md",
-	}
-
-	cfg := config.Config{
-		Concurrency: config.ConcurrencyConfig{
-			Global:      1,
-			DefaultRole: 1,
-		},
-	}
-	cfg.Workers.Commands.Default = helperRoleAssignmentCommand()
-
-	var stdout strings.Builder
-	var stderr strings.Builder
-	opts := Options{
-		Stdout: &stdout,
-		Stderr: &stderr,
-	}
-
-	t.Setenv("GO_ROLE_ASSIGNMENT_HELPER", "1")
-	t.Setenv("GO_ROLE_ASSIGNMENT_MODE", "invalid")
-
-	result, err := SelectRoleForConflictResolution(tempDir, task, cfg, index.Index{}, nil, opts)
-	if err != nil {
-		t.Fatalf("SelectRoleForConflictResolution failed: %v", err)
-	}
-
 	if !result.Fallback {
-		t.Fatalf("expected fallback result, got %v", result)
-	}
-	if result.Role != "default" {
-		t.Fatalf("fallback role = %q, want %q", result.Role, "default")
+		t.Fatalf("expected fallback=true for deterministic selection")
 	}
 }
 
-func TestSelectRoleForConflictResolution_ValidationErrors(t *testing.T) {
-	tests := []struct {
-		name        string
-		setupFunc   func(string) (index.Task, config.Config)
-		expectError string
-	}{
-		{
-			name: "missing role assignment prompt",
-			setupFunc: func(tempDir string) (index.Task, config.Config) {
-				// Don't create the role assignment prompt
-				task := index.Task{
-					ID:   "task-01",
-					Kind: index.TaskKindExecution,
-					Path: "task-01.md",
-				}
-				cfg := config.Config{}
-				return task, cfg
-			},
-			expectError: "load role assignment prompt",
-		},
-		{
-			name: "missing task file",
-			setupFunc: func(tempDir string) (index.Task, config.Config) {
-				// Create role assignment prompt and roles directory but not task file
-				promptDir := filepath.Join(tempDir, "_governator", "prompts")
-				os.MkdirAll(promptDir, 0755)
-				promptPath := filepath.Join(promptDir, "role-assignment.md")
-				os.WriteFile(promptPath, []byte("# Role Assignment"), 0644)
-
-				// Create roles directory with a test role
-				rolesDir := filepath.Join(tempDir, "_governator", "roles")
-				os.MkdirAll(rolesDir, 0755)
-				rolePath := filepath.Join(rolesDir, "default.md")
-				os.WriteFile(rolePath, []byte("# Generalist Role"), 0644)
-
-				task := index.Task{
-					ID:   "task-01",
-					Kind: index.TaskKindExecution,
-					Path: "nonexistent.md",
-				}
-				cfg := config.Config{}
-				return task, cfg
-			},
-			expectError: "read task file",
-		},
+func TestSelectRoleForConflictResolution_DefaultFallback(t *testing.T) {
+	task := index.Task{
+		ID:    "task-01",
+		Kind:  index.TaskKindExecution,
+		State: index.TaskStateConflict,
+		Role:  "",
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tempDir := t.TempDir()
-			task, cfg := tt.setupFunc(tempDir)
-
-			var stdout strings.Builder
-			var stderr strings.Builder
-			opts := Options{
-				Stdout: &stdout,
-				Stderr: &stderr,
-			}
-
-			_, err := SelectRoleForConflictResolution(tempDir, task, cfg, index.Index{}, nil, opts)
-			if err == nil {
-				t.Fatal("expected error, got nil")
-			}
-			if !strings.Contains(err.Error(), tt.expectError) {
-				t.Errorf("expected error containing %q, got %q", tt.expectError, err.Error())
-			}
-		})
+	result := SelectRoleForConflictResolution(task)
+	if result.Role != "default" {
+		t.Fatalf("role = %q, want %q", result.Role, "default")
 	}
 }
 
@@ -486,25 +288,4 @@ func TestUpdateTaskStateFromMerge_Failure(t *testing.T) {
 	if transition.to != string(index.TaskStateConflict) {
 		t.Errorf("expected to state %s, got %s", index.TaskStateConflict, transition.to)
 	}
-}
-
-func helperRoleAssignmentCommand() []string {
-	return []string{os.Args[0], "-test.run=TestRoleAssignmentHelper", "--", "{task_path}"}
-}
-
-func TestRoleAssignmentHelper(t *testing.T) {
-	if os.Getenv("GO_ROLE_ASSIGNMENT_HELPER") != "1" {
-		return
-	}
-	mode := os.Getenv("GO_ROLE_ASSIGNMENT_MODE")
-	if mode == "invalid" {
-		fmt.Println("not json")
-		os.Exit(0)
-	}
-	role := os.Getenv("GO_ROLE_ASSIGNMENT_ROLE")
-	if role == "" {
-		role = "architect"
-	}
-	fmt.Printf(`{"role":"%s","rationale":"helper picked %s"}`+"\n", role, role)
-	os.Exit(0)
 }

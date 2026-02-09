@@ -895,7 +895,6 @@ func setupLifecycleRepo(t *testing.T, workerCommand []string, timeoutSeconds int
 	writeRolePrompt(t, repo.Root, "worker")
 	writeRolePrompt(t, repo.Root, "tester")
 	writeRolePrompt(t, repo.Root, "reviewer")
-	writeRoleAssignmentPrompt(t, repo.Root)
 	writeLifecycleConfig(t, repo.Root, workerCommand, timeoutSeconds)
 
 	repo.RunGit(t, "add", "GOVERNATOR.md")
@@ -903,7 +902,6 @@ func setupLifecycleRepo(t *testing.T, workerCommand []string, timeoutSeconds int
 	repo.RunGit(t, "add", filepath.Join("_governator", "roles", "worker.md"))
 	repo.RunGit(t, "add", filepath.Join("_governator", "roles", "tester.md"))
 	repo.RunGit(t, "add", filepath.Join("_governator", "roles", "reviewer.md"))
-	repo.RunGit(t, "add", filepath.Join("_governator", "prompts", "role-assignment.md"))
 	repo.RunGit(t, "commit", "-m", "Initialize lifecycle fixture")
 
 	return repo
@@ -918,19 +916,6 @@ func writeRolePrompt(t *testing.T, repoRoot, role string) {
 	}
 }
 
-// writeRoleAssignmentPrompt creates the conflict resolution role assignment prompt fixture.
-func writeRoleAssignmentPrompt(t *testing.T, repoRoot string) {
-	t.Helper()
-	promptDir := filepath.Join(repoRoot, "_governator", "prompts")
-	if err := os.MkdirAll(promptDir, 0o755); err != nil {
-		t.Fatalf("mkdir prompts dir: %v", err)
-	}
-	promptPath := filepath.Join(promptDir, "role-assignment.md")
-	content := "# Role Assignment\nSelect the best role for conflict resolution.\n"
-	if err := os.WriteFile(promptPath, []byte(content), 0o644); err != nil {
-		t.Fatalf("write role assignment prompt: %v", err)
-	}
-}
 func writeLifecycleConfig(t *testing.T, repoRoot string, workerCommand []string, timeoutSeconds int) {
 	t.Helper()
 	cfg := config.Defaults()
