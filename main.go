@@ -12,6 +12,8 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -588,10 +590,11 @@ func runRetry(args []string) {
 	flags := flag.NewFlagSet("retry", flag.ExitOnError)
 	flags.Usage = func() {
 		fmt.Fprint(os.Stderr, `USAGE:
-    governator retry <task-id>
+    governator retry <task-id|task-number>
 
 DESCRIPTION:
     Increase retries.max_attempts for a specific task by 1.
+    Accepts either a full task id or numeric shorthand (for example: 10).
     This is a targeted operator override used to re-arm a retry-exhausted task.
 
 OPTIONS:
@@ -606,8 +609,8 @@ OPTIONS:
 		os.Exit(2)
 	}
 
-	taskID := strings.TrimSpace(flags.Arg(0))
-	if taskID == "" {
+	taskSelector := strings.TrimSpace(flags.Arg(0))
+	if taskSelector == "" {
 		fmt.Fprintln(os.Stderr, "governator retry: task id cannot be empty")
 		os.Exit(2)
 	}
@@ -629,6 +632,13 @@ OPTIONS:
 	if err != nil {
 		_ = indexWriteLock.Release()
 		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	taskID, err := resolveRetryTaskID(taskSelector, idx.Tasks)
+	if err != nil {
+		_ = indexWriteLock.Release()
+		fmt.Fprintf(os.Stderr, "governator retry: %s\n", err.Error())
 		os.Exit(1)
 	}
 
@@ -669,11 +679,80 @@ OPTIONS:
 	fmt.Printf("retry ok: %s max_attempts %d -> %d\n", taskID, before, after)
 }
 
+// resolveRetryTaskID resolves a retry selector to a concrete task ID.
+func resolveRetryTaskID(selector string, tasks []index.Task) (string, error) {
+	for _, task := range tasks {
+		if task.ID == selector {
+			return task.ID, nil
+		}
+	}
+
+	taskNumber, isNumericSelector := parseTaskNumberPrefix(selector)
+	if !isNumericSelector {
+		return "", fmt.Errorf("task %q not found", selector)
+	}
+
+	matches := make([]string, 0, 1)
+	for _, task := range tasks {
+		number, ok := parseTaskNumberPrefix(task.ID)
+		if !ok || number != taskNumber {
+			continue
+		}
+		matches = append(matches, task.ID)
+	}
+
+	switch len(matches) {
+	case 0:
+		return "", fmt.Errorf("task %q not found", selector)
+	case 1:
+		return matches[0], nil
+	default:
+		sort.Strings(matches)
+		return "", fmt.Errorf("task selector %q is ambiguous; matches: %s", selector, strings.Join(matches, ", "))
+	}
+}
+
+// parseTaskNumberPrefix extracts a numeric task prefix (for example, 010 from 010-task-name).
+func parseTaskNumberPrefix(value string) (int, bool) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return 0, false
+	}
+
+	end := 0
+	for end < len(trimmed) && trimmed[end] >= '0' && trimmed[end] <= '9' {
+		end++
+	}
+	if end == 0 {
+		return 0, false
+	}
+	if end < len(trimmed) && trimmed[end] != '-' && trimmed[end] != '_' {
+		return 0, false
+	}
+
+	number, err := strconv.Atoi(trimmed[:end])
+	if err != nil {
+		return 0, false
+	}
+	return number, true
+}
+
 // ensureNoSupervisorLocks blocks supervisor startup when any lock is held.
 func ensureNoSupervisorLocks(repoRoot string) error {
-	if held, err := supervisorlock.Held(repoRoot, supervisor.SupervisorLockName); err != nil {
-		return err
-	} else if held {
+	held, err := supervisorlock.Held(repoRoot, supervisor.SupervisorLockName)
+	if err != nil {
+		if !supervisorlock.IsStaleLockError(err) {
+			return err
+		}
+		if removeErr := supervisorlock.Remove(repoRoot, supervisor.SupervisorLockName); removeErr != nil {
+			return removeErr
+		}
+		held, err = supervisorlock.Held(repoRoot, supervisor.SupervisorLockName)
+		if err != nil {
+			return err
+		}
+	}
+	if held {
 		return errors.New("start supervisor lock already held; use governator stop or governator reset first")
 	}
 	return nil

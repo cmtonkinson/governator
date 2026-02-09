@@ -24,6 +24,9 @@ const (
 // ErrLockHeld indicates a supervisor lock is already held.
 var ErrLockHeld = errors.New("supervisor lock already held")
 
+// ErrStaleLock indicates lock metadata references a non-running process.
+var ErrStaleLock = errors.New("stale supervisor lock")
+
 // Lock holds the acquired supervisor lock file handle.
 type Lock struct {
 	file *os.File
@@ -54,15 +57,15 @@ func Held(repoRoot string, name string) (bool, error) {
 
 	info, err := parseLockInfo(data)
 	if err != nil {
-		return false, fmt.Errorf("stale supervisor lock at %s: %w; remove the lock file to continue", lockPath, err)
+		return false, fmt.Errorf("%w at %s: %v; remove the lock file to continue", ErrStaleLock, lockPath, err)
 	}
 	active, err := processExists(info.pid)
 	if err != nil {
 		return false, fmt.Errorf("verify supervisor lock pid %d: %w", info.pid, err)
 	}
 	if !active {
-		return false, fmt.Errorf("stale supervisor lock at %s (pid %d since %s); remove the lock file to continue",
-			lockPath, info.pid, info.startedAt.Format(time.RFC3339))
+		return false, fmt.Errorf("%w at %s (pid %d since %s); remove the lock file to continue",
+			ErrStaleLock, lockPath, info.pid, info.startedAt.Format(time.RFC3339))
 	}
 	return true, nil
 }
@@ -95,7 +98,7 @@ func Acquire(repoRoot string, name string) (*Lock, error) {
 		return nil, fmt.Errorf("lock supervisor lock %s: %w", lockPath, err)
 	}
 
-	if err := checkForStaleLock(lockPath); err != nil {
+	if err := checkForStaleLock(lockPath); err != nil && !IsStaleLockError(err) {
 		_ = releaseFileLock(file)
 		_ = file.Close()
 		return nil, err
@@ -109,6 +112,11 @@ func Acquire(repoRoot string, name string) (*Lock, error) {
 	}
 
 	return &Lock{file: file, path: lockPath}, nil
+}
+
+// IsStaleLockError reports whether the provided error indicates stale lock metadata.
+func IsStaleLockError(err error) bool {
+	return errors.Is(err, ErrStaleLock)
 }
 
 // Remove deletes the named supervisor lock file if it exists.
@@ -166,7 +174,7 @@ func checkForStaleLock(lockPath string) error {
 
 	info, err := parseLockInfo(data)
 	if err != nil {
-		return fmt.Errorf("stale supervisor lock at %s: %w; remove the lock file to continue", lockPath, err)
+		return fmt.Errorf("%w at %s: %v; remove the lock file to continue", ErrStaleLock, lockPath, err)
 	}
 
 	active, err := processExists(info.pid)
@@ -174,8 +182,8 @@ func checkForStaleLock(lockPath string) error {
 		return fmt.Errorf("verify supervisor lock pid %d: %w", info.pid, err)
 	}
 	if !active {
-		return fmt.Errorf("stale supervisor lock at %s (pid %d since %s); remove the lock file to continue",
-			lockPath, info.pid, info.startedAt.Format(time.RFC3339))
+		return fmt.Errorf("%w at %s (pid %d since %s); remove the lock file to continue",
+			ErrStaleLock, lockPath, info.pid, info.startedAt.Format(time.RFC3339))
 	}
 	return nil
 }

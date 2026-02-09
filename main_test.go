@@ -14,6 +14,7 @@ import (
 
 	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/index"
+	"github.com/cmtonkinson/governator/internal/supervisorlock"
 )
 
 const usageMessage = "USAGE:\n    governator [global options] <command> [command options]"
@@ -176,6 +177,46 @@ func TestConfirmPendingMigrations(t *testing.T) {
 	})
 }
 
+func TestEnsureNoSupervisorLocks(t *testing.T) {
+	t.Run("removes stale lock and succeeds", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		lockPath := filepath.Join(repoRoot, "_governator", "_local-state", "supervisor.lock")
+		if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+			t.Fatalf("mkdir lock dir: %v", err)
+		}
+		payload := fmt.Sprintf("pid=%d\nstarted_at=%s\n", 999999, time.Now().UTC().Add(-time.Hour).Format(time.RFC3339))
+		if err := os.WriteFile(lockPath, []byte(payload), 0o644); err != nil {
+			t.Fatalf("write stale lock: %v", err)
+		}
+
+		if err := ensureNoSupervisorLocks(repoRoot); err != nil {
+			t.Fatalf("ensureNoSupervisorLocks: %v", err)
+		}
+		if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
+			t.Fatalf("expected stale lock file removed, stat err=%v", err)
+		}
+	})
+
+	t.Run("returns error when lock is actively held", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		lock, err := supervisorlock.Acquire(repoRoot, "supervisor.lock")
+		if err != nil {
+			t.Fatalf("acquire lock: %v", err)
+		}
+		defer func() {
+			_ = lock.Release()
+		}()
+
+		err = ensureNoSupervisorLocks(repoRoot)
+		if err == nil {
+			t.Fatal("expected active-lock error, got nil")
+		}
+		if !strings.Contains(err.Error(), "already held") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
 func TestInitCommand(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "governator-init-test")
@@ -317,6 +358,129 @@ func TestRetryCommand(t *testing.T) {
 		}
 		if !planningFound {
 			t.Fatal("planning task not found in index")
+		}
+	})
+
+	t.Run("resolves numeric shorthand to matching task id", func(t *testing.T) {
+		idxPath := filepath.Join(tempDir, "_governator", "_local-state", "index.json")
+		customIndex := index.Index{
+			SchemaVersion: 1,
+			Digests: index.Digests{
+				PlanningDocs: map[string]string{},
+			},
+			Tasks: []index.Task{
+				{
+					ID:      "planning",
+					Path:    "_governator/tasks/planning.md",
+					Kind:    index.TaskKindPlanning,
+					State:   index.TaskStateMerged,
+					Retries: index.RetryPolicy{MaxAttempts: 1},
+				},
+				{
+					ID:      "010-implement-directory-enumeration-core-generalist",
+					Path:    "_governator/tasks/010-implement-directory-enumeration-core-generalist.md",
+					Kind:    index.TaskKindExecution,
+					State:   index.TaskStateBlocked,
+					Retries: index.RetryPolicy{MaxAttempts: 2},
+				},
+			},
+		}
+		if err := index.Save(idxPath, customIndex); err != nil {
+			t.Fatalf("save custom index: %v", err)
+		}
+
+		cmd := exec.Command(binaryPath, "retry", "10")
+		cmd.Dir = tempDir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("retry by shorthand failed: %v, output: %s", err, output)
+		}
+
+		outputStr := string(output)
+		if !strings.Contains(outputStr, "retry ok: 010-implement-directory-enumeration-core-generalist max_attempts 2 -> 3") {
+			t.Fatalf("unexpected retry output: %q", strings.TrimSpace(outputStr))
+		}
+
+		idx, err := index.Load(idxPath)
+		if err != nil {
+			t.Fatalf("load updated index: %v", err)
+		}
+		var found bool
+		for _, task := range idx.Tasks {
+			if task.ID != "010-implement-directory-enumeration-core-generalist" {
+				continue
+			}
+			found = true
+			if task.Retries.MaxAttempts != 3 {
+				t.Fatalf("task retries.max_attempts = %d, want 3", task.Retries.MaxAttempts)
+			}
+		}
+		if !found {
+			t.Fatal("numeric target task not found in updated index")
+		}
+	})
+
+	t.Run("fails when numeric shorthand is ambiguous", func(t *testing.T) {
+		idxPath := filepath.Join(tempDir, "_governator", "_local-state", "index.json")
+		customIndex := index.Index{
+			SchemaVersion: 1,
+			Digests: index.Digests{
+				PlanningDocs: map[string]string{},
+			},
+			Tasks: []index.Task{
+				{
+					ID:      "010-first-match",
+					Path:    "_governator/tasks/010-first-match.md",
+					Kind:    index.TaskKindExecution,
+					State:   index.TaskStateBlocked,
+					Retries: index.RetryPolicy{MaxAttempts: 1},
+				},
+				{
+					ID:      "10-second-match",
+					Path:    "_governator/tasks/10-second-match.md",
+					Kind:    index.TaskKindExecution,
+					State:   index.TaskStateBlocked,
+					Retries: index.RetryPolicy{MaxAttempts: 1},
+				},
+			},
+		}
+		if err := index.Save(idxPath, customIndex); err != nil {
+			t.Fatalf("save custom index: %v", err)
+		}
+
+		cmd := exec.Command(binaryPath, "retry", "10")
+		cmd.Dir = tempDir
+		output, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Fatalf("expected ambiguous shorthand failure, output: %s", output)
+		}
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("expected ExitError, got %T", err)
+		}
+		if exitErr.ExitCode() != 1 {
+			t.Fatalf("exit code = %d, want 1", exitErr.ExitCode())
+		}
+
+		outputStr := string(output)
+		if !strings.Contains(outputStr, `task selector "10" is ambiguous; matches: 010-first-match, 10-second-match`) {
+			t.Fatalf("unexpected output: %q", strings.TrimSpace(outputStr))
+		}
+	})
+
+	t.Run("shows help with --help", func(t *testing.T) {
+		cmd := exec.Command(binaryPath, "retry", "--help")
+		cmd.Dir = tempDir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("retry --help failed: %v, output: %s", err, output)
+		}
+		outputStr := string(output)
+		if !strings.Contains(outputStr, "USAGE:\n    governator retry <task-id|task-number>") {
+			t.Fatalf("expected retry usage in help output, got %q", strings.TrimSpace(outputStr))
+		}
+		if !strings.Contains(outputStr, "Increase retries.max_attempts for a specific task by 1.") {
+			t.Fatalf("expected retry description in help output, got %q", strings.TrimSpace(outputStr))
 		}
 	})
 

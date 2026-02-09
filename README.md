@@ -206,6 +206,7 @@ COMMANDS:
     start            Start the unified supervisor to plan, triage, and execute work
     plan             Deprecated alias for 'start'
     execute          Deprecated alias for 'start'
+    retry            Increase retry limit for a specific task by 1
     status           Display current supervisor and task status
     why              Show the most recent supervisor log lines
     dag              Display task dependency graph
@@ -238,6 +239,9 @@ governator stop|restart|reset [options]
 
 governator dag [options]
   -i, --interactive             Enable interactive DAG mode (not yet implemented)
+
+governator retry <task-id|task-number>
+  -h, --help                    Show this help message
 
 governator tail [options]
   --stdout                      Include stdout stream in addition to stderr

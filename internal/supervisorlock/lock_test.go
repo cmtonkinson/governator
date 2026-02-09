@@ -84,6 +84,9 @@ func TestHeldReportsStaleLock(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected stale lock error, got held=%v", held)
 	}
+	if !IsStaleLockError(err) {
+		t.Fatalf("expected stale lock sentinel, got %v", err)
+	}
 	if !strings.Contains(err.Error(), "stale supervisor lock") {
 		t.Fatalf("expected stale lock guidance, got %v", err)
 	}
@@ -137,7 +140,7 @@ func TestAcquireLockContention(t *testing.T) {
 	}
 }
 
-// TestAcquireStaleLock ensures stale locks provide operator guidance.
+// TestAcquireStaleLock ensures stale lock metadata is recovered on acquisition.
 func TestAcquireStaleLock(t *testing.T) {
 	dir := t.TempDir()
 	lockPath := filepath.Join(dir, localStateDirName, "supervisor.lock")
@@ -150,12 +153,22 @@ func TestAcquireStaleLock(t *testing.T) {
 		t.Fatalf("write stale lock: %v", err)
 	}
 
-	_, err := Acquire(dir, "supervisor.lock")
-	if err == nil {
-		t.Fatalf("expected stale lock error, got nil")
+	lock, err := Acquire(dir, "supervisor.lock")
+	if err != nil {
+		t.Fatalf("expected stale lock recovery, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "stale supervisor lock") {
-		t.Fatalf("expected stale lock guidance, got %v", err)
+	defer func() {
+		if releaseErr := lock.Release(); releaseErr != nil {
+			t.Fatalf("release lock: %v", releaseErr)
+		}
+	}()
+
+	data, err := os.ReadFile(lockPath)
+	if err != nil {
+		t.Fatalf("read lock file: %v", err)
+	}
+	if !strings.Contains(string(data), fmt.Sprintf("pid=%d", os.Getpid())) {
+		t.Fatalf("expected lock metadata to be rewritten by current process, got %q", string(data))
 	}
 }
 
