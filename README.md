@@ -1,5 +1,6 @@
 # Governator
-The agentic anti-swarm (or: just a context management state machine)
+Structured, architecture-first orchestration for autonomous, multi-agent
+development. _(or: just a context-management state machine)_
 
 [![Status: Beta](https://img.shields.io/badge/Status-Beta-blue.svg)](https://github.com/cmtonkinson/governator)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/cmtonkinson/governator/pulls)
