@@ -191,29 +191,16 @@ func DispatchWorkerFromConfig(cfg config.Config, task index.Task, stageResult St
 	return DispatchWorker(input)
 }
 
-// selectCLIName returns the CLI name that will be used for this role.
+// selectCLIName returns the CLI name that will be used.
+// Role-based CLI selection is deprecated; only default CLI is used.
 // Mirrors the priority logic from selectCommandTemplate in command.go.
 func selectCLIName(cfg config.Config, role index.Role) string {
-	// Priority 1: Role-specific command override (custom command, not a CLI)
-	if role != "" {
-		if command, ok := cfg.Workers.Commands.Roles[string(role)]; ok && len(command) > 0 {
-			return ""
-		}
-	}
-
-	// Priority 2: Role-specific CLI
-	if role != "" {
-		if roleCLI, ok := cfg.Workers.CLI.Roles[string(role)]; ok && roleCLI != "" {
-			return roleCLI
-		}
-	}
-
-	// Priority 3: Default command override (custom command, not a CLI)
+	// Priority 1: Default command override (custom command, not a CLI)
 	if len(cfg.Workers.Commands.Default) > 0 {
 		return ""
 	}
 
-	// Priority 4: Default CLI
+	// Priority 2: Default CLI
 	if cfg.Workers.CLI.Default != "" {
 		return cfg.Workers.CLI.Default
 	}

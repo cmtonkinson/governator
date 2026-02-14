@@ -4,6 +4,6 @@ Act as the task planning agent. Read every milestone and epic produced by the ro
 
 Requirements:
 - Tasks must live under `_governator/tasks/` (or the configured task queue directory) and use the markdown structure defined in this repo's task template (`internal/templates/planning/task.md`, which mirrors `v1-reference/_governator/templates/task.md`).
-- Every task file must include YAML frontmatter that references the milestone ID (`mX`), epic ID (`eY`), and a unique task number (`task: ###`). Filenames should remain `<id>-<slug>-<role>.md`.
+- Every task file must include YAML frontmatter that references the milestone ID (`mX`), epic ID (`eY`), and a unique task number (`task: ###`). Filenames should remain `<id>-<slug>.md` (role is managed via index and triage agent output).
 - The body must describe objective, context, requirements, constraints, non-goals, and acceptance criteria, linking back to the roadmap and architecture documents as needed. Explicitly state dependencies on other tasks when known.
 - Prefer tasks that represent bounded, single-purpose work (ideally <= 8 story points). If no natural decomposition exists, explain why the broader task should remain monolithic.

@@ -92,7 +92,7 @@ func TestSelectCLIName(t *testing.T) {
 		want string
 	}{
 		{
-			name: "role-specific CLI overrides default",
+			name: "role-specific CLI ignored (deprecated)",
 			cfg: config.Config{
 				Workers: config.WorkersConfig{
 					CLI: config.WorkerCLI{
@@ -102,7 +102,8 @@ func TestSelectCLIName(t *testing.T) {
 				},
 			},
 			role: "planner",
-			want: "claude",
+			// Should return default CLI (codex), not role-specific (claude)
+			want: "codex",
 		},
 		{
 			name: "uses default CLI when role not specified",
@@ -128,7 +129,7 @@ func TestSelectCLIName(t *testing.T) {
 			want: "",
 		},
 		{
-			name: "empty when role-specific command override exists",
+			name: "role-specific command ignored returns default CLI",
 			cfg: config.Config{
 				Workers: config.WorkersConfig{
 					Commands: config.WorkerCommands{
@@ -140,7 +141,8 @@ func TestSelectCLIName(t *testing.T) {
 				},
 			},
 			role: "planner",
-			want: "",
+			// Role-specific commands are deprecated, so default CLI is used
+			want: "claude",
 		},
 		{
 			name: "empty when default command override exists",

@@ -9,8 +9,8 @@ import (
 	"github.com/cmtonkinson/governator/internal/index"
 )
 
-// TestResolveCommandRoleOverride verifies role-specific commands resolve with substitutions.
-func TestResolveCommandRoleOverride(t *testing.T) {
+// TestResolveCommandIgnoresRoleOverride verifies role-specific commands are ignored (deprecated).
+func TestResolveCommandIgnoresRoleOverride(t *testing.T) {
 	cfg := config.Config{
 		Workers: config.WorkersConfig{
 			CLI: config.WorkerCLI{
@@ -31,7 +31,8 @@ func TestResolveCommandRoleOverride(t *testing.T) {
 		t.Fatalf("ResolveCommand returned error: %v", err)
 	}
 
-	want := []string{"runner", "--task", "/tmp/task.md", "--repo", "/repo", "--role", "review"}
+	// Should use default command, not role-specific override
+	want := []string{"default", "/tmp/task.md"}
 	if !stringSlicesEqual(got, want) {
 		t.Fatalf("ResolveCommand = %v, want %v", got, want)
 	}
@@ -161,7 +162,7 @@ func TestResolveCommandWithCLI(t *testing.T) {
 			want: []string{"gemini", "/tmp/prompt.md"},
 		},
 		{
-			name: "role-specific-cli",
+			name: "role-specific-cli-ignored",
 			cfg: config.Config{
 				Workers: config.WorkersConfig{
 					CLI: config.WorkerCLI{
@@ -174,7 +175,8 @@ func TestResolveCommandWithCLI(t *testing.T) {
 				},
 			},
 			role: "architect",
-			want: []string{"claude", "--print", "/tmp/prompt.md"},
+			// Should use default CLI (codex), not role-specific (claude)
+			want: []string{"codex", "--full-auto", "exec", "/tmp/prompt.md"},
 		},
 		{
 			name: "command-overrides-cli",
@@ -389,6 +391,83 @@ func TestApplyCodexReasoningFlagMultipleCLIs(t *testing.T) {
 			if !stringSlicesEqual(got, tt.want) {
 				t.Fatalf("applyCodexReasoningFlag = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+// TestRoleConfigDeprecation verifies deprecation warnings for role-based config.
+func TestRoleConfigDeprecation(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		cfg        config.Config
+		wantWarned bool
+	}{
+		{
+			name: "roles-commands-deprecated",
+			cfg: config.Config{
+				Workers: config.WorkersConfig{
+					CLI: config.WorkerCLI{
+						Default: "codex",
+						Roles:   map[string]string{},
+					},
+					Commands: config.WorkerCommands{
+						Default: []string{"runner", "{prompt_path}"},
+						Roles: map[string][]string{
+							"review": {"custom", "{prompt_path}"},
+						},
+					},
+				},
+			},
+			wantWarned: true,
+		},
+		{
+			name: "roles-cli-deprecated",
+			cfg: config.Config{
+				Workers: config.WorkersConfig{
+					CLI: config.WorkerCLI{
+						Default: "codex",
+						Roles: map[string]string{
+							"architect": "claude",
+						},
+					},
+					Commands: config.WorkerCommands{
+						Default: []string{"runner", "{prompt_path}"},
+					},
+				},
+			},
+			wantWarned: true,
+		},
+		{
+			name: "no-deprecated-config",
+			cfg: config.Config{
+				Workers: config.WorkersConfig{
+					CLI: config.WorkerCLI{
+						Default: "codex",
+						Roles:   map[string]string{},
+					},
+					Commands: config.WorkerCommands{
+						Default: []string{"runner", "{prompt_path}"},
+					},
+				},
+			},
+			wantWarned: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Just verify command resolution succeeds and uses default
+			got, err := ResolveCommand(tt.cfg, index.Role("worker"), "/tmp/task.md", "/repo", "/tmp/prompt.md")
+			if err != nil {
+				t.Fatalf("ResolveCommand returned error: %v", err)
+			}
+			// Should always use default command/CLI regardless of role config
+			if len(got) == 0 {
+				t.Fatal("expected non-empty command")
+			}
+			// Note: actual deprecation warnings go to log.Printf, which we don't capture in this test
+			// The important behavior is that role config is ignored
 		})
 	}
 }

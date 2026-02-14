@@ -26,6 +26,29 @@ const (
 	conflictResolutionPromptPath = "_governator/prompts/conflict-resolution.md"
 )
 
+// stageRoleForTask returns the appropriate role for a task based on the stage.
+// Work and test stages use the task-defined role.
+// Review and resolve stages use the default role.
+func stageRoleForTask(stage roles.Stage, task index.Task) index.Role {
+	switch stage {
+	case roles.StageWork, roles.StageTest:
+		// Use task-defined role for work and test stages
+		if task.Role == "" {
+			return index.Role("default")
+		}
+		return task.Role
+	case roles.StageReview, roles.StageResolve:
+		// Force default role for review and resolve stages
+		return index.Role("default")
+	default:
+		// Fallback to task role for unknown stages
+		if task.Role == "" {
+			return index.Role("default")
+		}
+		return task.Role
+	}
+}
+
 // Options defines the configuration for a run execution.
 type Options struct {
 	Stdout io.Writer
@@ -508,12 +531,13 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 			}
 		}
 
+		stageRole := stageRoleForTask(roles.StageWork, task)
 		stageInput := newWorkerStageInput(
 			repoRoot,
 			worktreePath,
 			task,
 			roles.StageWork,
-			task.Role,
+			stageRole,
 			attempt,
 			cfg,
 			func(msg string) {
@@ -583,12 +607,13 @@ func ExecuteWorkStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 
 // ExecuteWorkAgent runs the work agent for a specific task.
 func ExecuteWorkAgent(repoRoot, worktreePath string, task index.Task, cfg config.Config, auditor *audit.Logger, opts Options) (worker.IngestResult, error) {
+	stageRole := stageRoleForTask(roles.StageWork, task)
 	stageInput := newWorkerStageInput(
 		repoRoot,
 		worktreePath,
 		task,
 		roles.StageWork,
-		task.Role,
+		stageRole,
 		maxInt(task.Attempts.Total, 1),
 		cfg,
 		func(msg string) {
@@ -819,12 +844,13 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 			}
 		}
 
+		stageRole := stageRoleForTask(roles.StageTest, task)
 		stageInput := newWorkerStageInput(
 			repoRoot,
 			worktreePath,
 			task,
 			roles.StageTest,
-			task.Role,
+			stageRole,
 			maxInt(task.Attempts.Total, 1),
 			cfg,
 			func(msg string) {
@@ -895,12 +921,13 @@ func ExecuteTestStage(repoRoot string, idx *index.Index, cfg config.Config, caps
 // ExecuteTestAgent runs the test agent for a specific task.
 func ExecuteTestAgent(repoRoot, worktreePath string, task index.Task, cfg config.Config, auditor *audit.Logger, opts Options) (worker.IngestResult, error) {
 	// Stage environment and prompts for test execution
+	stageRole := stageRoleForTask(roles.StageTest, task)
 	stageInput := newWorkerStageInput(
 		repoRoot,
 		worktreePath,
 		task,
 		roles.StageTest,
-		task.Role,
+		stageRole,
 		maxInt(task.Attempts.Total, 1),
 		cfg,
 		func(msg string) {
@@ -1181,12 +1208,13 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 			continue
 		}
 
+		stageRole := stageRoleForTask(roles.StageReview, task)
 		stageInput := newWorkerStageInput(
 			repoRoot,
 			worktreePath,
 			task,
 			roles.StageReview,
-			task.Role,
+			stageRole,
 			maxInt(task.Attempts.Total, 1),
 			cfg,
 			func(msg string) {
@@ -1251,12 +1279,13 @@ func ExecuteReviewStage(repoRoot string, idx *index.Index, cfg config.Config, ca
 // ExecuteReviewAgent runs the review agent for a specific task.
 func ExecuteReviewAgent(repoRoot, worktreePath string, task index.Task, cfg config.Config, auditor *audit.Logger, opts Options) (worker.IngestResult, error) {
 	// Stage environment and prompts for review execution
+	stageRole := stageRoleForTask(roles.StageReview, task)
 	stageInput := newWorkerStageInput(
 		repoRoot,
 		worktreePath,
 		task,
 		roles.StageReview,
-		task.Role,
+		stageRole,
 		maxInt(task.Attempts.Total, 1),
 		cfg,
 		func(msg string) {
@@ -1505,15 +1534,14 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 			continue
 		}
 
-		roleResult := SelectRoleForConflictResolution(task)
-		roleForLogs := resolveRoleForLogs(roleResult.Role, task.Role)
+		stageRole := stageRoleForTask(roles.StageResolve, task)
 
 		stageInput := newWorkerStageInput(
 			repoRoot,
 			worktreePath,
 			task,
 			roles.StageResolve,
-			roleResult.Role,
+			stageRole,
 			maxInt(task.Attempts.Total, 1),
 			cfg,
 			func(msg string) {
@@ -1534,7 +1562,7 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
 			} else {
 				result.TasksBlocked++
-				emitTaskFailure(opts.Stdout, task.ID, roleForLogs, string(roles.StageResolve), failedResult.BlockReason)
+				emitTaskFailure(opts.Stdout, task.ID, string(stageRole), string(roles.StageResolve), failedResult.BlockReason)
 			}
 			continue
 		}
@@ -1553,7 +1581,7 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
 			} else {
 				result.TasksBlocked++
-				emitTaskFailure(opts.Stdout, task.ID, roleForLogs, string(roles.StageResolve), failedResult.BlockReason)
+				emitTaskFailure(opts.Stdout, task.ID, string(stageRole), string(roles.StageResolve), failedResult.BlockReason)
 			}
 			continue
 		}
@@ -1577,22 +1605,22 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
 			} else {
 				result.TasksBlocked++
-				emitTaskFailure(opts.Stdout, task.ID, roleForLogs, string(roles.StageResolve), failedResult.BlockReason)
+				emitTaskFailure(opts.Stdout, task.ID, string(stageRole), string(roles.StageResolve), failedResult.BlockReason)
 			}
 			continue
 		}
 
-		logAgentInvoke(workerAuditor, task.ID, roleResult.Role, roles.StageResolve, maxInt(task.Attempts.Total, 1), func(message string) {
+		logAgentInvoke(workerAuditor, task.ID, stageRole, roles.StageResolve, maxInt(task.Attempts.Total, 1), func(message string) {
 			fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
 		})
 
-		if err := recordTaskDispatch(idx, task.ID, dispatchResult.PID, string(roleResult.Role)); err != nil {
+		if err := recordTaskDispatch(idx, task.ID, dispatchResult.PID, string(stageRole)); err != nil {
 			fmt.Fprintf(opts.Stderr, "Warning: failed to record dispatch metadata for task %s: %v\n", task.ID, err)
 		}
 
-		emitTaskStart(opts.Stdout, task.ID, roleForLogs, string(roles.StageResolve))
+		emitTaskStart(opts.Stdout, task.ID, string(stageRole), string(roles.StageResolve))
 
-		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath, dispatchResult.WorkerStateDir, string(roles.StageResolve), string(roleResult.Role)); err == nil {
+		if err := inFlight.AddWithStartAndPath(task.ID, dispatchResult.StartedAt, worktreePath, dispatchResult.WorkerStateDir, string(roles.StageResolve), string(stageRole)); err == nil {
 			result.InFlightUpdated = true
 		}
 		result.TasksDispatched++
@@ -1603,7 +1631,8 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 
 // ExecuteConflictResolutionAgent runs the conflict resolution agent for a specific task.
 func ExecuteConflictResolutionAgent(repoRoot, worktreePath string, task index.Task, cfg config.Config, idx index.Index, auditor *audit.Logger, opts Options) (worker.IngestResult, roles.RoleAssignmentResult, error) {
-	roleResult := SelectRoleForConflictResolution(task)
+	stageRole := stageRoleForTask(roles.StageResolve, task)
+	roleResult := roles.RoleAssignmentResult{Role: stageRole}
 
 	// Stage environment and prompts for conflict resolution execution
 	stageInput := newWorkerStageInput(
@@ -1611,7 +1640,7 @@ func ExecuteConflictResolutionAgent(repoRoot, worktreePath string, task index.Ta
 		worktreePath,
 		task,
 		roles.StageResolve,
-		roleResult.Role,
+		stageRole,
 		maxInt(task.Attempts.Total, 1),
 		cfg,
 		func(msg string) {
@@ -1627,10 +1656,9 @@ func ExecuteConflictResolutionAgent(repoRoot, worktreePath string, task index.Ta
 		return worker.IngestResult{}, roleResult, fmt.Errorf("stage conflict resolution environment: %w", err)
 	}
 
-	roleForLogs := resolveRoleForLogs(roleResult.Role, task.Role)
-	emitTaskStart(opts.Stdout, task.ID, roleForLogs, string(roles.StageResolve))
+	emitTaskStart(opts.Stdout, task.ID, string(stageRole), string(roles.StageResolve))
 
-	logAgentInvoke(auditor, task.ID, roleResult.Role, roles.StageResolve, maxInt(task.Attempts.Total, 1), func(message string) {
+	logAgentInvoke(auditor, task.ID, stageRole, roles.StageResolve, maxInt(task.Attempts.Total, 1), func(message string) {
 		fmt.Fprintf(opts.Stderr, "Warning: %s\n", message)
 	})
 

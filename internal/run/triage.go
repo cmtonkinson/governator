@@ -45,6 +45,12 @@ type TriageCycleResult struct {
 	WorkerStateDir string
 }
 
+// TriageTaskInfo captures triage agent output for a single task.
+type TriageTaskInfo struct {
+	Dependencies []string `json:"dependencies,omitempty"`
+	Role         string   `json:"role,omitempty"`
+}
+
 // RunBacklogTriage handles dispatching and collecting the DAG triage agent.
 func RunBacklogTriage(repoRoot string, idx *index.Index, cfg config.Config, opts Options) (TriageCycleResult, error) {
 	if strings.TrimSpace(repoRoot) == "" {
@@ -204,12 +210,12 @@ func finalizeTriageAttempt(repoRoot string, idx *index.Index, cfg config.Config,
 		return failTriageAttempt(repoRoot, state, fmt.Errorf("triage agent exited with code %d", exitStatus.ExitCode), opts)
 	}
 
-	mapping, err := readDagMapping(triageOutputPath(repoRoot))
+	mapping, err := readTriageMapping(repoRoot, triageOutputPath(repoRoot))
 	if err != nil {
 		return failTriageAttempt(repoRoot, state, err, opts)
 	}
 
-	warnings := applyDagMapping(idx, mapping)
+	warnings := applyTriageMapping(idx, mapping, repoRoot)
 	for _, warning := range warnings {
 		fmt.Fprintf(opts.Stderr, "Warning: %s\n", warning)
 	}
@@ -251,8 +257,8 @@ func failTriageAttempt(repoRoot string, state TriageState, err error, opts Optio
 	return TriageCycleResult{}, nil
 }
 
-// applyDagMapping overwrites dependencies and triages backlog tasks.
-func applyDagMapping(idx *index.Index, mapping map[string][]string) []string {
+// applyTriageMapping overwrites dependencies, roles, and triages backlog tasks.
+func applyTriageMapping(idx *index.Index, mapping map[string]TriageTaskInfo, repoRoot string) []string {
 	eligible := map[string]struct{}{}
 	for _, task := range idx.Tasks {
 		if isTriageEligible(task) {
@@ -261,17 +267,29 @@ func applyDagMapping(idx *index.Index, mapping map[string][]string) []string {
 	}
 
 	var warnings []string
+
+	// Load role registry for validation
+	registry, err := roles.LoadRegistry(repoRoot, func(msg string) {
+		warnings = append(warnings, msg)
+	})
+	if err != nil {
+		// If registry fails to load, we'll just use default for all roles
+		registry = roles.Registry{}
+	}
 	for i := range idx.Tasks {
 		task := &idx.Tasks[i]
 		if !isTriageEligible(*task) {
 			continue
 		}
-		deps, ok := mapping[task.ID]
+
+		info, ok := mapping[task.ID]
 		if !ok {
-			deps = nil
+			info = TriageTaskInfo{} // Empty info for tasks not in mapping
 		}
-		filtered := make([]string, 0, len(deps))
-		for _, dep := range deps {
+
+		// Apply dependencies
+		filtered := make([]string, 0, len(info.Dependencies))
+		for _, dep := range info.Dependencies {
 			dep = strings.TrimSpace(dep)
 			if dep == "" || dep == task.ID {
 				continue
@@ -283,13 +301,29 @@ func applyDagMapping(idx *index.Index, mapping map[string][]string) []string {
 			filtered = append(filtered, dep)
 		}
 		task.Dependencies = filtered
+
+		// Apply role (validate and coerce to default if invalid)
+		assignedRole := index.Role(strings.TrimSpace(info.Role))
+		if assignedRole == "" {
+			assignedRole = index.Role("default")
+		} else {
+			// Validate role exists in registry
+			if _, exists := registry.RolePromptPath(assignedRole); !exists {
+				warnings = append(warnings, fmt.Sprintf("triage role %q for task %q is invalid, using default", assignedRole, task.ID))
+				assignedRole = index.Role("default")
+			}
+		}
+		task.Role = assignedRole
+
 		task.State = index.TaskStateTriaged
 	}
 	return warnings
 }
 
-// readDagMapping parses the triage DAG mapping from disk, tolerating extra text.
-func readDagMapping(path string) (map[string][]string, error) {
+// readTriageMapping parses the triage DAG mapping from disk, supporting both new and legacy formats.
+// New format: {"task-id": {"dependencies": ["dep1"], "role": "backend"}}
+// Legacy format: {"task-id": ["dep1", "dep2"]}
+func readTriageMapping(repoRoot string, path string) (map[string]TriageTaskInfo, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read triage mapping %s: %w", path, err)
@@ -304,14 +338,19 @@ func readDagMapping(path string) (map[string][]string, error) {
 		return nil, fmt.Errorf("parse triage mapping: %w", err)
 	}
 
-	result := make(map[string][]string, len(raw))
+	result := make(map[string]TriageTaskInfo, len(raw))
 	for key, value := range raw {
 		switch typed := value.(type) {
 		case nil:
-			result[key] = nil
+			// null value - empty info
+			result[key] = TriageTaskInfo{}
+
 		case string:
-			result[key] = []string{typed}
+			// Legacy: single dependency as string
+			result[key] = TriageTaskInfo{Dependencies: []string{typed}}
+
 		case []interface{}:
+			// Legacy: array of dependencies
 			var deps []string
 			for _, item := range typed {
 				switch dep := item.(type) {
@@ -321,9 +360,37 @@ func readDagMapping(path string) (map[string][]string, error) {
 					deps = append(deps, fmt.Sprintf("%v", dep))
 				}
 			}
-			result[key] = deps
+			result[key] = TriageTaskInfo{Dependencies: deps}
+
+		case map[string]interface{}:
+			// New format: object with dependencies and role
+			info := TriageTaskInfo{}
+
+			// Extract dependencies
+			if depsVal, ok := typed["dependencies"]; ok {
+				switch depsTyped := depsVal.(type) {
+				case []interface{}:
+					for _, item := range depsTyped {
+						if dep, ok := item.(string); ok {
+							info.Dependencies = append(info.Dependencies, dep)
+						}
+					}
+				case nil:
+					info.Dependencies = nil
+				}
+			}
+
+			// Extract role
+			if roleVal, ok := typed["role"]; ok {
+				if roleStr, ok := roleVal.(string); ok {
+					info.Role = roleStr
+				}
+			}
+
+			result[key] = info
+
 		default:
-			return nil, fmt.Errorf("triage mapping for %q must be array, got %T", key, value)
+			return nil, fmt.Errorf("triage mapping for %q must be array or object, got %T", key, value)
 		}
 	}
 	return result, nil
@@ -369,7 +436,10 @@ func buildTriageTaskContent(template string, idx index.Index) string {
 	var b strings.Builder
 	b.WriteString(strings.TrimSpace(template))
 	b.WriteString("\n\nOutput the JSON mapping to `_governator/_local-state/dag.json`.\n")
-	b.WriteString("Schema example: {\"task-07\": [\"task-03\", \"task-04\"], \"task-08\": []}\n")
+	b.WriteString("Schema: {\"task-id\": {\"dependencies\": [\"dep1\"], \"role\": \"backend\"}}\n")
+	b.WriteString("  - dependencies: array of task IDs (or [] for independent tasks)\n")
+	b.WriteString("  - role: string role name (optional, defaults to \"default\")\n")
+	b.WriteString("Legacy format {\"task-id\": [\"deps\"]} is supported but deprecated.\n")
 	b.WriteString("Include only backlog and triaged tasks. Prefer listing every task with [] for independent work; omitted tasks are treated as independent.\n")
 	b.WriteString("\n**CRITICAL: Maximize parallelism. Only add dependencies for TRUE blockers, not for cosmetic ordering.**\n")
 	b.WriteString("\nTRUE dependency = Task X needs Y's output/code/feature to proceed\n")
@@ -380,15 +450,20 @@ func buildTriageTaskContent(template string, idx index.Index) string {
 		if !isTriageEligible(task) {
 			continue
 		}
-		b.WriteString(fmt.Sprintf("- id: %s\n  title: %s\n  state: %s\n  deps: %s\n  path: %s\n",
+		roleStr := string(task.Role)
+		if roleStr == "" {
+			roleStr = "(unassigned)"
+		}
+		b.WriteString(fmt.Sprintf("- id: %s\n  title: %s\n  state: %s\n  role: %s\n  deps: %s\n  path: %s\n",
 			task.ID,
 			normalizeToken(task.Title),
 			task.State,
+			roleStr,
 			strings.Join(task.Dependencies, ", "),
 			task.Path,
 		))
 	}
-	b.WriteString("\nExisting dependencies are hints only - reevaluate based on TRUE dependency criteria above.\n")
+	b.WriteString("\nExisting dependencies and roles are hints only - reevaluate based on TRUE dependency criteria and task requirements.\n")
 	return b.String()
 }
 

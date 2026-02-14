@@ -24,9 +24,28 @@
   - task-012 "Add UI for API endpoint" depends on task-010 "Create API
     endpoint"
 
-3. Emit JSON like `{"task-07": ["task-03", "task-04"], "task-08": []}` where
-   each key is a task id and the value is an array of its dependencies. Empty
-   arrays indicate independent tasks that can run immediately in parallel.
+3. Emit JSON using this format:
+   ```json
+   {
+     "task-07": {
+       "dependencies": ["task-03", "task-04"],
+       "role": "backend"
+     },
+     "task-08": {
+       "dependencies": [],
+       "role": "frontend"
+     },
+     "task-09": {
+       "dependencies": ["task-07"]
+     }
+   }
+   ```
+   Where:
+   - Each key is a task ID
+   - `dependencies`: array of task IDs this task depends on (empty array = no dependencies, can run in parallel)
+   - `role`: (optional) the role to use for this task (defaults to "default" if omitted)
+
+   Legacy format `{"task-id": ["deps"]}` is still supported but deprecated.
 
 4. Write the DAG to `_governator/_local-state/dag.json` without markup,
    commentary, code fences, or any other formatting

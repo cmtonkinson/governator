@@ -3,7 +3,7 @@ package worker
 
 import (
 	"errors"
-	"fmt"
+	"log"
 	"strings"
 
 	"github.com/cmtonkinson/governator/internal/config"
@@ -29,30 +29,18 @@ func ResolveCommand(cfg config.Config, role index.Role, taskPath string, repoRoo
 	return resolved, nil
 }
 
-// selectCommandTemplate chooses the worker command template for the supplied role.
+// selectCommandTemplate chooses the worker command template.
+// Role-based CLI selection is deprecated; only default CLI is used.
 func selectCommandTemplate(cfg config.Config, role index.Role) ([]string, error) {
-	// Priority 1: Role-specific command override
-	if role != "" {
-		if command, ok := cfg.Workers.Commands.Roles[string(role)]; ok && len(command) > 0 {
-			return cloneStrings(command), nil
-		}
-	}
+	// Emit deprecation warnings if role-based config is present
+	warnDeprecatedRoleConfig(cfg)
 
-	// Priority 2: Role-specific CLI selection
-	if role != "" {
-		if cli, ok := cfg.Workers.CLI.Roles[string(role)]; ok && cli != "" {
-			if template, ok := config.BuiltInCommand(cli); ok {
-				return cloneStrings(template), nil
-			}
-		}
-	}
-
-	// Priority 3: Default command override
+	// Priority 1: Default command override
 	if len(cfg.Workers.Commands.Default) > 0 {
 		return cloneStrings(cfg.Workers.Commands.Default), nil
 	}
 
-	// Priority 4: Default CLI selection
+	// Priority 2: Default CLI selection
 	if cfg.Workers.CLI.Default != "" {
 		if template, ok := config.BuiltInCommand(cfg.Workers.CLI.Default); ok {
 			return cloneStrings(template), nil
@@ -60,10 +48,17 @@ func selectCommandTemplate(cfg config.Config, role index.Role) ([]string, error)
 	}
 
 	// No command found
-	if role != "" {
-		return nil, fmt.Errorf("worker command missing for role %q and no default configured", role)
+	return nil, errors.New("worker command is required (set workers.cli.default or workers.commands.default)")
+}
+
+// warnDeprecatedRoleConfig logs a deprecation warning if role-based CLI/command config is present.
+func warnDeprecatedRoleConfig(cfg config.Config) {
+	if len(cfg.Workers.Commands.Roles) > 0 {
+		log.Printf("WARNING: workers.commands.roles is deprecated and will be ignored. Use workers.commands.default instead.")
 	}
-	return nil, errors.New("worker command is required")
+	if len(cfg.Workers.CLI.Roles) > 0 {
+		log.Printf("WARNING: workers.cli.roles is deprecated and will be ignored. Use workers.cli.default instead.")
+	}
 }
 
 // applyTemplate substitutes supported tokens in the command template.

@@ -333,8 +333,9 @@ func TestTaskInventoryDefaultValues(t *testing.T) {
 	if task.State != index.TaskStateBacklog {
 		t.Fatalf("State = %s, want %s", task.State, index.TaskStateBacklog)
 	}
-	if task.Role != index.Role("default") {
-		t.Fatalf("Role = %s, want 'default'", task.Role)
+	// Role should be empty initially (assigned during triage)
+	if task.Role != index.Role("") {
+		t.Fatalf("Role = %s, want empty (assigned during triage)", task.Role)
 	}
 	if task.Retries.MaxAttempts != 3 {
 		t.Fatalf("Retries.MaxAttempts = %d, want 3", task.Retries.MaxAttempts)

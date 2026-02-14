@@ -115,7 +115,7 @@ func (inventory *TaskInventory) parseTaskFile(filePath, taskPath string) (index.
 		Path:     taskPath,
 		Kind:     index.TaskKindExecution,
 		State:    index.TaskStateBacklog,
-		Role:     index.Role("default"),
+		Role:     index.Role(""), // Role assigned during triage
 		Retries:  index.RetryPolicy{MaxAttempts: 3},
 		Attempts: index.AttemptCounters{Total: 0, Failed: 0},
 		Order:    len(inventory.idx.Tasks) + 1,
