@@ -257,7 +257,7 @@ func prepareWorkedTask(t *testing.T, repoRoot string, idx *index.Index, repo *te
 		}
 		task.State = index.TaskStateWorked
 		task.Attempts.Total = 1
-		branchName := fmt.Sprintf("task-%s", task.ID)
+		branchName := task.ID
 		spec := worktree.Spec{
 			WorkstreamID: task.ID,
 			Branch:       branchName,
