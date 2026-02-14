@@ -87,7 +87,7 @@ func New(repoRoot string) Model {
 
 	taskTable := table.New(
 		table.WithColumns(taskColumns),
-		table.WithFocused(true),
+		table.WithFocused(false),
 		table.WithHeight(20),
 	)
 
@@ -98,10 +98,6 @@ func New(repoRoot string) Model {
 		BorderBottom(true).
 		Bold(true).
 		Foreground(lipgloss.Color("12"))
-	s.Selected = s.Selected.
-		Foreground(lipgloss.Color("229")).
-		Background(lipgloss.Color("57")).
-		Bold(false)
 	taskTable.SetStyles(s)
 
 	// Planning steps table
@@ -314,7 +310,7 @@ func (m Model) View() string {
 	if m.showMerged {
 		mergedToggle = "hide"
 	}
-	help := helpStyle.Render(fmt.Sprintf("↑/↓: navigate • r: refresh • m: %s merged • q/esc: quit", mergedToggle))
+	help := helpStyle.Render(fmt.Sprintf("r: refresh • m: %s merged • q/esc: quit", mergedToggle))
 	b.WriteString(help)
 
 	// Error display
