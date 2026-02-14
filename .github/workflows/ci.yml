@@ -29,16 +29,10 @@ jobs:
           brew install bash
           echo "$(brew --prefix)/bin" >> $GITHUB_PATH
       - name: Check formatting
-        run: |
-          unformatted=$(gofmt -l .)
-          if [ -n "$unformatted" ]; then
-            echo "The following files are not formatted:"
-            echo "$unformatted"
-            exit 1
-          fi
+        run: make fmt-check
       - name: Vet
-        run: go vet ./...
+        run: make vet
       - name: Unit tests
-        run: go test -v $(go list ./... | grep -v '/tests/e2e$')
+        run: make test-unit
       - name: E2E tests
-        run: go test -v ./tests/e2e
+        run: make test-e2e
