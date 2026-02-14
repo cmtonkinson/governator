@@ -2,7 +2,11 @@
 package tui
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -36,33 +40,44 @@ var (
 			Bold(true).
 			MarginLeft(1).
 			MarginBottom(1)
+
+	logTailStyle = lipgloss.NewStyle().
+			MarginLeft(1)
+
+	logTailMutedStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("240")).
+				MarginLeft(1)
 )
+
+const supervisorTailViewportLines = 5
 
 // Model represents the interactive status TUI state.
 type Model struct {
-	table         table.Model
-	planningTable table.Model
-	workersTable  table.Model
-	repoRoot      string
-	windowHeight  int
-	lastUpdate    time.Time
-	err           error
-	quitting      bool
-	showMerged    bool // Toggle for showing merged tasks
-	backlog       int
-	merged        int
-	inProgress    int
-	activeRows    []status.StatusRow // Non-merged tasks
-	mergedRows    []status.StatusRow // Merged tasks
-	supervisors   []status.SupervisorSummary
-	workers       []status.WorkerSummary
-	planningSteps []status.PlanningStepSummary
-	aggregates    status.AggregateMetrics
+	table          table.Model
+	planningTable  table.Model
+	workersTable   table.Model
+	repoRoot       string
+	windowHeight   int
+	lastUpdate     time.Time
+	err            error
+	quitting       bool
+	showMerged     bool // Toggle for showing merged tasks
+	backlog        int
+	merged         int
+	inProgress     int
+	activeRows     []status.StatusRow // Non-merged tasks
+	mergedRows     []status.StatusRow // Merged tasks
+	supervisors    []status.SupervisorSummary
+	workers        []status.WorkerSummary
+	planningSteps  []status.PlanningStepSummary
+	aggregates     status.AggregateMetrics
+	supervisorTail []string
 }
 
 type tickMsg time.Time
 type statusMsg struct {
-	summary status.Summary
+	summary        status.Summary
+	supervisorTail []string
 }
 type errMsg error
 
@@ -191,6 +206,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.aggregates = msg.summary.Aggregates
 		m.activeRows = msg.summary.Rows
 		m.mergedRows = msg.summary.MergedRows
+		m.supervisorTail = msg.supervisorTail
 
 		// Update table rows based on showMerged toggle
 		m.updateTableRows()
@@ -306,8 +322,14 @@ func (m Model) View() string {
 	// Task table
 	if m.inProgress > 0 {
 		b.WriteString(m.table.View())
-		b.WriteString("\n")
+		b.WriteString("\n\n")
 	}
+
+	// Supervisor log tail panel.
+	b.WriteString(titleStyle.Render(fmt.Sprintf("Supervisor Log Tail (%d)", supervisorTailViewportLines)))
+	b.WriteString("\n")
+	b.WriteString(renderSupervisorLogTail(m.supervisorTail, supervisorTailViewportLines))
+	b.WriteString("\n")
 
 	// Help footer
 	mergedToggle := "show"
@@ -332,7 +354,14 @@ func (m Model) updateStatus() tea.Cmd {
 		if err != nil {
 			return errMsg(err)
 		}
-		return statusMsg{summary: summary}
+		supervisorTail, err := readSupervisorLogTail(m.repoRoot, summary.Supervisors, supervisorTailViewportLines)
+		if err != nil {
+			return errMsg(err)
+		}
+		return statusMsg{
+			summary:        summary,
+			supervisorTail: supervisorTail,
+		}
 	}
 }
 
@@ -408,8 +437,10 @@ func (m *Model) updateTableHeight() {
 		return // No window size info yet
 	}
 
-	// Calculate dynamic overhead based on visible sections
-	overhead := 8 // Base: header (3) + overall metrics (3) + tasks section title/counts (2) + help (2)
+	// Calculate dynamic overhead based on visible sections.
+	// Base includes header, aggregate metrics, task section header/counts,
+	// supervisor tail section title/body, and footer help.
+	overhead := 14 + supervisorTailViewportLines
 
 	if len(m.supervisors) > 0 {
 		// Supervisor section: title (1) + KV pairs (4-6 lines) + spacing (1)
@@ -478,4 +509,68 @@ func (m *Model) updateTableRows() {
 	}
 
 	m.table.SetRows(rows)
+}
+
+// renderSupervisorLogTail renders a fixed-height viewport of supervisor log lines.
+func renderSupervisorLogTail(lines []string, viewport int) string {
+	if viewport <= 0 {
+		return ""
+	}
+	if len(lines) > viewport {
+		lines = lines[len(lines)-viewport:]
+	}
+
+	rendered := make([]string, 0, viewport)
+	padding := viewport - len(lines)
+	for i := 0; i < padding; i++ {
+		rendered = append(rendered, logTailMutedStyle.Render(" "))
+	}
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			line = " "
+		}
+		rendered = append(rendered, logTailStyle.Render(line))
+	}
+	return strings.Join(rendered, "\n")
+}
+
+// readSupervisorLogTail returns trailing supervisor log lines for the TUI tail panel.
+func readSupervisorLogTail(repoRoot string, supervisors []status.SupervisorSummary, maxLines int) ([]string, error) {
+	if maxLines <= 0 {
+		return nil, nil
+	}
+
+	logPath := ""
+	if len(supervisors) > 0 {
+		logPath = strings.TrimSpace(supervisors[0].LogPath)
+	}
+	if logPath == "" {
+		logPath = filepath.Join(repoRoot, "_governator", "_local-state", "supervisor", "supervisor.log")
+	}
+
+	file, err := os.Open(logPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read supervisor log %s: %w", logPath, err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	lines := make([]string, 0, maxLines)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if len(lines) < maxLines {
+			lines = append(lines, line)
+			continue
+		}
+		copy(lines, lines[1:])
+		lines[len(lines)-1] = line
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("scan supervisor log %s: %w", logPath, err)
+	}
+	return lines, nil
 }
