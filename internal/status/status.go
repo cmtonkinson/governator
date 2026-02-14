@@ -243,23 +243,53 @@ func (s Summary) styledString() string {
 	b.WriteString(countsStyle.Render(aggregateStr))
 	b.WriteString("\n\n")
 
-	// Supervisor section
-	if len(s.Supervisors) > 0 {
-		b.WriteString(headerStyle.Render("Supervisor"))
-		b.WriteString("\n")
-		for _, supervisor := range s.Supervisors {
-			b.WriteString(renderSupervisorKV(supervisor))
+	// Two-column layout for supervisor + workers (if width permits)
+	hasSupervisor := len(s.Supervisors) > 0
+	hasWorkers := len(s.Workers) > 0
+
+	if (hasSupervisor || hasWorkers) && width >= 100 {
+		// Two-column layout
+		leftWidth := (width / 2) - 4
+		rightWidth := (width / 2) - 4
+
+		leftCol := renderSupervisorBox(s.Supervisors, leftWidth)
+		rightCol := renderWorkersBox(s.Workers, rightWidth)
+
+		twoColumns := lipgloss.JoinHorizontal(lipgloss.Top, leftCol, "  ", rightCol)
+		b.WriteString(twoColumns)
+		b.WriteString("\n\n")
+	} else {
+		// Fallback: single column for narrow terminals
+		if hasSupervisor {
+			b.WriteString(headerStyle.Render("Supervisor"))
+			b.WriteString("\n")
+			for _, supervisor := range s.Supervisors {
+				b.WriteString(renderSupervisorKV(supervisor))
+			}
+			b.WriteString("\n")
 		}
-		b.WriteString("\n")
+		if hasWorkers {
+			b.WriteString(headerStyle.Render(fmt.Sprintf("Workers (%d)", len(s.Workers))))
+			b.WriteString("\n")
+			workersTable := renderWorkersTable(s.Workers, width)
+			b.WriteString(tableStyle.Render(workersTable))
+			b.WriteString("\n\n")
+		}
 	}
 
-	// Workers section
-	if len(s.Workers) > 0 {
-		b.WriteString(headerStyle.Render(fmt.Sprintf("Workers (%d)", len(s.Workers))))
-		b.WriteString("\n")
-		workersTable := renderWorkersTable(s.Workers, width)
-		b.WriteString(tableStyle.Render(workersTable))
-		b.WriteString("\n\n")
+	// Supervisor logs section (last 5 lines)
+	if hasSupervisor && len(s.Supervisors) > 0 {
+		supervisor := s.Supervisors[0]
+		if supervisor.LogPath != "" {
+			b.WriteString(headerStyle.Render("Recent Supervisor Logs"))
+			b.WriteString("\n")
+			logLines := readLastNLines(supervisor.LogPath, 5)
+			if logLines != "" {
+				logBox := tableStyle.Render(logLines)
+				b.WriteString(logBox)
+				b.WriteString("\n\n")
+			}
+		}
 	}
 
 	// Planning steps section
@@ -971,4 +1001,162 @@ func renderWorkersTable(workers []WorkerSummary, maxWidth int) string {
 	}
 
 	return strings.TrimRight(buf.String(), "\n")
+}
+
+// renderSupervisorBox renders the supervisor section in a bordered box.
+func renderSupervisorBox(supervisors []SupervisorSummary, maxWidth int) string {
+	if len(supervisors) == 0 {
+		// Empty placeholder
+		emptyStyle := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("240")).
+			Padding(1, 2).
+			Width(maxWidth - 4)
+		header := headerStyle.Render("Supervisor")
+		content := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")).
+			Render("(not running)")
+		return emptyStyle.Render(header + "\n\n" + content)
+	}
+
+	supervisor := supervisors[0]
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("12")).
+		Padding(1, 2).
+		Width(maxWidth - 4)
+
+	var content strings.Builder
+	content.WriteString(headerStyle.Render("Supervisor"))
+	content.WriteString("\n\n")
+	content.WriteString(renderSupervisorKVCompact(supervisor))
+
+	return boxStyle.Render(content.String())
+}
+
+// renderWorkersBox renders the workers section in a bordered box.
+func renderWorkersBox(workers []WorkerSummary, maxWidth int) string {
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("11")).
+		Padding(1, 2).
+		Width(maxWidth - 4)
+
+	var content strings.Builder
+	content.WriteString(headerStyle.Render(fmt.Sprintf("Workers (%d)", len(workers))))
+	content.WriteString("\n\n")
+
+	if len(workers) == 0 {
+		content.WriteString(lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")).
+			Render("(none active)"))
+	} else {
+		// Render workers table without outer border (box provides it)
+		workersTable := renderWorkersTablePlain(workers, maxWidth-8)
+		content.WriteString(workersTable)
+	}
+
+	return boxStyle.Render(content.String())
+}
+
+// renderSupervisorKVCompact renders supervisor info as compact key-value pairs.
+func renderSupervisorKVCompact(supervisor SupervisorSummary) string {
+	keyStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("12")).
+		Width(12).
+		Align(lipgloss.Right)
+
+	valueStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("15"))
+
+	var buf strings.Builder
+
+	renderKV := func(key, value string) {
+		buf.WriteString(keyStyle.Render(key + ":"))
+		buf.WriteString(" ")
+		buf.WriteString(valueStyle.Render(value))
+		buf.WriteString("\n")
+	}
+
+	renderKV("Phase", normalizeToken(supervisor.Phase))
+	renderKV("State", normalizeToken(supervisor.State))
+	renderKV("PID", format.PID(supervisor.PID))
+	renderKV("Runtime", formatSupervisorRuntime(supervisor.StartedAt))
+
+	if supervisor.WorkerPID > 0 {
+		renderKV("Worker PID", format.PID(supervisor.WorkerPID))
+	}
+
+	renderKV("Step", normalizeToken(supervisor.StepName))
+
+	return strings.TrimRight(buf.String(), "\n")
+}
+
+// renderWorkersTablePlain renders workers table without outer border.
+func renderWorkersTablePlain(workers []WorkerSummary, maxWidth int) string {
+	if len(workers) == 0 {
+		return ""
+	}
+
+	var buf strings.Builder
+
+	// Column widths
+	widths := []int{6, 12, 8} // PID, Role, Runtime
+
+	// Header row
+	headers := []string{"PID", "Role", "Runtime"}
+	headerCells := make([]string, len(headers))
+	for i, h := range headers {
+		headerCells[i] = headerStyle.Width(widths[i]).Render(h)
+	}
+	buf.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, headerCells...))
+	buf.WriteString("\n")
+
+	// Separator
+	totalWidth := 0
+	for _, w := range widths {
+		totalWidth += w
+	}
+	separator := separatorStyle.Render(strings.Repeat("─", totalWidth))
+	buf.WriteString(separator)
+	buf.WriteString("\n")
+
+	// Data rows
+	for _, worker := range workers {
+		cells := []string{
+			format.PID(worker.PID),
+			worker.Role,
+			formatSupervisorRuntime(worker.StartedAt),
+		}
+		renderedCells := make([]string, len(cells))
+		for i, cell := range cells {
+			style := cellStyle.Width(widths[i]).MaxWidth(widths[i])
+			renderedCells[i] = style.Render(cell)
+		}
+		buf.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, renderedCells...))
+		buf.WriteString("\n")
+	}
+
+	return strings.TrimRight(buf.String(), "\n")
+}
+
+// readLastNLines reads the last N lines from a file.
+func readLastNLines(filepath string, n int) string {
+	data, err := os.ReadFile(filepath)
+	if err != nil {
+		return ""
+	}
+
+	content := string(data)
+	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
+
+	// Get last N lines
+	start := len(lines) - n
+	if start < 0 {
+		start = 0
+	}
+
+	lastLines := lines[start:]
+	return strings.Join(lastLines, "\n")
 }
