@@ -745,7 +745,8 @@ func TestWhyCommand(t *testing.T) {
       "id": %q,
       "path": "_governator/tasks/%s.md",
       "kind": "execution",
-      "state": "triaged",
+      "state": "blocked",
+      "blocked_reason": "worker failed",
       "role": "default",
       "dependencies": [],
       "retries": {"max_attempts": 2},
@@ -816,7 +817,7 @@ func TestWhyCommand(t *testing.T) {
 		got := string(output)
 
 		if strings.Count(got, "=== ") != 3 {
-			t.Fatalf("expected exactly 3 sections (supervisor + blocked + failed), got output:\n%s", got)
+			t.Fatalf("expected exactly 3 sections (supervisor + 2 blocked tasks), got output:\n%s", got)
 		}
 		if !strings.Contains(got, "=== Supervisor 0 (unknown) last 2 lines ===\nline-29\nline-30\n") {
 			t.Fatalf("missing supervisor section in output:\n%s", got)
@@ -824,8 +825,8 @@ func TestWhyCommand(t *testing.T) {
 		if !strings.Contains(got, "=== Task "+blockedID+" (blocked) last 3 lines from _governator/_local-state/task-"+blockedID+"/_governator/_local-state/worker-2-work-default/stdout.log ===\nnew-2\nnew-3\nnew-4\n") {
 			t.Fatalf("missing blocked section with most recent stdout log in output:\n%s", got)
 		}
-		if !strings.Contains(got, "=== Task "+failedID+" (failed) last 3 lines from _governator/_local-state/task-"+failedID+"/_governator/_local-state/worker-1-test-default/stdout.log ===\nf-1\nf-2\nf-3\n") {
-			t.Fatalf("missing failed section in output:\n%s", got)
+		if !strings.Contains(got, "=== Task "+failedID+" (blocked) last 3 lines from _governator/_local-state/task-"+failedID+"/_governator/_local-state/worker-1-test-default/stdout.log ===\nf-1\nf-2\nf-3\n") {
+			t.Fatalf("missing second blocked section in output:\n%s", got)
 		}
 		if strings.Contains(got, openID) {
 			t.Fatalf("unexpected open task section in output:\n%s", got)
@@ -908,7 +909,8 @@ func TestWhyCommand(t *testing.T) {
       "id": "T-ERR-001",
       "path": "_governator/tasks/T-ERR-001.md",
       "kind": "execution",
-      "state": "triaged",
+      "state": "blocked",
+      "blocked_reason": "worker failed",
       "role": "default",
       "dependencies": [],
       "retries": {"max_attempts": 1},

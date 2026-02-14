@@ -1099,9 +1099,6 @@ func whyTaskKind(task index.Task, supervisorState supervisor.SupervisorStateInfo
 	if task.State == index.TaskStateBlocked {
 		return "blocked"
 	}
-	if task.Attempts.Failed > 0 {
-		return "failed"
-	}
 	if task.Kind == index.TaskKindPlanning &&
 		hasSupervisorState &&
 		supervisorState.State == supervisor.SupervisorStateFailed &&
