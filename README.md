@@ -205,8 +205,6 @@ GLOBAL OPTIONS:
 COMMANDS:
     init             Bootstrap a new governator workspace in the current repository
     start            Start the unified supervisor to plan, triage, and execute work
-    plan             Deprecated alias for 'start'
-    execute          Deprecated alias for 'start'
     retry            Increase retry limit for a specific task by 1
     status           Display current supervisor and task status
     why              Show the most recent supervisor log lines
@@ -276,26 +274,25 @@ _governator/
 ```
 ---
 ## Testing
-Execute all automated verification by running `./test.sh`.
+Execute verification with `make` targets.
+
+Running `make` with no target executes both `verify` and `build`.
 
 ```text
-./test.sh -h
-Usage: ./test.sh [options]
+Common targets:
 
-Options:
-  -a, --all        Run lint, native, and E2E tests (default).
-  -n, --native     Run native tests only.
-  -e, --e2e        Run E2E tests only.
-  -l, --lint       Run lint checks only.
-  -q, --quiet      Suppress go test output (failures still surface).
-  -v, --verbose    Enable verbose go test output (default).
-  -h, --help       Show this help message.
-  -e2e-preserve-all     Preserve all E2E test repositories.
-  -e2e-clear-all        Clear all E2E test repositories, even on failure.
+  make fmt-check    # Verify gofmt formatting
+  make vet          # Run go vet
+  make test-unit    # Run unit tests (excludes tests/e2e)
+  make test-e2e     # Run E2E tests
+  make test         # Run unit + E2E tests
+  make verify       # Run fmt-check + vet + test
+  make build        # Build the governator binary
 
 Examples:
-  ./test.sh -a
-  ./test.sh --e2e --e2e-preserve-all
+  make verify
+  make test-unit
+  make test-e2e
 ```
 
 ---

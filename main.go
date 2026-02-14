@@ -45,8 +45,6 @@ GLOBAL OPTIONS:
 COMMANDS:
     init             Bootstrap a new governator workspace in the current repository
     start            Start the unified supervisor to plan, triage, and execute work
-    plan             Alias for 'start'
-    execute          Alias for 'start'
     retry            Increase retry limit for a specific task by 1
     status           Display current supervisor and task status
     why              Show the most recent supervisor log lines
@@ -111,10 +109,6 @@ func main() {
 		runInit(isVerbose, commandArgs)
 	case "start":
 		runStart(commandArgs)
-	case "plan":
-		runPlan(commandArgs)
-	case "execute":
-		runExecute(commandArgs)
 	case "retry":
 		runRetry(commandArgs)
 	case "status":
@@ -412,14 +406,6 @@ func runStartSupervisor() {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
-}
-
-func runPlan(args []string) {
-	runStart(args)
-}
-
-func runExecute(args []string) {
-	runStart(args)
 }
 
 func runStop(args []string) {
