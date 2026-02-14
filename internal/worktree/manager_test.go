@@ -138,3 +138,92 @@ func runGit(t *testing.T, dir string, args ...string) string {
 func execCommand(name string, args ...string) *exec.Cmd {
 	return exec.Command(name, args...)
 }
+
+// TestGitMetadataPath verifies Git metadata path resolution.
+func TestGitMetadataPath(t *testing.T) {
+	repoRoot := initRepo(t)
+	branch := "task-T-metadata"
+	runGit(t, repoRoot, "branch", branch)
+
+	manager, err := NewManager(repoRoot)
+	if err != nil {
+		t.Fatalf("NewManager error: %v", err)
+	}
+
+	result, err := manager.EnsureWorktree(Spec{
+		WorkstreamID: "T-metadata",
+		Branch:       branch,
+		BaseBranch:   "main",
+	})
+	if err != nil {
+		t.Fatalf("EnsureWorktree error: %v", err)
+	}
+
+	metadataPath, err := GitMetadataPath(result.Path)
+	if err != nil {
+		t.Fatalf("GitMetadataPath error: %v", err)
+	}
+
+	// Verify the metadata path exists and is a directory
+	info, err := os.Stat(metadataPath)
+	if err != nil {
+		t.Fatalf("stat metadata path %s: %v", metadataPath, err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("metadata path %s is not a directory", metadataPath)
+	}
+
+	// Verify the path contains expected Git metadata
+	// For a worktree, this should be under .git/worktrees/<name>/
+	if !strings.Contains(metadataPath, ".git") {
+		t.Fatalf("metadata path %s does not contain .git", metadataPath)
+	}
+}
+
+// TestValidateGitMetadataWritable verifies writability check.
+func TestValidateGitMetadataWritable(t *testing.T) {
+	repoRoot := initRepo(t)
+	branch := "task-T-writable"
+	runGit(t, repoRoot, "branch", branch)
+
+	manager, err := NewManager(repoRoot)
+	if err != nil {
+		t.Fatalf("NewManager error: %v", err)
+	}
+
+	result, err := manager.EnsureWorktree(Spec{
+		WorkstreamID: "T-writable",
+		Branch:       branch,
+		BaseBranch:   "main",
+	})
+	if err != nil {
+		t.Fatalf("EnsureWorktree error: %v", err)
+	}
+
+	// Verify metadata is writable (should succeed)
+	if err := ValidateGitMetadataWritable(result.Path); err != nil {
+		t.Fatalf("ValidateGitMetadataWritable error: %v", err)
+	}
+
+	// Verify the probe file was cleaned up
+	metadataPath, err := GitMetadataPath(result.Path)
+	if err != nil {
+		t.Fatalf("GitMetadataPath error: %v", err)
+	}
+
+	probePath := filepath.Join(metadataPath, ".governator-write-test")
+	if _, err := os.Stat(probePath); err == nil {
+		t.Fatalf("probe file %s was not cleaned up", probePath)
+	}
+}
+
+// TestValidateGitMetadataWritable_NonExistentPath verifies error handling.
+func TestValidateGitMetadataWritable_NonExistentPath(t *testing.T) {
+	err := ValidateGitMetadataWritable("/nonexistent/path")
+	if err == nil {
+		t.Fatal("expected error for nonexistent path, got nil")
+	}
+	if !strings.Contains(err.Error(), "resolve git metadata path") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}

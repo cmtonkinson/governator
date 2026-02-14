@@ -300,3 +300,61 @@ func TestRunGitInRepo_ValidationErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestIsGitMetadataPermissionError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{
+			name:     "nil error",
+			err:      nil,
+			expected: false,
+		},
+		{
+			name:     "permission denied on ORIG_HEAD.lock",
+			err:      errors.New("error: cannot create .git/worktrees/task-T-001/ORIG_HEAD.lock: Permission denied"),
+			expected: true,
+		},
+		{
+			name:     "permission denied on index.lock",
+			err:      errors.New("fatal: Unable to create '.git/index.lock': Permission denied"),
+			expected: true,
+		},
+		{
+			name:     "cannot create lock file",
+			err:      errors.New("error: cannot create .git/worktrees/task-T-002/rebase-merge/head-name.lock"),
+			expected: true,
+		},
+		{
+			name:     "permission denied without lock file reference",
+			err:      errors.New("Permission denied"),
+			expected: false,
+		},
+		{
+			name:     "lock file error without permission denied",
+			err:      errors.New("error: .git/index.lock already exists"),
+			expected: false,
+		},
+		{
+			name:     "regular merge conflict error",
+			err:      errors.New("CONFLICT (content): Merge conflict in file.txt"),
+			expected: false,
+		},
+		{
+			name:     "generic git error",
+			err:      errors.New("fatal: not a git repository"),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isGitMetadataPermissionError(tt.err)
+			if result != tt.expected {
+				t.Errorf("expected %v, got %v for error: %v", tt.expected, result, tt.err)
+			}
+		})
+	}
+}

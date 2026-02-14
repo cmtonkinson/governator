@@ -15,6 +15,7 @@ import (
 	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/index"
 	"github.com/cmtonkinson/governator/internal/roles"
+	"github.com/cmtonkinson/governator/internal/worktree"
 )
 
 const (
@@ -165,6 +166,16 @@ func DispatchWorkerFromConfig(cfg config.Config, task index.Task, stageResult St
 		return DispatchResult{}, fmt.Errorf("resolve worker command: %w", err)
 	}
 	command = applyCodexReasoningFlag(command, stageResult.ReasoningEffort)
+
+	// For conflict resolution stage, add Git metadata directory permissions
+	// This works around a codex/claude CLI bug where bypassPermissions doesn't
+	// properly grant write access to worktree Git metadata paths
+	if stage == roles.StageResolve {
+		command, err = applyGitMetadataPermissions(command, workDir, selectedCLI, warn)
+		if err != nil {
+			return DispatchResult{}, fmt.Errorf("apply git metadata permissions: %w", err)
+		}
+	}
 
 	input := DispatchInput{
 		Command:        command,
@@ -446,4 +457,50 @@ func buildClaudeCommandLine(command []string) (string, bool) {
 
 	claudeCmd := strings.Join(claudeArgs, " ")
 	return catCmd + " | " + claudeCmd, true
+}
+
+// applyGitMetadataPermissions adds directory permissions for Git metadata paths.
+// This works around a codex/claude CLI bug where bypassPermissions doesn't properly
+// grant write access to worktree Git metadata directories.
+func applyGitMetadataPermissions(command []string, workDir string, selectedCLI string, warn func(string)) ([]string, error) {
+	// Import worktree package at the top of this file
+	// We need to call worktree.GitMetadataPath(workDir)
+
+	// Only apply for known CLIs that need this workaround
+	if selectedCLI != config.CLIClaude && selectedCLI != config.CLICodex && selectedCLI != config.CLIGemini {
+		return command, nil
+	}
+
+	// Resolve the Git metadata directory path
+	// Note: This requires importing the worktree package
+	metadataPath, err := resolveGitMetadataPathForWorker(workDir)
+	if err != nil {
+		// If we can't resolve the path, log a warning but don't fail
+		// The preflight check should have caught this
+		emitWarning(warn, fmt.Sprintf("failed to resolve git metadata path: %v", err))
+		return command, nil
+	}
+
+	// Add the appropriate permission flag based on CLI
+	var updatedCommand []string
+	switch selectedCLI {
+	case config.CLIClaude, config.CLICodex:
+		// Use --add-dir for codex/claude
+		updatedCommand = append([]string{}, command...)
+		updatedCommand = append(updatedCommand, "--add-dir", metadataPath)
+	case config.CLIGemini:
+		// Use --include-directories for gemini (proactive support)
+		updatedCommand = append([]string{}, command...)
+		updatedCommand = append(updatedCommand, "--include-directories", metadataPath)
+	default:
+		return command, nil
+	}
+
+	return updatedCommand, nil
+}
+
+// resolveGitMetadataPathForWorker resolves the Git metadata directory for a worktree.
+// This is a wrapper that calls the worktree package function.
+func resolveGitMetadataPathForWorker(workDir string) (string, error) {
+	return worktree.GitMetadataPath(workDir)
 }

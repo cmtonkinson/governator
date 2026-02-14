@@ -396,3 +396,60 @@ func isExitStatus(err error, status int) bool {
 	}
 	return exitErr.ExitCode() == status
 }
+
+// GitMetadataPath resolves the Git metadata directory path for a worktree.
+// This is where Git stores lock files like ORIG_HEAD.lock during operations.
+func GitMetadataPath(worktreePath string) (string, error) {
+	if strings.TrimSpace(worktreePath) == "" {
+		return "", errors.New("worktree path is required")
+	}
+
+	// Use git rev-parse --git-path to resolve the metadata directory
+	output, err := runGitWithDir(worktreePath, "rev-parse", "--git-path", "ORIG_HEAD")
+	if err != nil {
+		return "", fmt.Errorf("resolve git metadata path for %s: %w", worktreePath, err)
+	}
+
+	origHeadPath := strings.TrimSpace(output)
+	if origHeadPath == "" {
+		return "", fmt.Errorf("git rev-parse returned empty path for %s", worktreePath)
+	}
+
+	// Return the directory containing ORIG_HEAD (the Git metadata directory)
+	return filepath.Dir(origHeadPath), nil
+}
+
+// ValidateGitMetadataWritable checks if the Git metadata directory is writable.
+// This is crucial for conflict resolution, which needs to create lock files.
+func ValidateGitMetadataWritable(worktreePath string) error {
+	metadataPath, err := GitMetadataPath(worktreePath)
+	if err != nil {
+		return fmt.Errorf("resolve git metadata path: %w", err)
+	}
+
+	// Check if the metadata directory exists
+	info, err := os.Stat(metadataPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("git metadata directory does not exist: %s", metadataPath)
+		}
+		return fmt.Errorf("stat git metadata directory %s: %w", metadataPath, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("git metadata path is not a directory: %s", metadataPath)
+	}
+
+	// Test writability by creating a probe file
+	probePath := filepath.Join(metadataPath, ".governator-write-test")
+	if err := os.WriteFile(probePath, []byte("test"), 0o644); err != nil {
+		return fmt.Errorf("git metadata directory not writable: %s: %w", metadataPath, err)
+	}
+
+	// Clean up the probe file
+	if err := os.Remove(probePath); err != nil {
+		// Log but don't fail - the write test succeeded
+		return nil
+	}
+
+	return nil
+}

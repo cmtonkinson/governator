@@ -44,6 +44,23 @@ func (r *TempRepo) RunGit(tb testing.TB, args ...string) string {
 	return output
 }
 
+// RunGitInDir executes git in a specific directory and fails the test if git returns an error.
+func (r *TempRepo) RunGitInDir(tb testing.TB, dir string, args ...string) string {
+	tb.Helper()
+	output, err := runGit(dir, args...)
+	if err != nil {
+		tb.Fatalf("git %s failed in %s: %v: %s", strings.Join(args, " "), dir, err, output)
+	}
+	return output
+}
+
+// RunGitInDirAllowError executes git in a specific directory and returns output even on error.
+func (r *TempRepo) RunGitInDirAllowError(tb testing.TB, dir string, args ...string) string {
+	tb.Helper()
+	output, _ := runGit(dir, args...)
+	return output
+}
+
 // Cleanup removes the temporary repository root. Missing directories are treated as success.
 func (r *TempRepo) Cleanup() error {
 	if r == nil || r.Root == "" {

@@ -1484,6 +1484,27 @@ func ExecuteConflictResolutionStage(repoRoot string, idx *index.Index, cfg confi
 			continue
 		}
 
+		// Preflight check: ensure Git metadata directory is writable
+		// This is critical for conflict resolution, which needs to create lock files
+		if err := worktree.ValidateGitMetadataWritable(worktreePath); err != nil {
+			fmt.Fprintf(opts.Stderr, "Warning: git metadata not writable for task %s: %v\n", task.ID, err)
+			failedResult := worker.IngestResult{
+				Success:     false,
+				NewState:    index.TaskStateBlocked,
+				BlockReason: fmt.Sprintf("git metadata directory not writable: %v", err),
+			}
+			if err := index.IncrementTaskFailedAttempt(idx, task.ID); err != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to increment failed attempts for %s: %v\n", task.ID, err)
+			}
+			if updateErr := UpdateTaskStateFromConflictResolution(idx, task.ID, failedResult, transitionAuditor); updateErr != nil {
+				fmt.Fprintf(opts.Stderr, "Warning: failed to update task state for %s: %v\n", task.ID, updateErr)
+			} else {
+				result.TasksBlocked++
+				emitTaskFailure(opts.Stdout, task.ID, string(task.Role), string(roles.StageResolve), failedResult.BlockReason)
+			}
+			continue
+		}
+
 		roleResult := SelectRoleForConflictResolution(task)
 		roleForLogs := resolveRoleForLogs(roleResult.Role, task.Role)
 

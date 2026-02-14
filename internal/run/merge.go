@@ -396,3 +396,23 @@ func isMergeConflict(err error) bool {
 		strings.Contains(errStr, "automatic merge failed") ||
 		strings.Contains(errStr, "merge conflict")
 }
+
+// isGitMetadataPermissionError detects permission errors on Git metadata files.
+// These occur when Git cannot create lock files like ORIG_HEAD.lock during operations.
+func isGitMetadataPermissionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+
+	// Check for permission-related keywords
+	hasPermissionError := strings.Contains(errStr, "permission denied") ||
+		strings.Contains(errStr, "cannot create")
+
+	// Check for Git metadata lock file patterns
+	hasLockFileError := strings.Contains(errStr, "orig_head.lock") ||
+		strings.Contains(errStr, ".lock") ||
+		strings.Contains(errStr, "index.lock")
+
+	return hasPermissionError && hasLockFileError
+}
