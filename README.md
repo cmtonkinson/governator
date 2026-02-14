@@ -93,7 +93,7 @@ sudo dpkg -i governator_<version>_amd64.deb
 ```bash
 git clone https://github.com/cmtonkinson/governator.git
 cd governator
-go build -o governator .
+make build
 sudo mv governator /usr/local/bin/
 ```
 
