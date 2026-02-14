@@ -77,7 +77,15 @@ func TestPipelineIntegrationHappyPath(t *testing.T) {
 	runStderr.Reset()
 	result, err = Run(repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr})
 	if err != nil {
-		t.Fatalf("run.Run collect failed: %v, stdout=%q, stderr=%q", err, runStdout.String(), runStderr.String())
+		t.Fatalf("run.Run collect test failed: %v, stdout=%q, stderr=%q", err, runStdout.String(), runStderr.String())
+	}
+
+	// Run again to dispatch review worker
+	runStdout.Reset()
+	runStderr.Reset()
+	result, err = Run(repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr})
+	if err != nil {
+		t.Fatalf("run.Run dispatch review failed: %v, stdout=%q, stderr=%q", err, runStdout.String(), runStderr.String())
 	}
 
 	waitForExitStatus(t, worktreePath, "T-PIPE-001", roles.StageReview)

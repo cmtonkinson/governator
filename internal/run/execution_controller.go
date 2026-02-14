@@ -67,11 +67,11 @@ func newExecutionController(repoRoot string, idx *index.Index, cfg config.Config
 		opts:              opts,
 		baseBranch:        baseBranch,
 		stages: []executionStage{
-			executionStageWork,
-			executionStageTest,
-			executionStageReview,
-			executionStageResolve,
 			executionStageMerge,
+			executionStageResolve,
+			executionStageReview,
+			executionStageTest,
+			executionStageWork,
 		},
 	}
 }

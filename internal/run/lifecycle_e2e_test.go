@@ -72,14 +72,24 @@ func TestLifecycleEndToEndHappyPath(t *testing.T) {
 	}
 	waitForExitStatus(t, worktreePath, "T-LIFE-001", roles.StageTest)
 
+	// Run to collect test results and dispatch review
 	runStdout.Reset()
 	runStderr.Reset()
 	result, err = Run(repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr})
 	if err != nil {
 		t.Fatalf("run.Run collect test failed: %v, stdout=%q, stderr=%q", err, runStdout.String(), runStderr.String())
 	}
+
+	// Run again to dispatch review worker
+	runStdout.Reset()
+	runStderr.Reset()
+	result, err = Run(repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr})
+	if err != nil {
+		t.Fatalf("run.Run dispatch review failed: %v, stdout=%q, stderr=%q", err, runStdout.String(), runStderr.String())
+	}
 	waitForExitStatus(t, worktreePath, "T-LIFE-001", roles.StageReview)
 
+	// Run to collect review results
 	runStdout.Reset()
 	runStderr.Reset()
 	result, err = Run(repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr})
@@ -199,17 +209,32 @@ func TestLifecycleEndToEndTimeoutResume(t *testing.T) {
 		t.Fatalf("third run (collect work) failed: %v", err)
 	}
 
+	// Run again to dispatch test worker
+	resumeStdout.Reset()
+	resumeStderr.Reset()
+	if _, err := Run(repoRoot, Options{Stdout: &resumeStdout, Stderr: &resumeStderr}); err != nil {
+		t.Fatalf("fourth run (dispatch test) failed: %v", err)
+	}
+
 	waitForExitStatus(t, worktreePath, "T-LIFE-001", roles.StageTest)
 	resumeStdout.Reset()
 	resumeStderr.Reset()
 	if _, err := Run(repoRoot, Options{Stdout: &resumeStdout, Stderr: &resumeStderr}); err != nil {
-		t.Fatalf("fourth run (collect test) failed: %v", err)
+		t.Fatalf("fifth run (collect test) failed: %v", err)
 	}
+
+	// Run again to dispatch review worker
+	resumeStdout.Reset()
+	resumeStderr.Reset()
+	if _, err := Run(repoRoot, Options{Stdout: &resumeStdout, Stderr: &resumeStderr}); err != nil {
+		t.Fatalf("sixth run (dispatch review) failed: %v", err)
+	}
+
 	waitForExitStatus(t, worktreePath, "T-LIFE-001", roles.StageReview)
 	resumeStdout.Reset()
 	resumeStderr.Reset()
 	if _, err := Run(repoRoot, Options{Stdout: &resumeStdout, Stderr: &resumeStderr}); err != nil {
-		t.Fatalf("fifth run (collect review) failed: %v", err)
+		t.Fatalf("seventh run (collect review) failed: %v", err)
 	}
 
 	finalIdx, err := index.Load(indexPath)
@@ -449,11 +474,18 @@ func TestLifecycleEndToEndReviewStageFailure(t *testing.T) {
 	// Wait for test stage to complete
 	waitForExitStatus(t, worktreePath, "T-REVIEW-FAIL-001", roles.StageTest)
 
-	// Second run: collect test results and dispatch review (which will fail)
+	// Second run: collect test results
 	runStdout.Reset()
 	runStderr.Reset()
 	if _, err := Run(repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr}); err != nil {
 		t.Fatalf("run.Run collect test failed: %v", err)
+	}
+
+	// Third run: dispatch review (which will fail)
+	runStdout.Reset()
+	runStderr.Reset()
+	if _, err := Run(repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr}); err != nil {
+		t.Fatalf("run.Run dispatch review failed: %v", err)
 	}
 
 	// Wait for review stage to complete (it will fail)
@@ -604,8 +636,16 @@ func TestLifecycleEndToEndConflictResolutionSuccess(t *testing.T) {
 	fixture := setupLifecycleConflictFixture(t, workerCommand)
 
 	_ = driveTaskToConflict(t, fixture.repoRoot, fixture.task.ID, fixture.worktreePath)
+
+	// Run to dispatch resolve worker
+	var runStdout bytes.Buffer
+	var runStderr bytes.Buffer
+	if _, err := Run(fixture.repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr}); err != nil {
+		t.Fatalf("run.Run dispatch resolve failed: %v, stdout=%q, stderr=%q", err, runStdout.String(), runStderr.String())
+	}
+
 	waitForExitStatus(t, fixture.worktreePath, fixture.task.ID, roles.StageResolve)
-	collectConflictResolution(t, fixture.repoRoot, fixture.task.ID, fixture.worktreePath)
+	collectAndMergeConflictResolution(t, fixture.repoRoot, fixture.task.ID, fixture.worktreePath)
 
 	finalIdx, err := index.Load(fixture.indexPath)
 	if err != nil {
@@ -626,6 +666,14 @@ func TestLifecycleEndToEndConflictResolutionFailure(t *testing.T) {
 	fixture := setupLifecycleConflictFixture(t, workerCommand)
 
 	_ = driveTaskToConflict(t, fixture.repoRoot, fixture.task.ID, fixture.worktreePath)
+
+	// Run to dispatch resolve worker
+	var runStdout bytes.Buffer
+	var runStderr bytes.Buffer
+	if _, err := Run(fixture.repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr}); err != nil {
+		t.Fatalf("run.Run dispatch resolve failed: %v, stdout=%q, stderr=%q", err, runStdout.String(), runStderr.String())
+	}
+
 	waitForExitStatus(t, fixture.worktreePath, fixture.task.ID, roles.StageResolve)
 	collectConflictResolution(t, fixture.repoRoot, fixture.task.ID, fixture.worktreePath)
 
@@ -651,9 +699,24 @@ func TestLifecycleEndToEndConflictResolutionReConflict(t *testing.T) {
 	fixture := setupLifecycleConflictFixture(t, workerCommand)
 
 	_ = driveTaskToConflict(t, fixture.repoRoot, fixture.task.ID, fixture.worktreePath)
+
+	// Run to dispatch resolve worker
+	var runStdout bytes.Buffer
+	var runStderr bytes.Buffer
+	if _, err := Run(fixture.repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr}); err != nil {
+		t.Fatalf("run.Run dispatch resolve failed: %v, stdout=%q, stderr=%q", err, runStdout.String(), runStderr.String())
+	}
+
 	waitForExitStatus(t, fixture.worktreePath, fixture.task.ID, roles.StageResolve)
 	createConflictingCommit(t, fixture.repo, fixture.conflictFile, "new conflicting main change\n")
 	collectConflictResolution(t, fixture.repoRoot, fixture.task.ID, fixture.worktreePath)
+
+	// Run again to attempt merge, which will detect the new conflict
+	runStdout.Reset()
+	runStderr.Reset()
+	if _, err := Run(fixture.repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr}); err != nil {
+		t.Fatalf("run.Run merge with conflict failed: %v, stdout=%q, stderr=%q", err, runStdout.String(), runStderr.String())
+	}
 
 	finalIdx, err := index.Load(fixture.indexPath)
 	if err != nil {
@@ -749,6 +812,13 @@ func TestLifecycleEndToEndMultipleTasksProgressingConcurrently(t *testing.T) {
 	runStderr.Reset()
 	if _, err := Run(repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr}); err != nil {
 		t.Fatalf("run.Run collect failed: %v, stdout=%q, stderr=%q", err, runStdout.String(), runStderr.String())
+	}
+
+	// Run again to merge resolved task (t4)
+	runStdout.Reset()
+	runStderr.Reset()
+	if _, err := Run(repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr}); err != nil {
+		t.Fatalf("run.Run merge failed: %v, stdout=%q, stderr=%q", err, runStdout.String(), runStderr.String())
 	}
 
 	finalIdx, err := index.Load(indexPath)
@@ -1124,6 +1194,13 @@ func driveTaskToConflict(t *testing.T, repoRoot, taskID, worktreePath string) st
 	if _, err := Run(repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr}); err != nil {
 		t.Fatalf("run.Run collect test failed: %v, stdout=%q, stderr=%q", err, runStdout.String(), runStderr.String())
 	}
+
+	// Run again to dispatch review worker
+	runStdout.Reset()
+	runStderr.Reset()
+	if _, err := Run(repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr}); err != nil {
+		t.Fatalf("run.Run dispatch review failed: %v, stdout=%q, stderr=%q", err, runStdout.String(), runStderr.String())
+	}
 	waitForExitStatus(t, worktreePath, taskID, roles.StageReview)
 
 	runStdout.Reset()
@@ -1141,6 +1218,18 @@ func collectConflictResolution(t *testing.T, repoRoot, taskID, worktreePath stri
 	var runStderr bytes.Buffer
 	if _, err := Run(repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr}); err != nil {
 		t.Fatalf("run.Run collect resolve failed: %v, stdout=%q, stderr=%q", err, runStdout.String(), runStderr.String())
+	}
+}
+
+func collectAndMergeConflictResolution(t *testing.T, repoRoot, taskID, worktreePath string) {
+	t.Helper()
+	collectConflictResolution(t, repoRoot, taskID, worktreePath)
+
+	// Run again to merge resolved task
+	var runStdout bytes.Buffer
+	var runStderr bytes.Buffer
+	if _, err := Run(repoRoot, Options{Stdout: &runStdout, Stderr: &runStderr}); err != nil {
+		t.Fatalf("run.Run merge resolved task failed: %v, stdout=%q, stderr=%q", err, runStdout.String(), runStderr.String())
 	}
 }
 
