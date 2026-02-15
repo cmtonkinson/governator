@@ -134,10 +134,15 @@ func TestConfirmPendingMigrations(t *testing.T) {
 	t.Run("prompts and proceeds on default confirmation", func(t *testing.T) {
 		repoRoot := t.TempDir()
 		var out bytes.Buffer
+		provider := func(_ string) ([]config.RepoMigrationInfo, error) {
+			return []config.RepoMigrationInfo{
+				{ID: "20260209_add_conflict_resolution_prompt", Destructive: false},
+			}, nil
+		}
 
-		ok, err := confirmPendingMigrations(repoRoot, strings.NewReader("\n"), &out)
+		ok, err := confirmPendingMigrationsWithProvider(repoRoot, strings.NewReader("\n"), &out, provider)
 		if err != nil {
-			t.Fatalf("confirmPendingMigrations: %v", err)
+			t.Fatalf("confirmPendingMigrationsWithProvider: %v", err)
 		}
 		if !ok {
 			t.Fatal("expected confirmation to proceed on default input")
@@ -173,6 +178,54 @@ func TestConfirmPendingMigrations(t *testing.T) {
 		}
 		if !strings.Contains(output, "Apply these? ([y]/n)") {
 			t.Fatalf("expected apply confirmation prompt, got: %q", output)
+		}
+	})
+
+	t.Run("prompts destructive confirmation after initial approval", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		var out bytes.Buffer
+		provider := func(_ string) ([]config.RepoMigrationInfo, error) {
+			return []config.RepoMigrationInfo{
+				{ID: "20260214_non_destructive", Destructive: false},
+				{ID: "20260214_destructive_reset_open_tasks", Destructive: true},
+			}, nil
+		}
+
+		ok, err := confirmPendingMigrationsWithProvider(repoRoot, strings.NewReader("y\nn\n"), &out, provider)
+		if err != nil {
+			t.Fatalf("confirmPendingMigrationsWithProvider: %v", err)
+		}
+		if ok {
+			t.Fatal("expected destructive confirmation to abort when not explicitly approved")
+		}
+
+		output := out.String()
+		if !strings.Contains(output, "Apply these? ([y]/n)") {
+			t.Fatalf("expected initial migration prompt, got: %q", output)
+		}
+		if !strings.Contains(output, "WARNING: destructive migrations pending.") {
+			t.Fatalf("expected destructive warning, got: %q", output)
+		}
+		if !strings.Contains(output, "Proceed with destructive migrations? (y/N)") {
+			t.Fatalf("expected destructive confirmation prompt, got: %q", output)
+		}
+	})
+
+	t.Run("proceeds when destructive confirmation is explicitly approved", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		var out bytes.Buffer
+		provider := func(_ string) ([]config.RepoMigrationInfo, error) {
+			return []config.RepoMigrationInfo{
+				{ID: "20260214_destructive_reset_open_tasks", Destructive: true},
+			}, nil
+		}
+
+		ok, err := confirmPendingMigrationsWithProvider(repoRoot, strings.NewReader("y\ny\n"), &out, provider)
+		if err != nil {
+			t.Fatalf("confirmPendingMigrationsWithProvider: %v", err)
+		}
+		if !ok {
+			t.Fatal("expected destructive confirmation flow to proceed when explicitly approved")
 		}
 	})
 }

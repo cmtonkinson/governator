@@ -2,11 +2,15 @@ package config
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/cmtonkinson/governator/internal/index"
+	"github.com/cmtonkinson/governator/internal/inflight"
 	"github.com/cmtonkinson/governator/internal/templates"
 )
 
@@ -320,4 +324,303 @@ func TestNormalizePromptStem(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestPendingRepoMigrationInfoIncludesDestructiveMigration verifies destructive metadata is exposed for confirmation gates.
+func TestPendingRepoMigrationInfoIncludesDestructiveMigration(t *testing.T) {
+	repoRoot := t.TempDir()
+	info, err := PendingRepoMigrationInfo(repoRoot)
+	if err != nil {
+		t.Fatalf("PendingRepoMigrationInfo: %v", err)
+	}
+
+	found := false
+	for _, migration := range info {
+		if migration.ID == resetOpenTasksMigrationID {
+			found = true
+			if !migration.Destructive {
+				t.Fatalf("migration %s should be destructive", resetOpenTasksMigrationID)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected migration %s in pending list", resetOpenTasksMigrationID)
+	}
+}
+
+// TestApplyRepoMigrationsResetOpenTasksAndStripRoleSuffix verifies task reset, file rename, branch/worktree cleanup, and in-flight reset.
+func TestApplyRepoMigrationsResetOpenTasksAndStripRoleSuffix(t *testing.T) {
+	repoRoot := t.TempDir()
+	initGitRepo(t, repoRoot)
+	if err := os.MkdirAll(filepath.Join(repoRoot, "_governator", "prompts"), 0o755); err != nil {
+		t.Fatalf("mkdir prompts: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(repoRoot, "_governator", "roles"), 0o755); err != nil {
+		t.Fatalf("mkdir roles: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, "_governator", "roles", "architect.md"), []byte("# Architect\n"), 0o644); err != nil {
+		t.Fatalf("write architect role: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, "_governator", "roles", "default.md"), []byte("# Default\n"), 0o644); err != nil {
+		t.Fatalf("write default role: %v", err)
+	}
+
+	tasksDir := filepath.Join(repoRoot, "_governator", "tasks")
+	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
+		t.Fatalf("mkdir tasks: %v", err)
+	}
+	for _, name := range []string{
+		"001-build-api-architect.md",
+		"002-test-api-default.md",
+		"003-release-notes.md",
+	} {
+		if err := os.WriteFile(filepath.Join(tasksDir, name), []byte("# Task\n"), 0o644); err != nil {
+			t.Fatalf("write task %s: %v", name, err)
+		}
+	}
+
+	idx := index.Index{
+		SchemaVersion: 1,
+		Digests:       index.Digests{PlanningDocs: map[string]string{}},
+		Tasks: []index.Task{
+			{
+				ID:    "planning",
+				Path:  "_governator/planning.json",
+				Kind:  index.TaskKindPlanning,
+				State: index.TaskState("governator_planning_complete"),
+				Role:  "planner",
+			},
+			{
+				ID:           "001-build-api-architect",
+				Path:         "_governator/tasks/001-build-api-architect.md",
+				Kind:         index.TaskKindExecution,
+				State:        index.TaskStateTriaged,
+				Role:         "architect",
+				Dependencies: []string{},
+			},
+			{
+				ID:            "002-test-api-default",
+				Path:          "_governator/tasks/002-test-api-default.md",
+				Kind:          index.TaskKindExecution,
+				State:         index.TaskStateBlocked,
+				Role:          "default",
+				Dependencies:  []string{"001-build-api-architect"},
+				Attempts:      index.AttemptCounters{Total: 2, Failed: 2},
+				BlockedReason: "timed out",
+			},
+			{
+				ID:           "003-release-notes",
+				Path:         "_governator/tasks/003-release-notes.md",
+				Kind:         index.TaskKindExecution,
+				State:        index.TaskStateMerged,
+				Role:         "default",
+				Dependencies: []string{"002-test-api-default"},
+			},
+		},
+	}
+	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	if err := os.MkdirAll(filepath.Dir(indexPath), 0o755); err != nil {
+		t.Fatalf("mkdir index dir: %v", err)
+	}
+	if err := index.Save(indexPath, idx); err != nil {
+		t.Fatalf("save index: %v", err)
+	}
+
+	store, err := inflight.NewStore(repoRoot)
+	if err != nil {
+		t.Fatalf("new in-flight store: %v", err)
+	}
+	if err := store.Save(inflight.Set{
+		"001-build-api-architect": {ID: "001-build-api-architect"},
+		"002-test-api-default":    {ID: "002-test-api-default"},
+	}); err != nil {
+		t.Fatalf("seed in-flight: %v", err)
+	}
+
+	runGitCommand(t, repoRoot, "branch", "001-build-api-architect")
+	runGitCommand(t, repoRoot, "branch", "task-002-test-api-default")
+	worktreePath := filepath.Join(repoRoot, "_governator", "_local-state", "task-001-build-api-architect")
+	runGitCommand(t, repoRoot, "worktree", "add", worktreePath, "001-build-api-architect")
+	if err := os.MkdirAll(filepath.Join(repoRoot, "_governator", "_local-state", "meta"), 0o755); err != nil {
+		t.Fatalf("mkdir meta: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, "_governator", "_local-state", "meta", "001-build-api-architect.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatalf("write meta: %v", err)
+	}
+
+	if err := ApplyRepoMigrations(repoRoot, InitOptions{}); err != nil {
+		t.Fatalf("ApplyRepoMigrations: %v", err)
+	}
+
+	updated, err := index.Load(indexPath)
+	if err != nil {
+		t.Fatalf("load updated index: %v", err)
+	}
+	taskByID := map[string]index.Task{}
+	for _, task := range updated.Tasks {
+		taskByID[task.ID] = task
+	}
+	planningTask, ok := taskByID["planning"]
+	if !ok {
+		t.Fatalf("planning task missing")
+	}
+	if planningTask.State != index.TaskState("governator_planning_complete") {
+		t.Fatalf("planning state changed: got %s", planningTask.State)
+	}
+	taskA, ok := taskByID["001-build-api"]
+	if !ok {
+		t.Fatalf("renamed task 001-build-api missing")
+	}
+	if taskA.State != index.TaskStateBacklog {
+		t.Fatalf("taskA state = %s, want backlog", taskA.State)
+	}
+	if taskA.Path != "_governator/tasks/001-build-api.md" {
+		t.Fatalf("taskA path = %s, want _governator/tasks/001-build-api.md", taskA.Path)
+	}
+
+	taskB, ok := taskByID["002-test-api"]
+	if !ok {
+		t.Fatalf("renamed task 002-test-api missing")
+	}
+	if taskB.State != index.TaskStateBacklog {
+		t.Fatalf("taskB state = %s, want backlog", taskB.State)
+	}
+	if taskB.Role != "" {
+		t.Fatalf("taskB role = %q, want empty", taskB.Role)
+	}
+	if len(taskB.Dependencies) != 1 || taskB.Dependencies[0] != "001-build-api" {
+		t.Fatalf("taskB dependencies = %#v, want [001-build-api]", taskB.Dependencies)
+	}
+	if taskB.Attempts.Total != 0 || taskB.Attempts.Failed != 0 {
+		t.Fatalf("taskB attempts should be reset, got %#v", taskB.Attempts)
+	}
+
+	taskC, ok := taskByID["003-release-notes"]
+	if !ok {
+		t.Fatalf("task 003-release-notes missing")
+	}
+	if len(taskC.Dependencies) != 1 || taskC.Dependencies[0] != "002-test-api" {
+		t.Fatalf("taskC dependencies = %#v, want [002-test-api]", taskC.Dependencies)
+	}
+
+	if _, err := os.Stat(filepath.Join(repoRoot, "_governator", "tasks", "001-build-api.md")); err != nil {
+		t.Fatalf("renamed file 001-build-api.md missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repoRoot, "_governator", "tasks", "001-build-api-architect.md")); !os.IsNotExist(err) {
+		t.Fatalf("old suffixed file should be removed, stat err=%v", err)
+	}
+
+	clearedInFlight, err := store.Load()
+	if err != nil {
+		t.Fatalf("load in-flight: %v", err)
+	}
+	if len(clearedInFlight) != 0 {
+		t.Fatalf("expected in-flight cleared, got %#v", clearedInFlight)
+	}
+
+	if _, err := os.Stat(worktreePath); !os.IsNotExist(err) {
+		t.Fatalf("worktree path should be removed, stat err=%v", err)
+	}
+	if branchExists(t, repoRoot, "001-build-api-architect") {
+		t.Fatalf("expected branch 001-build-api-architect to be deleted")
+	}
+	if branchExists(t, repoRoot, "task-002-test-api-default") {
+		t.Fatalf("expected legacy branch task-002-test-api-default to be deleted")
+	}
+
+	markerPath := filepath.Join(repoRoot, repoDurableStateDir, "migrations", resetOpenTasksMigrationID+".done")
+	if _, err := os.Stat(markerPath); err != nil {
+		t.Fatalf("new migration marker missing: %v", err)
+	}
+}
+
+// TestApplyRepoMigrationsResetOpenTasksStripRoleSuffixFailsOnCollision verifies rename collisions fail and do not mark completion.
+func TestApplyRepoMigrationsResetOpenTasksStripRoleSuffixFailsOnCollision(t *testing.T) {
+	repoRoot := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repoRoot, "_governator", "prompts"), 0o755); err != nil {
+		t.Fatalf("mkdir prompts: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(repoRoot, "_governator", "roles"), 0o755); err != nil {
+		t.Fatalf("mkdir roles: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, "_governator", "roles", "architect.md"), []byte("# Architect\n"), 0o644); err != nil {
+		t.Fatalf("write architect role: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, "_governator", "roles", "planner.md"), []byte("# Planner\n"), 0o644); err != nil {
+		t.Fatalf("write planner role: %v", err)
+	}
+
+	tasksDir := filepath.Join(repoRoot, "_governator", "tasks")
+	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
+		t.Fatalf("mkdir tasks: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tasksDir, "001-feature-architect.md"), []byte("# one\n"), 0o644); err != nil {
+		t.Fatalf("write task one: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tasksDir, "001-feature-planner.md"), []byte("# two\n"), 0o644); err != nil {
+		t.Fatalf("write task two: %v", err)
+	}
+
+	idx := index.Index{
+		SchemaVersion: 1,
+		Digests:       index.Digests{PlanningDocs: map[string]string{}},
+		Tasks: []index.Task{
+			{ID: "001-feature-architect", Path: "_governator/tasks/001-feature-architect.md", Kind: index.TaskKindExecution, State: index.TaskStateTriaged},
+			{ID: "001-feature-planner", Path: "_governator/tasks/001-feature-planner.md", Kind: index.TaskKindExecution, State: index.TaskStateTriaged},
+		},
+	}
+	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	if err := os.MkdirAll(filepath.Dir(indexPath), 0o755); err != nil {
+		t.Fatalf("mkdir index dir: %v", err)
+	}
+	raw, err := json.Marshal(idx)
+	if err != nil {
+		t.Fatalf("marshal index: %v", err)
+	}
+	if err := os.WriteFile(indexPath, append(raw, '\n'), 0o644); err != nil {
+		t.Fatalf("write index: %v", err)
+	}
+
+	err = ApplyRepoMigrations(repoRoot, InitOptions{})
+	if err == nil {
+		t.Fatal("expected migration failure due to rename collision")
+	}
+	if !strings.Contains(err.Error(), "rename collision") {
+		t.Fatalf("expected rename collision error, got: %v", err)
+	}
+
+	markerPath := filepath.Join(repoRoot, repoDurableStateDir, "migrations", resetOpenTasksMigrationID+".done")
+	if _, statErr := os.Stat(markerPath); !os.IsNotExist(statErr) {
+		t.Fatalf("destructive migration marker should be absent on failure")
+	}
+}
+
+func initGitRepo(t *testing.T, repoRoot string) {
+	t.Helper()
+	runGitCommand(t, repoRoot, "init", "--initial-branch=main")
+	runGitCommand(t, repoRoot, "config", "user.name", "Governator Test")
+	runGitCommand(t, repoRoot, "config", "user.email", "test@example.com")
+	if err := os.WriteFile(filepath.Join(repoRoot, "README.md"), []byte("# test\n"), 0o644); err != nil {
+		t.Fatalf("write README: %v", err)
+	}
+	runGitCommand(t, repoRoot, "add", "README.md")
+	runGitCommand(t, repoRoot, "commit", "-m", "init")
+}
+
+func runGitCommand(t *testing.T, repoRoot string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repoRoot
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s failed: %v: %s", strings.Join(args, " "), err, string(output))
+	}
+}
+
+func branchExists(t *testing.T, repoRoot string, branch string) bool {
+	t.Helper()
+	cmd := exec.Command("git", "show-ref", "--verify", "--quiet", "refs/heads/"+branch)
+	cmd.Dir = repoRoot
+	err := cmd.Run()
+	return err == nil
 }

@@ -333,9 +333,15 @@ func launchSupervisor(commandArg string) {
 	fmt.Printf("start supervisor started (pid %d)\n", pid)
 }
 
+type pendingMigrationInfoProvider func(repoRoot string) ([]config.RepoMigrationInfo, error)
+
 // confirmPendingMigrations prompts the operator before starting if repo migrations are pending.
 func confirmPendingMigrations(repoRoot string, in io.Reader, out io.Writer) (bool, error) {
-	pending, err := config.PendingRepoMigrations(repoRoot)
+	return confirmPendingMigrationsWithProvider(repoRoot, in, out, config.PendingRepoMigrationInfo)
+}
+
+func confirmPendingMigrationsWithProvider(repoRoot string, in io.Reader, out io.Writer, provider pendingMigrationInfoProvider) (bool, error) {
+	pending, err := provider(repoRoot)
 	if err != nil {
 		return false, fmt.Errorf("check pending migrations: %w", err)
 	}
@@ -344,8 +350,8 @@ func confirmPendingMigrations(repoRoot string, in io.Reader, out io.Writer) (boo
 	}
 
 	fmt.Fprintln(out, "Identified pending migrations!")
-	for _, migrationID := range pending {
-		fmt.Fprintln(out, migrationID)
+	for _, migration := range pending {
+		fmt.Fprintln(out, migration.ID)
 	}
 	fmt.Fprint(out, "Apply these? ([y]/n) ")
 
@@ -357,6 +363,33 @@ func confirmPendingMigrations(repoRoot string, in io.Reader, out io.Writer) (boo
 
 	answer := strings.ToLower(strings.TrimSpace(reply))
 	if answer == "n" || answer == "no" {
+		return false, nil
+	}
+
+	destructive := make([]string, 0, len(pending))
+	for _, migration := range pending {
+		if migration.Destructive {
+			destructive = append(destructive, migration.ID)
+		}
+	}
+	if len(destructive) == 0 {
+		return true, nil
+	}
+
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "WARNING: destructive migrations pending.")
+	fmt.Fprintln(out, "These migrations will reset non-merged tasks to backlog and purge task worktrees/branches.")
+	for _, migrationID := range destructive {
+		fmt.Fprintln(out, migrationID)
+	}
+	fmt.Fprint(out, "Proceed with destructive migrations? (y/N) ")
+
+	destructiveReply, destructiveErr := reader.ReadString('\n')
+	if destructiveErr != nil && !errors.Is(destructiveErr, io.EOF) {
+		return false, fmt.Errorf("read destructive migration confirmation: %w", destructiveErr)
+	}
+	destructiveAnswer := strings.ToLower(strings.TrimSpace(destructiveReply))
+	if destructiveAnswer != "y" && destructiveAnswer != "yes" {
 		return false, nil
 	}
 	return true, nil
@@ -786,7 +819,7 @@ OPTIONS:
 		return
 	}
 
-	// Static mode (existing implementation)
+	// Static mode
 	summary, err := status.GetSummary(repoRoot)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())

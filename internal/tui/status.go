@@ -53,6 +53,7 @@ const supervisorTailViewportLines = 5
 
 // Model represents the interactive status TUI state.
 type Model struct {
+	summary        status.Summary
 	table          table.Model
 	planningTable  table.Model
 	workersTable   table.Model
@@ -76,8 +77,7 @@ type Model struct {
 
 type tickMsg time.Time
 type statusMsg struct {
-	summary        status.Summary
-	supervisorTail []string
+	summary status.Summary
 }
 type errMsg error
 
@@ -174,9 +174,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Manual refresh
 			return m, m.updateStatus()
 		case "m":
-			// Toggle merged tasks visibility
 			m.showMerged = !m.showMerged
-			m.updateTableRows()
 			return m, nil
 		}
 
@@ -193,46 +191,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case statusMsg:
 		m.lastUpdate = time.Now()
-		m.backlog = msg.summary.Backlog
-		m.merged = msg.summary.Merged
-		m.inProgress = msg.summary.InProgress
-		m.supervisors = msg.summary.Supervisors
-		m.workers = msg.summary.Workers
-		m.planningSteps = msg.summary.PlanningSteps
-		m.aggregates = msg.summary.Aggregates
-		m.activeRows = msg.summary.Rows
-		m.mergedRows = msg.summary.MergedRows
-		m.supervisorTail = msg.supervisorTail
-
-		// Update table rows based on showMerged toggle
-		m.updateTableRows()
-
-		// Convert workers to table rows
-		workersRows := make([]table.Row, len(msg.summary.Workers))
-		for i, worker := range msg.summary.Workers {
-			workersRows[i] = table.Row{
-				format.PID(worker.PID),
-				worker.Role,
-				formatRuntime(worker.StartedAt),
-			}
-		}
-		m.workersTable.SetRows(workersRows)
-
-		// Convert planning steps to table rows
-		planningRows := make([]table.Row, len(msg.summary.PlanningSteps))
-		for i, step := range msg.summary.PlanningSteps {
-			planningRows[i] = table.Row{
-				step.Name,
-				format.PID(step.PID),
-				formatRuntime(step.StartedAt),
-				step.Status,
-			}
-		}
-		m.planningTable.SetRows(planningRows)
-
-		// Recalculate table height based on new data
-		m.updateTableHeight()
-
+		m.summary = msg.summary
 		return m, nil
 
 	case errMsg:
@@ -251,89 +210,13 @@ func (m Model) View() string {
 	}
 
 	var b strings.Builder
-
-	// Header with title and timestamp
-	title := titleStyle.Render("Governator Status")
-	timestamp := timestampStyle.Render(fmt.Sprintf("Last update: %s", m.lastUpdate.Format("15:04:05")))
-
-	header := lipgloss.JoinHorizontal(
-		lipgloss.Top,
-		title,
-		strings.Repeat(" ", 5),
-		timestamp,
-	)
-	b.WriteString(header)
+	b.WriteString(m.summary.StringWithMerged(m.showMerged))
 	b.WriteString("\n\n")
-
-	// Overall metrics section
-	overallTitle := titleStyle.Render("Overall Metrics")
-	b.WriteString(overallTitle)
-	b.WriteString("\n")
-	aggregateStr := formatAggregateMetrics(m.aggregates)
-	b.WriteString(countsStyle.Render(aggregateStr))
-	b.WriteString("\n\n")
-
-	// Supervisor section (if any)
-	if len(m.supervisors) > 0 {
-		supervisorTitle := titleStyle.Render("Supervisor")
-		b.WriteString(supervisorTitle)
-		b.WriteString("\n")
-		for _, sup := range m.supervisors {
-			b.WriteString(renderSupervisorKV(sup))
-		}
-		b.WriteString("\n")
-	}
-
-	// Workers section (if any)
-	if len(m.workers) > 0 {
-		workersTitle := titleStyle.Render(fmt.Sprintf("Workers (%d)", len(m.workers)))
-		b.WriteString(workersTitle)
-		b.WriteString("\n")
-		b.WriteString(m.workersTable.View())
-		b.WriteString("\n\n")
-	}
-
-	// Planning steps table (if in planning phase)
-	if len(m.planningSteps) > 0 {
-		planningTitle := titleStyle.Render(fmt.Sprintf("Planning Steps (%d)", len(m.planningSteps)))
-		b.WriteString(planningTitle)
-		b.WriteString("\n")
-		b.WriteString(m.planningTable.View())
-		b.WriteString("\n\n")
-	}
-
-	// Tasks section header
-	tasksTitle := titleStyle.Render("Tasks")
-	b.WriteString(tasksTitle)
-	b.WriteString("\n")
-
-	// Counts summary
-	counts := countsStyle.Render(fmt.Sprintf(
-		"backlog=%d merged=%d in-progress=%d",
-		m.backlog, m.merged, m.inProgress,
-	))
-	b.WriteString(counts)
-	b.WriteString("\n")
-
-	// Task table
-	if m.inProgress > 0 {
-		b.WriteString(m.table.View())
-		b.WriteString("\n\n")
-	}
-
-	// Supervisor log tail panel.
-	b.WriteString(titleStyle.Render(fmt.Sprintf("Supervisor Log Tail (%d)", supervisorTailViewportLines)))
-	b.WriteString("\n")
-	b.WriteString(renderSupervisorLogTail(m.supervisorTail, supervisorTailViewportLines))
-	b.WriteString("\n")
-
-	// Help footer
 	mergedToggle := "show"
 	if m.showMerged {
 		mergedToggle = "hide"
 	}
-	help := helpStyle.Render(fmt.Sprintf("r: refresh • m: %s merged • q/esc: quit", mergedToggle))
-	b.WriteString(help)
+	b.WriteString(helpStyle.Render(fmt.Sprintf("r: refresh • m: %s merged • q/esc: quit", mergedToggle)))
 
 	// Error display
 	if m.err != nil {
@@ -350,15 +233,17 @@ func (m Model) updateStatus() tea.Cmd {
 		if err != nil {
 			return errMsg(err)
 		}
-		supervisorTail, err := readSupervisorLogTail(m.repoRoot, summary.Supervisors, supervisorTailViewportLines)
-		if err != nil {
-			return errMsg(err)
-		}
-		return statusMsg{
-			summary:        summary,
-			supervisorTail: supervisorTail,
-		}
+		return statusMsg{summary: summary}
 	}
+}
+
+// RenderOnce renders a single TUI-style status snapshot without starting an interactive session.
+func RenderOnce(repoRoot string) (string, error) {
+	summary, err := status.GetSummary(repoRoot)
+	if err != nil {
+		return "", err
+	}
+	return summary.String(), nil
 }
 
 // Run starts the interactive TUI.
@@ -370,6 +255,47 @@ func Run(repoRoot string) error {
 
 	_, err := p.Run()
 	return err
+}
+
+// applySummary copies a status snapshot into the model and refreshes all derived tables.
+func (m *Model) applySummary(summary status.Summary, supervisorTail []string) {
+	m.lastUpdate = time.Now()
+	m.backlog = summary.Backlog
+	m.merged = summary.Merged
+	m.inProgress = summary.InProgress
+	m.supervisors = summary.Supervisors
+	m.workers = summary.Workers
+	m.planningSteps = summary.PlanningSteps
+	m.aggregates = summary.Aggregates
+	m.activeRows = summary.Rows
+	m.mergedRows = summary.MergedRows
+	m.supervisorTail = supervisorTail
+
+	// Update table rows based on showMerged toggle.
+	m.updateTableRows()
+
+	workersRows := make([]table.Row, len(summary.Workers))
+	for i, worker := range summary.Workers {
+		workersRows[i] = table.Row{
+			format.PID(worker.PID),
+			worker.Role,
+			formatRuntime(worker.StartedAt),
+		}
+	}
+	m.workersTable.SetRows(workersRows)
+
+	planningRows := make([]table.Row, len(summary.PlanningSteps))
+	for i, step := range summary.PlanningSteps {
+		planningRows[i] = table.Row{
+			step.Name,
+			format.PID(step.PID),
+			formatRuntime(step.StartedAt),
+			step.Status,
+		}
+	}
+	m.planningTable.SetRows(planningRows)
+
+	m.updateTableHeight()
 }
 
 // formatRuntime formats the runtime duration since the given start time.

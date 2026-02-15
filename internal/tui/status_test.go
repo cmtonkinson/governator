@@ -8,6 +8,9 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/cmtonkinson/governator/internal/config"
+	"github.com/cmtonkinson/governator/internal/index"
 	"github.com/cmtonkinson/governator/internal/status"
 )
 
@@ -54,17 +57,14 @@ func TestRenderSupervisorLogTailViewportHeight(t *testing.T) {
 	}
 }
 
-// TestViewIncludesSupervisorLogTailSection verifies status TUI includes log tail panel.
-func TestViewIncludesSupervisorLogTailSection(t *testing.T) {
+// TestViewUsesSharedStatusRenderer verifies TUI view renders shared status output.
+func TestViewUsesSharedStatusRenderer(t *testing.T) {
 	m := New(".")
-	m.supervisorTail = []string{"line one", "line two"}
+	m.summary = status.Summary{}
 	view := m.View()
 
-	if !strings.Contains(view, "Supervisor Log Tail (5)") {
-		t.Fatalf("view missing log tail title: %q", view)
-	}
-	if !strings.Contains(view, "line one") || !strings.Contains(view, "line two") {
-		t.Fatalf("view missing tail lines: %q", view)
+	if !strings.Contains(view, "overall") {
+		t.Fatalf("view missing shared status output: %q", view)
 	}
 }
 
@@ -87,5 +87,46 @@ func TestViewHelpDoesNotAdvertiseNavigation(t *testing.T) {
 	}
 	if !strings.Contains(view, "r: refresh") {
 		t.Fatalf("view missing refresh help text: %q", view)
+	}
+	if !strings.Contains(view, "m: show merged") {
+		t.Fatalf("view missing merged toggle help text: %q", view)
+	}
+}
+
+// TestToggleMergedKey ensures interactive mode toggles merged visibility shortcut.
+func TestToggleMergedKey(t *testing.T) {
+	model := New(".")
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+	next, ok := updated.(Model)
+	if !ok {
+		t.Fatalf("updated model type = %T, want tui.Model", updated)
+	}
+	if !next.showMerged {
+		t.Fatal("expected showMerged to toggle true after pressing m")
+	}
+}
+
+// TestRenderOnceReturnsSnapshot verifies one-shot rendering works without interactive mode.
+func TestRenderOnceReturnsSnapshot(t *testing.T) {
+	repoRoot := t.TempDir()
+	if err := config.InitFullLayout(repoRoot, config.InitOptions{}); err != nil {
+		t.Fatalf("init layout: %v", err)
+	}
+	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	if err := index.Save(indexPath, index.Index{SchemaVersion: 1}); err != nil {
+		t.Fatalf("seed index: %v", err)
+	}
+
+	got, err := RenderOnce(repoRoot)
+	if err != nil {
+		t.Fatalf("RenderOnce error: %v", err)
+	}
+	if !strings.Contains(got, "overall") {
+		t.Fatalf("snapshot missing overall section: %q", got)
+	}
+	if !strings.Contains(got, "Tasks") {
+		if !strings.Contains(got, "tasks") {
+			t.Fatalf("snapshot missing tasks section: %q", got)
+		}
 	}
 }

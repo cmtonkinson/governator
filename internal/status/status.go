@@ -143,18 +143,23 @@ type PlanningStepSummary struct {
 // String returns the formatted status output per flow.md.
 // Uses styled output for TTY, plain output for pipes/redirects.
 func (s Summary) String() string {
+	return s.StringWithMerged(false)
+}
+
+// StringWithMerged returns formatted status output and optionally includes merged tasks.
+func (s Summary) StringWithMerged(includeMerged bool) string {
 	// Check if output is a TTY
 	isTTY := term.IsTerminal(int(os.Stdout.Fd()))
 
 	if !isTTY {
-		return s.plainString()
+		return s.plainString(includeMerged)
 	}
 
-	return s.styledString()
+	return s.styledString(includeMerged)
 }
 
 // plainString returns plain text output for pipes/redirects.
-func (s Summary) plainString() string {
+func (s Summary) plainString(includeMerged bool) string {
 	var b strings.Builder
 
 	// Overall metrics
@@ -200,7 +205,8 @@ func (s Summary) plainString() string {
 	}
 	fmt.Fprintln(&b, "tasks")
 	fmt.Fprintf(&b, "backlog=%d merged=%d in-progress=%d\n", s.Backlog, s.Merged, s.InProgress)
-	if s.InProgress == 0 {
+	rows := visibleRows(s.Rows, s.MergedRows, includeMerged)
+	if len(rows) == 0 {
 		return strings.TrimSpace(b.String())
 	}
 	fmt.Fprintf(&b, "%-*s %-*s %-*s %-*s %-*s %-*s %s\n",
@@ -212,7 +218,19 @@ func (s Summary) plainString() string {
 		attrsColumnWidth, "attrs",
 		"title",
 	)
-	for _, row := range s.Rows {
+	for _, row := range rows {
+		if isSeparatorRow(row) {
+			fmt.Fprintf(&b, "%-*s %-*s %-*s %-*s %-*s %-*s %s\n",
+				idColumnWidth, strings.Repeat("-", idColumnWidth-1),
+				stateColumnWidth, strings.Repeat("-", stateColumnWidth-1),
+				pidColumnWidth, strings.Repeat("-", pidColumnWidth-1),
+				8, strings.Repeat("-", 7),
+				roleColumnWidth, strings.Repeat("-", roleColumnWidth-1),
+				attrsColumnWidth, strings.Repeat("-", attrsColumnWidth-1),
+				"merged tasks below",
+			)
+			continue
+		}
 		fmt.Fprintf(&b, "%-*s %-*s %-*s %-*s %-*s %-*s %s\n",
 			idColumnWidth, row.id,
 			stateColumnWidth, row.state,
@@ -227,7 +245,7 @@ func (s Summary) plainString() string {
 }
 
 // styledString returns lipgloss-styled output for interactive terminals.
-func (s Summary) styledString() string {
+func (s Summary) styledString(includeMerged bool) string {
 	var b strings.Builder
 
 	// Get terminal width for responsive layout
@@ -309,12 +327,28 @@ func (s Summary) styledString() string {
 	b.WriteString("\n")
 
 	// Task table
-	if s.InProgress > 0 {
-		taskTable := renderTaskTable(s.Rows, width)
+	rows := visibleRows(s.Rows, s.MergedRows, includeMerged)
+	if len(rows) > 0 {
+		taskTable := renderTaskTable(rows, width)
 		b.WriteString(tableStyle.Render(taskTable))
 	}
 
 	return strings.TrimSpace(b.String())
+}
+
+func visibleRows(activeRows, mergedRows []StatusRow, includeMerged bool) []StatusRow {
+	if !includeMerged || len(mergedRows) == 0 {
+		return activeRows
+	}
+	rows := make([]StatusRow, 0, len(activeRows)+1+len(mergedRows))
+	rows = append(rows, activeRows...)
+	rows = append(rows, NewSeparatorRow())
+	rows = append(rows, mergedRows...)
+	return rows
+}
+
+func isSeparatorRow(row StatusRow) bool {
+	return row.id == "" && row.state == "" && row.title == ""
 }
 
 func formatSupervisorRuntime(startedAt time.Time) string {
@@ -826,6 +860,25 @@ func renderTaskTable(rows []StatusRow, maxWidth int) string {
 
 	// Data rows
 	for _, row := range rows {
+		if isSeparatorRow(row) {
+			cells := []string{
+				"─────",
+				"─────────────",
+				"────",
+				"────────",
+				"────────────",
+				"──────────────────",
+				"──────────── merged tasks below ────────────",
+			}
+			renderedCells := make([]string, len(cells))
+			for i, cell := range cells {
+				style := cellStyle.Width(widths[i]).MaxWidth(widths[i])
+				renderedCells[i] = style.Render(cell)
+			}
+			buf.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, renderedCells...))
+			buf.WriteString("\n")
+			continue
+		}
 		cells := []string{
 			row.id,
 			row.state,
