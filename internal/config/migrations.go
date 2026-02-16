@@ -101,6 +101,38 @@ func pendingRepoMigrations(repoRoot string) ([]repoMigration, error) {
 	return pending, nil
 }
 
+// StampExistingMigrations marks all currently-known migrations as complete without
+// running them. Call this during init so that migrations predating a fresh project
+// are never surfaced as pending.
+func StampExistingMigrations(repoRoot string, opts InitOptions) error {
+	if strings.TrimSpace(repoRoot) == "" {
+		return fmt.Errorf("repo root cannot be empty")
+	}
+
+	migrationsDir := filepath.Join(repoRoot, repoDurableStateDir, "migrations")
+	if err := ensureDir(migrationsDir, opts); err != nil {
+		return fmt.Errorf("create migrations directory %s: %w", migrationsDir, err)
+	}
+
+	for _, migration := range repoMigrations {
+		if strings.TrimSpace(migration.id) == "" {
+			continue
+		}
+		markerPath := filepath.Join(migrationsDir, migration.id+".done")
+		exists, err := pathExists(markerPath)
+		if err != nil {
+			return fmt.Errorf("check migration marker %s: %w", markerPath, err)
+		}
+		if exists {
+			continue
+		}
+		if err := os.WriteFile(markerPath, []byte("ok\n"), 0o644); err != nil {
+			return fmt.Errorf("write migration marker %s: %w", markerPath, err)
+		}
+	}
+	return nil
+}
+
 // ApplyRepoMigrations applies idempotent durable migrations for existing repositories.
 func ApplyRepoMigrations(repoRoot string, opts InitOptions) error {
 	if strings.TrimSpace(repoRoot) == "" {

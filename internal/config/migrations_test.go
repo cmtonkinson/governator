@@ -595,6 +595,97 @@ func TestApplyRepoMigrationsResetOpenTasksStripRoleSuffixFailsOnCollision(t *tes
 	}
 }
 
+// TestStampExistingMigrationsWritesMarkers verifies that all known migrations get stamped.
+func TestStampExistingMigrationsWritesMarkers(t *testing.T) {
+	repoRoot := t.TempDir()
+	if err := StampExistingMigrations(repoRoot, InitOptions{}); err != nil {
+		t.Fatalf("StampExistingMigrations: %v", err)
+	}
+
+	for _, migration := range repoMigrations {
+		markerPath := filepath.Join(repoRoot, repoDurableStateDir, "migrations", migration.id+".done")
+		data, err := os.ReadFile(markerPath)
+		if err != nil {
+			t.Fatalf("read marker for %s: %v", migration.id, err)
+		}
+		if string(data) != "ok\n" {
+			t.Fatalf("marker content for %s = %q, want %q", migration.id, string(data), "ok\n")
+		}
+	}
+}
+
+// TestStampExistingMigrationsLeavesNoPending verifies that after stamping, no migrations are pending.
+func TestStampExistingMigrationsLeavesNoPending(t *testing.T) {
+	repoRoot := t.TempDir()
+	if err := StampExistingMigrations(repoRoot, InitOptions{}); err != nil {
+		t.Fatalf("StampExistingMigrations: %v", err)
+	}
+
+	pending, err := PendingRepoMigrations(repoRoot)
+	if err != nil {
+		t.Fatalf("PendingRepoMigrations: %v", err)
+	}
+	if len(pending) != 0 {
+		t.Fatalf("expected no pending migrations after stamp, got: %v", pending)
+	}
+}
+
+// TestStampExistingMigrationsPreservesExistingMarkers verifies idempotency.
+func TestStampExistingMigrationsPreservesExistingMarkers(t *testing.T) {
+	repoRoot := t.TempDir()
+	migrationsDir := filepath.Join(repoRoot, repoDurableStateDir, "migrations")
+	if err := os.MkdirAll(migrationsDir, 0o755); err != nil {
+		t.Fatalf("mkdir migrations: %v", err)
+	}
+	markerPath := filepath.Join(migrationsDir, conflictResolutionMigrationID+".done")
+	custom := []byte("custom-marker\n")
+	if err := os.WriteFile(markerPath, custom, 0o644); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
+
+	if err := StampExistingMigrations(repoRoot, InitOptions{}); err != nil {
+		t.Fatalf("StampExistingMigrations: %v", err)
+	}
+
+	data, err := os.ReadFile(markerPath)
+	if err != nil {
+		t.Fatalf("read marker: %v", err)
+	}
+	if !bytes.Equal(data, custom) {
+		t.Fatalf("existing marker was overwritten: got %q, want %q", string(data), string(custom))
+	}
+}
+
+// TestStampExistingMigrationsRejectsEmptyRepoRoot verifies input validation.
+func TestStampExistingMigrationsRejectsEmptyRepoRoot(t *testing.T) {
+	err := StampExistingMigrations("", InitOptions{})
+	if err == nil {
+		t.Fatal("expected error for empty repo root")
+	}
+	if !strings.Contains(err.Error(), "repo root cannot be empty") {
+		t.Fatalf("expected repo root validation error, got: %v", err)
+	}
+}
+
+// TestInitFullLayoutThenStampLeavesNoPendingMigrations simulates the init flow.
+func TestInitFullLayoutThenStampLeavesNoPendingMigrations(t *testing.T) {
+	repoRoot := t.TempDir()
+	if err := InitFullLayout(repoRoot, InitOptions{}); err != nil {
+		t.Fatalf("InitFullLayout: %v", err)
+	}
+	if err := StampExistingMigrations(repoRoot, InitOptions{}); err != nil {
+		t.Fatalf("StampExistingMigrations: %v", err)
+	}
+
+	pending, err := PendingRepoMigrations(repoRoot)
+	if err != nil {
+		t.Fatalf("PendingRepoMigrations: %v", err)
+	}
+	if len(pending) != 0 {
+		t.Fatalf("expected no pending migrations after init + stamp, got: %v", pending)
+	}
+}
+
 func initGitRepo(t *testing.T, repoRoot string) {
 	t.Helper()
 	runGitCommand(t, repoRoot, "init", "--initial-branch=main")
