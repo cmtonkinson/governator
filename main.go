@@ -210,6 +210,12 @@ OPTIONS:
 		os.Exit(1)
 	}
 
+	// Mark all pre-existing migrations as complete so they are never surfaced as pending.
+	if err := config.StampExistingMigrations(repoRoot, config.InitOptions{Verbose: verbose}); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
 	// Apply flag overrides to config if any were provided
 	if agentValue != "" || concurrencyValue != 0 || reasoningEffortValue != "" || branchValue != "" || timeoutValue != 0 {
 		if err := config.ApplyInitOverrides(repoRoot, config.InitOverrides{
