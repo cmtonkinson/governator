@@ -14,19 +14,19 @@ necessary scaffolding for planning such that risks and unknowns are documented
 ## Inputs
 You must examine:
 - `GOVERNATOR.md`
-- All architectural artifacts in `_governator/docs/arch-*.md` and
-  `_governator/docs/adr/`
-- All plans in `_governator/docs/plan-*.md`
+- All architectural artifacts in `.governator/docs/arch-*.md` and
+  `.governator/docs/adr/`
+- All plans in `.governator/docs/plan-*.md`
 - Existing project state: code and config
 
 ## Outputs
-1. `_governator/docs/gap-decision-ledger.md`
-2. `_governator/docs/gap-register.md`
-3. `_governator/docs/gap-planning-constraints.md`
+1. `.governator/docs/gap-decision-ledger.md`
+2. `.governator/docs/gap-register.md`
+3. `.governator/docs/gap-planning-constraints.md`
 
 ## Analysis Sections
 ### Decision Ledger
-Write the Decision Ledger to `_governator/docs/gap-decision-ledger.md`.
+Write the Decision Ledger to `.governator/docs/gap-decision-ledger.md`.
 
 Enumerate what decisions are already locked-in (by spec, existing code, existing
 Power Six artifacts, or ADRs), what decisions are implied but not explicitly
@@ -67,7 +67,7 @@ significant constraints that will materially affect planning, especially:
 - quality gates (tests, CI, lint, security posture)
 
 ### Gap Register
-Write the Gap Register to `_governator/docs/gap-register.md`.
+Write the Gap Register to `.governator/docs/gap-register.md`.
 
 Enumerate missing, ambiguous, conflicting, or risky information that prevents
 accurate milestone/task planning, then normalize it into actionable "gaps" with
@@ -106,7 +106,7 @@ public interfaces, unclear acceptance criteria, and unclear constraints that
 affect many tasks.
 
 ### Planning Constraints
-Write Planning Constraints to `_governator/docs/gap-planning-constraints.md`.
+Write Planning Constraints to `.governator/docs/gap-planning-constraints.md`.
 
 Produce a normalized, enforceable set of rules that the planner must follow when
 generating milestones/epics/tasks and when scheduling parallel agents. This is

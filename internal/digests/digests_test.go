@@ -12,7 +12,7 @@ import (
 
 func TestComputeDigests(t *testing.T) {
 	root := t.TempDir()
-	docsDir := filepath.Join(root, "_governator", "docs")
+	docsDir := filepath.Join(root, ".governator", "docs")
 	if err := os.MkdirAll(docsDir, 0o755); err != nil {
 		t.Fatalf("mkdir plan dir: %v", err)
 	}
@@ -37,7 +37,7 @@ func TestComputeDigests(t *testing.T) {
 	if got.GovernatorMD != "sha256:328961dd5885fa93c7c1f184d3489723f202e870088c9ae747f1454dc406176a" {
 		t.Fatalf("unexpected governator digest: %s", got.GovernatorMD)
 	}
-	relativePlan := filepath.ToSlash(filepath.Join("_governator", "docs", "roadmap.md"))
+	relativePlan := filepath.ToSlash(filepath.Join(".governator", "docs", "roadmap.md"))
 	if got.PlanningDocs[relativePlan] != digestForString(planContent) {
 		t.Fatalf("unexpected plan digest: %s", got.PlanningDocs[relativePlan])
 	}
@@ -99,7 +99,7 @@ func TestDetectDriftGoverningDocChange(t *testing.T) {
 }
 
 func writeRepoFixture(root string) error {
-	docsDir := filepath.Join(root, "_governator", "docs")
+	docsDir := filepath.Join(root, ".governator", "docs")
 	if err := os.MkdirAll(docsDir, 0o755); err != nil {
 		return fmt.Errorf("mkdir docs dir: %w", err)
 	}
@@ -122,7 +122,7 @@ func TestCompute_IgnoresPlanningNotes(t *testing.T) {
 	repoRoot := t.TempDir()
 
 	// Create docs dir with planning-notes.md
-	docsDir := filepath.Join(repoRoot, "_governator", "docs")
+	docsDir := filepath.Join(repoRoot, ".governator", "docs")
 	if err := os.MkdirAll(docsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

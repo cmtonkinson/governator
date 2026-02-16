@@ -17,7 +17,7 @@ import (
 // TestReadSupervisorLogTailReturnsTrailingLines verifies fixed-size tail semantics.
 func TestReadSupervisorLogTailReturnsTrailingLines(t *testing.T) {
 	repoRoot := t.TempDir()
-	logPath := filepath.Join(repoRoot, "_governator", "_local-state", "supervisor", "supervisor.log")
+	logPath := filepath.Join(repoRoot, ".governator", ".local-state", "supervisor", "supervisor.log")
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
 		t.Fatalf("mkdir supervisor dir: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestRenderOnceReturnsSnapshot(t *testing.T) {
 	if err := config.InitFullLayout(repoRoot, config.InitOptions{}); err != nil {
 		t.Fatalf("init layout: %v", err)
 	}
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	if err := index.Save(indexPath, index.Index{SchemaVersion: 1}); err != nil {
 		t.Fatalf("seed index: %v", err)
 	}

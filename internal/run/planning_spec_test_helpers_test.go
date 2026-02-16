@@ -15,7 +15,7 @@ func writeTestPlanningSpec(t *testing.T, repoRoot string) {
 	if err != nil {
 		t.Fatalf("read planning spec template: %v", err)
 	}
-	path := filepath.Join(repoRoot, "_governator", "planning.json")
+	path := filepath.Join(repoRoot, ".governator", "planning.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir planning spec dir: %v", err)
 	}

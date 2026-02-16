@@ -14,7 +14,7 @@ import (
 
 const (
 	// localStateDirName is the relative path for transient governator state.
-	localStateDirName = "_governator/_local-state"
+	localStateDirName = ".governator/.local-state"
 	// lockFileMode defines the permissions for the lock file.
 	lockFileMode = 0o644
 	// localStateDirMode defines the permissions for the local state directory.

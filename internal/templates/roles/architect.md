@@ -29,7 +29,7 @@ You are authorized to:
   components (e.g. Ruby Gems and NPM packages)
 - Set technology rules, standards, conventions, and best practices
 - Review (and approve/deny) architectural change and addition requests
-- Own (create, modifty, maintain) project documentation in `_governator/docs`
+- Own (create, modifty, maintain) project documentation in `.governator/docs`
 
 ## 2. Role Prohibitions
 You must not:

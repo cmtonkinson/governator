@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	docsDirName      = "_governator/docs"
-	templatesDirName = "_governator/templates"
+	docsDirName      = ".governator/docs"
+	templatesDirName = ".governator/templates"
 	bootstrapRoot    = "bootstrap"
 	docsDirMode      = 0o755
 	artifactFileMode = 0o644
@@ -49,7 +49,7 @@ func Artifacts() []Artifact {
 	}
 }
 
-// Run ensures bootstrap artifacts exist under _governator/docs.
+// Run ensures bootstrap artifacts exist under .governator/docs.
 func Run(repoRoot string, options Options) (Result, error) {
 	if strings.TrimSpace(repoRoot) == "" {
 		return Result{}, errors.New("repo root is required")

@@ -68,7 +68,7 @@ func TestE2EExecutionTriage(t *testing.T) {
 		},
 	}
 
-	configPath := filepath.Join(repoRoot, "_governator/_durable-state/config.json")
+	configPath := filepath.Join(repoRoot, ".governator/state/config.json")
 	configJSON, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		t.Fatalf("marshal config: %v", err)
@@ -88,26 +88,26 @@ func TestE2EExecutionTriage(t *testing.T) {
 			{
 				ID:     "architecture-baseline",
 				Name:   "Architecture Baseline",
-				Prompt: "_governator/prompts/architecture-baseline.md",
+				Prompt: ".governator/prompts/architecture-baseline.md",
 				Role:   "default",
 			},
 		},
 	}
-	if err := os.MkdirAll(filepath.Join(repoRoot, "_governator/prompts"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".governator/prompts"), 0o755); err != nil {
 		t.Fatalf("create prompts dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(repoRoot, "_governator/prompts/architecture-baseline.md"), []byte("Test prompt.\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(repoRoot, ".governator/prompts/architecture-baseline.md"), []byte("Test prompt.\n"), 0o644); err != nil {
 		t.Fatalf("write prompt: %v", err)
 	}
 	planningJSON, err := json.MarshalIndent(planningSpec, "", "  ")
 	if err != nil {
 		t.Fatalf("marshal planning spec: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(repoRoot, "_governator/planning.json"), planningJSON, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(repoRoot, ".governator/planning.json"), planningJSON, 0o644); err != nil {
 		t.Fatalf("write planning spec: %v", err)
 	}
 
-	tasksDir := filepath.Join(repoRoot, "_governator/tasks")
+	tasksDir := filepath.Join(repoRoot, ".governator/tasks")
 	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
 		t.Fatalf("create tasks dir: %v", err)
 	}
@@ -130,14 +130,14 @@ func TestE2EExecutionTriage(t *testing.T) {
 			{
 				ID:    "planning",
 				Title: "Planning",
-				Path:  "_governator/planning.json",
+				Path:  ".governator/planning.json",
 				Kind:  index.TaskKindPlanning,
 				State: run.PlanningCompleteState,
 			},
 			{
 				ID:    "task-01",
 				Title: "Task 01",
-				Path:  "_governator/tasks/task-01.md",
+				Path:  ".governator/tasks/task-01.md",
 				Kind:  index.TaskKindExecution,
 				State: index.TaskStateBacklog,
 				Role:  "default",
@@ -148,7 +148,7 @@ func TestE2EExecutionTriage(t *testing.T) {
 			{
 				ID:    "task-02",
 				Title: "Task 02",
-				Path:  "_governator/tasks/task-02.md",
+				Path:  ".governator/tasks/task-02.md",
 				Kind:  index.TaskKindExecution,
 				State: index.TaskStateBacklog,
 				Role:  "default",
@@ -158,11 +158,11 @@ func TestE2EExecutionTriage(t *testing.T) {
 			},
 		},
 	}
-	if err := index.Save(filepath.Join(repoRoot, "_governator/_local-state/index.json"), idx); err != nil {
+	if err := index.Save(filepath.Join(repoRoot, ".governator/.local-state/index.json"), idx); err != nil {
 		t.Fatalf("save index: %v", err)
 	}
 
-	repo.RunGit(t, "add", "GOVERNATOR.md", "_governator")
+	repo.RunGit(t, "add", "GOVERNATOR.md", ".governator")
 	repo.RunGit(t, "commit", "-m", "Seed execution triage test data")
 
 	originalDir, err := os.Getwd()
@@ -184,7 +184,7 @@ func TestE2EExecutionTriage(t *testing.T) {
 		t.Fatalf("run unified supervisor: %v", err)
 	}
 
-	finalIndex, err := index.Load(filepath.Join(repoRoot, "_governator/_local-state/index.json"))
+	finalIndex, err := index.Load(filepath.Join(repoRoot, ".governator/.local-state/index.json"))
 	if err != nil {
 		t.Fatalf("load index: %v", err)
 	}

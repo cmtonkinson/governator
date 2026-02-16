@@ -72,7 +72,7 @@ func TestExecuteReviewMergeFlow_Success(t *testing.T) {
 			}
 			fields := strings.Fields(line)
 			path := fields[len(fields)-1]
-			if strings.HasPrefix(path, "_governator/") {
+			if strings.HasPrefix(path, ".governator/") {
 				continue
 			}
 			t.Fatalf("repo root dirty after merge: %q", status)

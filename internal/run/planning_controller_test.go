@@ -66,7 +66,7 @@ func TestPlanningControllerAdvanceFinalStepRequiresExecutionTasksAfterInventory(
 	repo := testrepos.New(t)
 	writeTestPlanningSpec(t, repo.Root)
 
-	unreadable := filepath.Join(repo.Root, "_governator", "tasks", "001-unreadable.md")
+	unreadable := filepath.Join(repo.Root, ".governator", "tasks", "001-unreadable.md")
 	if err := os.MkdirAll(filepath.Dir(unreadable), 0o755); err != nil {
 		t.Fatalf("mkdir tasks dir: %v", err)
 	}
@@ -149,12 +149,12 @@ func seedPlanningControllerIndex(t *testing.T, repoRoot string, executionTasks [
 func writeInventoryTaskMarkdown(t *testing.T, repoRoot string, name string, content string) string {
 	t.Helper()
 
-	taskPath := filepath.Join(repoRoot, "_governator", "tasks", name)
+	taskPath := filepath.Join(repoRoot, ".governator", "tasks", name)
 	if err := os.MkdirAll(filepath.Dir(taskPath), 0o755); err != nil {
 		t.Fatalf("mkdir task dir: %v", err)
 	}
 	if err := os.WriteFile(taskPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("write task markdown: %v", err)
 	}
-	return filepath.ToSlash(filepath.Join("_governator", "tasks", name))
+	return filepath.ToSlash(filepath.Join(".governator", "tasks", name))
 }

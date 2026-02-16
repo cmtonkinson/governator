@@ -15,8 +15,8 @@ import (
 const (
 	userConfigDirName       = ".config"
 	userConfigFileName      = "config.json"
-	repoConfigDirName       = "_governator/_durable-state"
-	repoLegacyConfigDirName = "_governator/config"
+	repoConfigDirName       = ".governator/state"
+	repoLegacyConfigDirName = ".governator/config"
 )
 
 // Load resolves configuration from user defaults, repo overrides, and CLI overrides.

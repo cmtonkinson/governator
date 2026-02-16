@@ -31,7 +31,7 @@ func TestExecutionStageOrdering_ImplementedBeforeTriaged(t *testing.T) {
 		Title: "Task in implemented state",
 		Role:  "default",
 		State: index.TaskStateImplemented,
-		Path:  filepath.Join(repoRoot, "_governator", "tasks", "T-ORDER-001.md"),
+		Path:  filepath.Join(repoRoot, ".governator", "tasks", "T-ORDER-001.md"),
 	}
 
 	task2 := index.Task{
@@ -40,11 +40,11 @@ func TestExecutionStageOrdering_ImplementedBeforeTriaged(t *testing.T) {
 		Title: "Task in triaged state",
 		Role:  "default",
 		State: index.TaskStateTriaged,
-		Path:  filepath.Join(repoRoot, "_governator", "tasks", "T-ORDER-002.md"),
+		Path:  filepath.Join(repoRoot, ".governator", "tasks", "T-ORDER-002.md"),
 	}
 
 	// Create task files
-	tasksDir := filepath.Join(repoRoot, "_governator", "tasks")
+	tasksDir := filepath.Join(repoRoot, ".governator", "tasks")
 	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
 		t.Fatalf("create tasks dir: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestExecutionStageOrdering_ImplementedBeforeTriaged(t *testing.T) {
 		Tasks: append(mergedPlanningTasks(t, repoRoot), task1, task2),
 	}
 
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	if err := index.Save(indexPath, idx); err != nil {
 		t.Fatalf("save index: %v", err)
 	}
@@ -176,12 +176,12 @@ func TestExecutionStageOrdering_ResolveToMergeSameRun(t *testing.T) {
 		Title:         "Task in conflict state",
 		Role:          "default",
 		State:         index.TaskStateConflict,
-		Path:          filepath.Join(repoRoot, "_governator", "tasks", "T-RESOLVE-001.md"),
+		Path:          filepath.Join(repoRoot, ".governator", "tasks", "T-RESOLVE-001.md"),
 		MergeConflict: true,
 	}
 
 	// Create task file
-	tasksDir := filepath.Join(repoRoot, "_governator", "tasks")
+	tasksDir := filepath.Join(repoRoot, ".governator", "tasks")
 	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
 		t.Fatalf("create tasks dir: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestExecutionStageOrdering_ResolveToMergeSameRun(t *testing.T) {
 		Tasks: append(mergedPlanningTasks(t, repoRoot), task),
 	}
 
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	if err := index.Save(indexPath, idx); err != nil {
 		t.Fatalf("save index: %v", err)
 	}
@@ -317,7 +317,7 @@ func TestExecutionStageOrdering_MultiStateRightToLeftPriority(t *testing.T) {
 	// - implemented (medium priority - test stage)
 	// - triaged (lowest priority - work stage)
 
-	tasksDir := filepath.Join(repoRoot, "_governator", "tasks")
+	tasksDir := filepath.Join(repoRoot, ".governator", "tasks")
 	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
 		t.Fatalf("create tasks dir: %v", err)
 	}
@@ -376,7 +376,7 @@ func TestExecutionStageOrdering_MultiStateRightToLeftPriority(t *testing.T) {
 		Tasks: append(mergedPlanningTasks(t, repoRoot), tasks...),
 	}
 
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	if err := index.Save(indexPath, idx); err != nil {
 		t.Fatalf("save index: %v", err)
 	}

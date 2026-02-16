@@ -21,9 +21,9 @@ import (
 
 const (
 	// indexFilePath is the relative path to the task index file.
-	indexFilePath = "_governator/_local-state/index.json"
+	indexFilePath = ".governator/.local-state/index.json"
 	// conflictResolutionPromptPath is the task prompt used for resolve-stage workers.
-	conflictResolutionPromptPath = "_governator/prompts/conflict-resolution.md"
+	conflictResolutionPromptPath = ".governator/prompts/conflict-resolution.md"
 )
 
 // stageRoleForTask returns the appropriate role for a task based on the stage.

@@ -43,7 +43,7 @@ func TestRunUnifiedSupervisor_PlanningDriftDrainsAndReplans(t *testing.T) {
 	repoRoot := setupUnifiedTestRepo(t)
 	setPlanningState(t, repoRoot, PlanningCompleteState)
 
-	adrDir := filepath.Join(repoRoot, "_governator/docs/adr")
+	adrDir := filepath.Join(repoRoot, ".governator/docs/adr")
 	if err := os.MkdirAll(adrDir, 0o755); err != nil {
 		t.Fatalf("create adr dir: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestRunUnifiedSupervisor_PlanningDriftDrainsAndReplans(t *testing.T) {
 			driftChecks++
 			return PlanningDriftReport{
 				HasDrift: true,
-				Details:  []string{"planning doc changed: _governator/docs/roadmap.md"},
+				Details:  []string{"planning doc changed: .governator/docs/roadmap.md"},
 				Message:  "planning drift detected",
 			}, nil
 		}

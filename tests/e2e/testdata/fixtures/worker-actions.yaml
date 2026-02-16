@@ -3,10 +3,10 @@
 
 rules:
   # Execution triage: DAG ordering
-  - pattern: '_local-state/dag.json'
+  - pattern: '.local-state/dag.json'
     actions:
       - write:
-          path: '_governator/_local-state/dag.json'
+          path: '.governator/.local-state/dag.json'
           content: |
             {
               "task-02": ["task-01"],
@@ -17,7 +17,7 @@ rules:
   - pattern: 'planning.*epic|epic.*planning'
     actions:
       - write:
-          path: '_governator/planning/epics.md'
+          path: '.governator/planning/epics.md'
           content: |
             # Epic 1: Test Epic
 
@@ -33,7 +33,7 @@ rules:
   - pattern: 'planning.*milestone|milestone.*planning'
     actions:
       - write:
-          path: '_governator/planning/milestones.md'
+          path: '.governator/planning/milestones.md'
           content: |
             # Milestone 1: Alpha Release
 
@@ -49,7 +49,7 @@ rules:
   - pattern: 'assign.*role|role.*assignment'
     actions:
       - write:
-          path: '_governator/assignments/test-task.json'
+          path: '.governator/assignments/test-task.json'
           content: |
             {
               "role": "implementer",
@@ -61,7 +61,7 @@ rules:
   - pattern: 'implement|feature|bug.*fix'
     actions:
       - write:
-          path: '_governator/tasks/implementation-output.md'
+          path: '.governator/tasks/implementation-output.md'
           content: |
             # Implementation Complete
 
@@ -104,4 +104,4 @@ rules:
   - pattern: 'cleanup.*temp'
     actions:
       - delete:
-          path: '_governator/temp.txt'
+          path: '.governator/temp.txt'

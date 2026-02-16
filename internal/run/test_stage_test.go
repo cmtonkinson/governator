@@ -172,7 +172,7 @@ func TestRunWithTestStage(t *testing.T) {
 	}
 
 	// Save the index
-	indexPath := filepath.Join(repoRoot, "_governator/_local-state/index.json")
+	indexPath := filepath.Join(repoRoot, ".governator/.local-state/index.json")
 	if err := index.Save(indexPath, idx); err != nil {
 		t.Fatalf("save index: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestRunWithTestStage(t *testing.T) {
 		t.Fatalf("write task file: %v", err)
 	}
 
-	rolesDir := filepath.Join(repoRoot, "_governator", "roles")
+	rolesDir := filepath.Join(repoRoot, ".governator", "roles")
 	if err := os.MkdirAll(rolesDir, 0o755); err != nil {
 		t.Fatalf("create roles directory: %v", err)
 	}
@@ -432,7 +432,7 @@ func TestRunWithReviewStage(t *testing.T) {
 	}
 
 	// Save the index
-	indexPath := filepath.Join(repoRoot, "_governator/_local-state/index.json")
+	indexPath := filepath.Join(repoRoot, ".governator/.local-state/index.json")
 	if err := index.Save(indexPath, idx); err != nil {
 		t.Fatalf("save index: %v", err)
 	}
@@ -606,7 +606,7 @@ func TestExecuteConflictResolutionStage_WithConflictTasks(t *testing.T) {
 	}
 
 	// Create roles directory with a test role
-	rolesDir := filepath.Join(tempDir, "_governator", "roles")
+	rolesDir := filepath.Join(tempDir, ".governator", "roles")
 	if err := os.MkdirAll(rolesDir, 0755); err != nil {
 		t.Fatalf("failed to create roles dir: %v", err)
 	}

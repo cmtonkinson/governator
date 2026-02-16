@@ -1,4 +1,4 @@
-1. Inspect `_governator/_local_state/index.json` and read the open tasks in
+1. Inspect `.governator/_local_state/index.json` and read the open tasks in
    `backlog` and `triaged`.
 2. Create a DAG among those issues according to their inter-dependencies, using
    any existing dependencies as hints.
@@ -47,6 +47,6 @@
 
    Legacy format `{"task-id": ["deps"]}` is still supported but deprecated.
 
-4. Write the DAG to `_governator/_local-state/dag.json` without markup,
+4. Write the DAG to `.governator/.local-state/dag.json` without markup,
    commentary, code fences, or any other formatting
   - the file should be a fully valid JSON document

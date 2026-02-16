@@ -4,68 +4,68 @@
     {
       "id": "architecture-baseline",
       "name": "Architecture Baseline",
-      "prompt": "_governator/prompts/architecture-baseline.md",
+      "prompt": ".governator/prompts/architecture-baseline.md",
       "role": "architect",
       "validations": [
         {
           "type": "file",
-          "path": "_governator/docs/arch-asr.md"
+          "path": ".governator/docs/arch-asr.md"
         },
         {
           "type": "file",
-          "path": "_governator/docs/arch-arc42.md"
+          "path": ".governator/docs/arch-arc42.md"
         },
         {
           "type": "file",
-          "path": "_governator/docs/adr/*.md"
+          "path": ".governator/docs/adr/*.md"
         }
       ]
     },
     {
       "id": "gap-analysis",
       "name": "Gap Analysis",
-      "prompt": "_governator/prompts/gap-analysis.md",
+      "prompt": ".governator/prompts/gap-analysis.md",
       "role": "default",
       "validations": [
         {
           "type": "file",
-          "path": "_governator/docs/gap-decision-ledger.md"
+          "path": ".governator/docs/gap-decision-ledger.md"
         },
         {
           "type": "file",
-          "path": "_governator/docs/gap-register.md"
+          "path": ".governator/docs/gap-register.md"
         },
         {
           "type": "file",
-          "path": "_governator/docs/gap-planning-constraints.md"
+          "path": ".governator/docs/gap-planning-constraints.md"
         }
       ]
     },
     {
       "id": "project-planning",
       "name": "Project Planning",
-      "prompt": "_governator/prompts/roadmap.md",
+      "prompt": ".governator/prompts/roadmap.md",
       "role": "planner",
       "validations": [
         {
           "type": "file",
-          "path": "_governator/docs/milestones.md"
+          "path": ".governator/docs/milestones.md"
         },
         {
           "type": "file",
-          "path": "_governator/docs/epics.md"
+          "path": ".governator/docs/epics.md"
         }
       ]
     },
     {
       "id": "task-planning",
       "name": "Task Planning",
-      "prompt": "_governator/prompts/task-planning.md",
+      "prompt": ".governator/prompts/task-planning.md",
       "role": "planner",
       "validations": [
         {
           "type": "directory",
-          "path": "_governator/tasks"
+          "path": ".governator/tasks"
         }
       ]
     }

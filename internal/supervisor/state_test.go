@@ -10,8 +10,8 @@ import (
 
 func TestPaths(t *testing.T) {
 	repoRoot := "/tmp/testrepo"
-	expectedState := filepath.Join(repoRoot, "_governator/_local-state/supervisor/state.json")
-	expectedLog := filepath.Join(repoRoot, "_governator/_local-state/supervisor/supervisor.log")
+	expectedState := filepath.Join(repoRoot, ".governator/.local-state/supervisor/state.json")
+	expectedLog := filepath.Join(repoRoot, ".governator/.local-state/supervisor/supervisor.log")
 
 	if got := StatePath(repoRoot); got != expectedState {
 		t.Fatalf("StatePath got %s, want %s", got, expectedState)

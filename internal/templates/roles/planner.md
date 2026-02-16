@@ -64,7 +64,7 @@ A task should be completable by one worker in a reasonable single session.
 
 ## 5. Role Awareness
 You must understand and respect worker role boundaries. Worker capabilities
-are defined by their role (enumerated in `_governator/roles/*.md`).
+are defined by their role (enumerated in `.governator/roles/*.md`).
 
 You must not:
 - Ask implementation roles to design architecture

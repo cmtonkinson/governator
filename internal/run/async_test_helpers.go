@@ -42,7 +42,7 @@ func waitForExitStatus(t *testing.T, worktreePath string, taskID string, stage r
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	localState := filepath.Join(worktreePath, "_governator", "_local-state")
+	localState := filepath.Join(worktreePath, ".governator", ".local-state")
 	var entries []string
 	var diagnostics []string
 	if dirEntries, err := os.ReadDir(localState); err == nil {
@@ -69,7 +69,7 @@ func waitForExitStatus(t *testing.T, worktreePath string, taskID string, stage r
 			}
 		}
 	}
-	metaPath := filepath.Join(repoRoot, "_governator", "_local-state", "meta", fmt.Sprintf("%s.json", taskID))
+	metaPath := filepath.Join(repoRoot, ".governator", ".local-state", "meta", fmt.Sprintf("%s.json", taskID))
 	if metaTail := tailFile(metaPath); metaTail != "" {
 		diagnostics = append(diagnostics, fmt.Sprintf("meta: %s", metaTail))
 	}
@@ -83,7 +83,7 @@ func waitForExitStatus(t *testing.T, worktreePath string, taskID string, stage r
 }
 
 func findExitStatusPath(worktreePath, taskID string, stage roles.Stage) (string, error) {
-	localState := filepath.Join(worktreePath, "_governator", "_local-state")
+	localState := filepath.Join(worktreePath, ".governator", ".local-state")
 	const fileName = "exit.json"
 	entries, err := os.ReadDir(localState)
 	if err != nil {
@@ -110,7 +110,7 @@ func findExitStatusPath(worktreePath, taskID string, stage roles.Stage) (string,
 
 // exitStatusPresent checks whether any stage-scoped worker directory contains an exit marker.
 func exitStatusPresent(worktreePath string, stage roles.Stage) (bool, error) {
-	localState := filepath.Join(worktreePath, "_governator", "_local-state")
+	localState := filepath.Join(worktreePath, ".governator", ".local-state")
 	entries, err := os.ReadDir(localState)
 	if err != nil {
 		if os.IsNotExist(err) {

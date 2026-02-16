@@ -125,7 +125,7 @@ governator init \
   --concurrency 5 \           # Allow up to 5 concurrent agents
   --reasoning-effort high     # API budget? What's that?
 ```
-You can always edit `_governator/_durable-state/config.json` post-init.
+You can always edit `.governator/state/config.json` post-init.
 
 ---
 ## How It Works
@@ -134,7 +134,7 @@ supervisor process is responsible for orchestrating these phases.
 
 ### Planning
 Up front, Governator loads the planning pipeline from
-`_governator/planning.json` and runs each step, serially. Out of the box,
+`.governator/planning.json` and runs each step, serially. Out of the box,
 Governator ships with an opinionated planning pipeline:
 1. **Architecture baseline** - analyze/design the system (personas, ASRs,
    arc42, Wardley map, C4, and ADRs)
@@ -145,7 +145,7 @@ Governator ships with an opinionated planning pipeline:
 
 Whether you use the default planning logic or roll your own, the planning
 pipeline is considered successful if-and-only-if there are task files in the
-`_governator/tasks/` directory.
+`.governator/tasks/` directory.
 
 ### Triage
 Once planning is complete, Governator:
@@ -250,16 +250,17 @@ governator tail [options]
 ---
 ## Directory Layout
 ```
-_governator/
+.governator/
 |-- .gitignore              # Ignores runtime-only local state
-|-- _durable-state/         # Tracked config (config.json, migrations)
+|-- state/         # Tracked config (config.json, migrations)
 |   |-- config.json         # Durable settings used by supervisor/workers
-|-- _local-state/           # Runtime state (gitignored except .keep)
+|-- .local-state/           # Runtime state (gitignored except .keep)
 |   |-- index.json          # Canonical task registry
 |   |-- dag.json            # Dependency graph output from triage
 |   |-- supervisor/         # Supervisor runtime files
 |   |   |-- state.json
 |   |   `-- supervisor.log
+|-- worktrees/              # Git worktree checkouts (gitignored except .keep)
 |   `-- task-<id>/          # Per-task worktree + worker logs/artifacts
 |-- docs/                   # Architecture & planning docs (generated)
 |   `-- adr/                # Architectural Decision Records

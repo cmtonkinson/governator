@@ -30,8 +30,8 @@ You MUST NOT:
 If the task is underspecified or ambiguous, do not guess.
 
 ## 4. Prohibitions
-NEVER make ANY changes within the `_governator/` directory, except:
-- `_local-state/dag.json`
+NEVER make ANY changes within the `.governator/` directory, except:
+- `.local-state/dag.json`
 - the `docs/` directory
 - the `tasks/` directory
 - or if otherwise explicitly instructed
@@ -46,9 +46,9 @@ conditions include (but are not limited to):
 
 The task file is the file at `GOVERNATOR_TASK_PATH`.
 
-If `GOVERNATOR_TASK_PATH` points under `_governator/prompts` or
-`_governator/_local-state`, do NOT edit it. Instead, append a section titled `##
-Blocking Reason` to `_governator/_local-state/planning-notes.md` (create the
+If `GOVERNATOR_TASK_PATH` points under `.governator/prompts` or
+`.governator/.local-state`, do NOT edit it. Instead, append a section titled `##
+Blocking Reason` to `.governator/.local-state/planning-notes.md` (create the
 file if missing).
 
 Otherwise, to block a task, append a section titled `## Blocking Reason` to the
@@ -61,9 +61,9 @@ Do not make speculative changes when blocked.
 
 ## 6. Completing the Task
 When you believe the task is complete, append a section titled `## Change
-Summary` to the task file (or to `_governator/_local-state/planning-notes.md`
-when the task file is under `_governator/prompts` or
-`_governator/_local-state`):
+Summary` to the task file (or to `.governator/.local-state/planning-notes.md`
+when the task file is under `.governator/prompts` or
+`.governator/.local-state`):
 - Describe what was changed.
 - Note any assumptions made.
 - Mention potential follow-up concerns without creating tasks for them.

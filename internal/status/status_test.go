@@ -43,7 +43,7 @@ func TestGetSummary(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	stateDir := filepath.Join(tempDir, "_governator")
+	stateDir := filepath.Join(tempDir, ".governator")
 	if err := os.MkdirAll(stateDir, 0755); err != nil {
 		t.Fatalf("failed to create state dir: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestGetSummary(t *testing.T) {
 		},
 	}
 
-	indexPath := filepath.Join(tempDir, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(tempDir, ".governator", ".local-state", "index.json")
 	if err := index.Save(indexPath, testIndex); err != nil {
 		t.Fatalf("failed to save test index: %v", err)
 	}
@@ -121,11 +121,11 @@ func TestGetSummarySupervisorFiltering(t *testing.T) {
 	t.Run("running_included", func(t *testing.T) {
 		t.Parallel()
 		repoRoot := t.TempDir()
-		stateDir := filepath.Join(repoRoot, "_governator")
+		stateDir := filepath.Join(repoRoot, ".governator")
 		if err := os.MkdirAll(stateDir, 0o755); err != nil {
 			t.Fatalf("create state dir: %v", err)
 		}
-		indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+		indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 		if err := index.Save(indexPath, index.Index{SchemaVersion: 1}); err != nil {
 			t.Fatalf("save index: %v", err)
 		}
@@ -163,11 +163,11 @@ func TestGetSummarySupervisorFiltering(t *testing.T) {
 	t.Run("running_plan_worker_included", func(t *testing.T) {
 		t.Parallel()
 		repoRoot := t.TempDir()
-		stateDir := filepath.Join(repoRoot, "_governator")
+		stateDir := filepath.Join(repoRoot, ".governator")
 		if err := os.MkdirAll(stateDir, 0o755); err != nil {
 			t.Fatalf("create state dir: %v", err)
 		}
-		indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+		indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 		if err := index.Save(indexPath, index.Index{SchemaVersion: 1}); err != nil {
 			t.Fatalf("save index: %v", err)
 		}
@@ -204,11 +204,11 @@ func TestGetSummarySupervisorFiltering(t *testing.T) {
 	t.Run("running_triage_worker_included", func(t *testing.T) {
 		t.Parallel()
 		repoRoot := t.TempDir()
-		stateDir := filepath.Join(repoRoot, "_governator")
+		stateDir := filepath.Join(repoRoot, ".governator")
 		if err := os.MkdirAll(stateDir, 0o755); err != nil {
 			t.Fatalf("create state dir: %v", err)
 		}
-		indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+		indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 		if err := index.Save(indexPath, index.Index{SchemaVersion: 1}); err != nil {
 			t.Fatalf("save index: %v", err)
 		}
@@ -245,11 +245,11 @@ func TestGetSummarySupervisorFiltering(t *testing.T) {
 	t.Run("planning_inflight_worker_included_when_planning_not_started", func(t *testing.T) {
 		t.Parallel()
 		repoRoot := t.TempDir()
-		stateDir := filepath.Join(repoRoot, "_governator")
+		stateDir := filepath.Join(repoRoot, ".governator")
 		if err := os.MkdirAll(stateDir, 0o755); err != nil {
 			t.Fatalf("create state dir: %v", err)
 		}
-		indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+		indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 		if err := index.Save(indexPath, index.Index{
 			SchemaVersion: 1,
 			Tasks: []index.Task{
@@ -264,7 +264,7 @@ func TestGetSummarySupervisorFiltering(t *testing.T) {
 		if err != nil {
 			t.Fatalf("new in-flight store: %v", err)
 		}
-		workerStateDir := filepath.Join(repoRoot, "_governator", "_local-state", "task-planning", "_governator", "_local-state", "planning-architecture-baseline")
+		workerStateDir := filepath.Join(repoRoot, ".governator", "worktrees", "task-planning", ".governator", ".local-state", "planning-architecture-baseline")
 		if err := os.MkdirAll(workerStateDir, 0o755); err != nil {
 			t.Fatalf("mkdir worker state dir: %v", err)
 		}
@@ -301,11 +301,11 @@ func TestGetSummarySupervisorFiltering(t *testing.T) {
 	t.Run("execution_inflight_worker_included", func(t *testing.T) {
 		t.Parallel()
 		repoRoot := t.TempDir()
-		stateDir := filepath.Join(repoRoot, "_governator")
+		stateDir := filepath.Join(repoRoot, ".governator")
 		if err := os.MkdirAll(stateDir, 0o755); err != nil {
 			t.Fatalf("create state dir: %v", err)
 		}
-		indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+		indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 		if err := index.Save(indexPath, index.Index{
 			SchemaVersion: 1,
 			Tasks: []index.Task{
@@ -320,7 +320,7 @@ func TestGetSummarySupervisorFiltering(t *testing.T) {
 		if err != nil {
 			t.Fatalf("new in-flight store: %v", err)
 		}
-		workerStateDir := filepath.Join(repoRoot, "_governator", "_local-state", "task-T-001", "_governator", "_local-state", "worker-1-work-dev")
+		workerStateDir := filepath.Join(repoRoot, ".governator", "worktrees", "task-T-001", ".governator", ".local-state", "worker-1-work-dev")
 		if err := os.MkdirAll(workerStateDir, 0o755); err != nil {
 			t.Fatalf("mkdir worker state dir: %v", err)
 		}
@@ -357,11 +357,11 @@ func TestGetSummarySupervisorFiltering(t *testing.T) {
 	t.Run("stopped_excluded", func(t *testing.T) {
 		t.Parallel()
 		repoRoot := t.TempDir()
-		stateDir := filepath.Join(repoRoot, "_governator")
+		stateDir := filepath.Join(repoRoot, ".governator")
 		if err := os.MkdirAll(stateDir, 0o755); err != nil {
 			t.Fatalf("create state dir: %v", err)
 		}
-		indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+		indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 		if err := index.Save(indexPath, index.Index{SchemaVersion: 1}); err != nil {
 			t.Fatalf("save index: %v", err)
 		}
@@ -389,11 +389,11 @@ func TestGetSummarySupervisorFiltering(t *testing.T) {
 	t.Run("failed_included", func(t *testing.T) {
 		t.Parallel()
 		repoRoot := t.TempDir()
-		stateDir := filepath.Join(repoRoot, "_governator")
+		stateDir := filepath.Join(repoRoot, ".governator")
 		if err := os.MkdirAll(stateDir, 0o755); err != nil {
 			t.Fatalf("create state dir: %v", err)
 		}
-		indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+		indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 		if err := index.Save(indexPath, index.Index{SchemaVersion: 1}); err != nil {
 			t.Fatalf("save index: %v", err)
 		}
@@ -424,11 +424,11 @@ func TestGetSummarySupervisorFiltering(t *testing.T) {
 	t.Run("stale_running_marked_failed", func(t *testing.T) {
 		t.Parallel()
 		repoRoot := t.TempDir()
-		stateDir := filepath.Join(repoRoot, "_governator")
+		stateDir := filepath.Join(repoRoot, ".governator")
 		if err := os.MkdirAll(stateDir, 0o755); err != nil {
 			t.Fatalf("create state dir: %v", err)
 		}
-		indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+		indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 		if err := index.Save(indexPath, index.Index{SchemaVersion: 1}); err != nil {
 			t.Fatalf("save index: %v", err)
 		}
@@ -461,26 +461,26 @@ func TestGetSummarySupervisorFiltering(t *testing.T) {
 func TestPlanningStepSummary_NotStartedState(t *testing.T) {
 	t.Parallel()
 	repoRoot := t.TempDir()
-	stateDir := filepath.Join(repoRoot, "_governator")
+	stateDir := filepath.Join(repoRoot, ".governator")
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		t.Fatalf("create state dir: %v", err)
 	}
 
 	// Create planning spec
-	planningSpecPath := filepath.Join(repoRoot, "_governator", "planning.json")
+	planningSpecPath := filepath.Join(repoRoot, ".governator", "planning.json")
 	planningSpec := `{
 		"version": 2,
 		"steps": [
 			{
 				"id": "architecture-baseline",
 				"name": "Architecture Baseline",
-				"prompt": "_governator/prompts/architecture-baseline.md",
+				"prompt": ".governator/prompts/architecture-baseline.md",
 				"role": "architect"
 			},
 			{
 				"id": "gap-analysis",
 				"name": "Gap Analysis",
-				"prompt": "_governator/prompts/gap-analysis.md",
+				"prompt": ".governator/prompts/gap-analysis.md",
 				"role": "default"
 			}
 		]
@@ -501,7 +501,7 @@ func TestPlanningStepSummary_NotStartedState(t *testing.T) {
 		},
 	}
 
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	if err := index.Save(indexPath, testIndex); err != nil {
 		t.Fatalf("save index: %v", err)
 	}
@@ -526,26 +526,26 @@ func TestPlanningStepSummary_NotStartedState(t *testing.T) {
 func TestPlanningStepSummary_InProgress(t *testing.T) {
 	t.Parallel()
 	repoRoot := t.TempDir()
-	stateDir := filepath.Join(repoRoot, "_governator")
+	stateDir := filepath.Join(repoRoot, ".governator")
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		t.Fatalf("create state dir: %v", err)
 	}
 
 	// Create planning spec
-	planningSpecPath := filepath.Join(repoRoot, "_governator", "planning.json")
+	planningSpecPath := filepath.Join(repoRoot, ".governator", "planning.json")
 	planningSpec := `{
 		"version": 2,
 		"steps": [
 			{
 				"id": "architecture-baseline",
 				"name": "Architecture Baseline",
-				"prompt": "_governator/prompts/architecture-baseline.md",
+				"prompt": ".governator/prompts/architecture-baseline.md",
 				"role": "architect"
 			},
 			{
 				"id": "gap-analysis",
 				"name": "Gap Analysis",
-				"prompt": "_governator/prompts/gap-analysis.md",
+				"prompt": ".governator/prompts/gap-analysis.md",
 				"role": "default"
 			}
 		]
@@ -566,7 +566,7 @@ func TestPlanningStepSummary_InProgress(t *testing.T) {
 		},
 	}
 
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	if err := index.Save(indexPath, testIndex); err != nil {
 		t.Fatalf("save index: %v", err)
 	}
@@ -607,20 +607,20 @@ func TestPlanningStepSummary_InProgress(t *testing.T) {
 func TestPlanningStepSummary_Complete(t *testing.T) {
 	t.Parallel()
 	repoRoot := t.TempDir()
-	stateDir := filepath.Join(repoRoot, "_governator")
+	stateDir := filepath.Join(repoRoot, ".governator")
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		t.Fatalf("create state dir: %v", err)
 	}
 
 	// Create planning spec
-	planningSpecPath := filepath.Join(repoRoot, "_governator", "planning.json")
+	planningSpecPath := filepath.Join(repoRoot, ".governator", "planning.json")
 	planningSpec := `{
 		"version": 2,
 		"steps": [
 			{
 				"id": "architecture-baseline",
 				"name": "Architecture Baseline",
-				"prompt": "_governator/prompts/architecture-baseline.md",
+				"prompt": ".governator/prompts/architecture-baseline.md",
 				"role": "architect"
 			}
 		]
@@ -641,7 +641,7 @@ func TestPlanningStepSummary_Complete(t *testing.T) {
 		},
 	}
 
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	if err := index.Save(indexPath, testIndex); err != nil {
 		t.Fatalf("save index: %v", err)
 	}

@@ -15,11 +15,11 @@ import (
 
 const (
 	// localStateDirName is the relative path for transient governator state.
-	localStateDirName = "_governator/_local-state"
+	localStateDirName = ".governator/.local-state"
 	// workerStateDirName holds worker staging artifacts inside local state.
 	workerStateDirName = "worker"
-	workerContractPath = "_governator/worker-contract.md"
-	reasoningDirName   = "_governator/reasoning"
+	workerContractPath = ".governator/worker-contract.md"
+	reasoningDirName   = ".governator/reasoning"
 )
 
 // StageInput defines the inputs required to stage worker prompts and environment.
@@ -142,11 +142,11 @@ func StageEnvAndPrompts(input StageInput) (StageResult, error) {
 
 // orderedPromptFiles returns the stable prompt order for worker execution.
 // Prompt order:
-//  1. _governator/reasoning/<level>.md (when configured)
-//  2. _governator/worker-contract.md
-//  3. _governator/roles/<role>.md
-//  4. _governator/custom-prompts/_global.md (optional)
-//  5. _governator/custom-prompts/<role>.md (optional)
+//  1. .governator/reasoning/<level>.md (when configured)
+//  2. .governator/worker-contract.md
+//  3. .governator/roles/<role>.md
+//  4. .governator/custom-prompts/_global.md (optional)
+//  5. .governator/custom-prompts/<role>.md (optional)
 //  6. <task path>
 //  7. Any extra prompt files in provided order.
 func orderedPromptFiles(repoRoot string, registry roles.Registry, role index.Role, reasoningLevel string, taskPath string, extraPromptPaths []string, includeReasoning bool) ([]string, error) {

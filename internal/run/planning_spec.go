@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	planningSpecFilePath = "_governator/planning.json"
+	planningSpecFilePath = ".governator/planning.json"
 	planningSpecVersion  = 2
 )
 

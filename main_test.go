@@ -111,7 +111,7 @@ func TestVersionCommandWithMetadata(t *testing.T) {
 func TestConfirmPendingMigrations(t *testing.T) {
 	t.Run("returns true without output when no migrations are pending", func(t *testing.T) {
 		repoRoot := t.TempDir()
-		if err := os.MkdirAll(filepath.Join(repoRoot, "_governator", "prompts"), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(repoRoot, ".governator", "prompts"), 0o755); err != nil {
 			t.Fatalf("mkdir prompts: %v", err)
 		}
 		if err := config.ApplyRepoMigrations(repoRoot, config.InitOptions{}); err != nil {
@@ -233,7 +233,7 @@ func TestConfirmPendingMigrations(t *testing.T) {
 func TestEnsureNoSupervisorLocks(t *testing.T) {
 	t.Run("removes stale lock and succeeds", func(t *testing.T) {
 		repoRoot := t.TempDir()
-		lockPath := filepath.Join(repoRoot, "_governator", "_local-state", "supervisor.lock")
+		lockPath := filepath.Join(repoRoot, ".governator", ".local-state", "supervisor.lock")
 		if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
 			t.Fatalf("mkdir lock dir: %v", err)
 		}
@@ -323,16 +323,16 @@ func TestInitCommand(t *testing.T) {
 
 	// Check that directories were created
 	expectedDirs := []string{
-		"_governator/_durable-state",
-		"_governator/_durable-state/migrations",
-		"_governator/docs",
-		"_governator/docs/adr",
-		"_governator/roles",
-		"_governator/custom-prompts",
-		"_governator/prompts",
-		"_governator/templates",
-		"_governator/reasoning",
-		"_governator/_local-state",
+		".governator/state",
+		".governator/state/migrations",
+		".governator/docs",
+		".governator/docs/adr",
+		".governator/roles",
+		".governator/custom-prompts",
+		".governator/prompts",
+		".governator/templates",
+		".governator/reasoning",
+		".governator/.local-state",
 	}
 
 	for _, dir := range expectedDirs {
@@ -342,17 +342,17 @@ func TestInitCommand(t *testing.T) {
 	}
 
 	// Check that config file was created
-	configPath := filepath.Join("_governator", "_durable-state", "config.json")
+	configPath := filepath.Join(".governator", "state", "config.json")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Error("Expected config.json was not created")
 	}
 
-	gitignorePath := filepath.Join("_governator", ".gitignore")
+	gitignorePath := filepath.Join(".governator", ".gitignore")
 	if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
-		t.Error("Expected _governator/.gitignore was not created")
+		t.Error("Expected .governator/.gitignore was not created")
 	}
 
-	customPromptPath := filepath.Join("_governator", "custom-prompts", "_global.md")
+	customPromptPath := filepath.Join(".governator", "custom-prompts", "_global.md")
 	if _, err := os.Stat(customPromptPath); os.IsNotExist(err) {
 		t.Error("Expected custom prompt _global.md was not created")
 	}
@@ -404,7 +404,7 @@ func TestRetryCommand(t *testing.T) {
 			t.Fatalf("unexpected retry output: %q", strings.TrimSpace(string(output)))
 		}
 
-		idxPath := filepath.Join(tempDir, "_governator", "_local-state", "index.json")
+		idxPath := filepath.Join(tempDir, ".governator", ".local-state", "index.json")
 		idx, err := index.Load(idxPath)
 		if err != nil {
 			t.Fatalf("load index: %v", err)
@@ -425,7 +425,7 @@ func TestRetryCommand(t *testing.T) {
 	})
 
 	t.Run("resolves numeric shorthand to matching task id", func(t *testing.T) {
-		idxPath := filepath.Join(tempDir, "_governator", "_local-state", "index.json")
+		idxPath := filepath.Join(tempDir, ".governator", ".local-state", "index.json")
 		customIndex := index.Index{
 			SchemaVersion: 1,
 			Digests: index.Digests{
@@ -434,14 +434,14 @@ func TestRetryCommand(t *testing.T) {
 			Tasks: []index.Task{
 				{
 					ID:      "planning",
-					Path:    "_governator/tasks/planning.md",
+					Path:    ".governator/tasks/planning.md",
 					Kind:    index.TaskKindPlanning,
 					State:   index.TaskStateMerged,
 					Retries: index.RetryPolicy{MaxAttempts: 1},
 				},
 				{
 					ID:      "010-implement-directory-enumeration-core-generalist",
-					Path:    "_governator/tasks/010-implement-directory-enumeration-core-generalist.md",
+					Path:    ".governator/tasks/010-implement-directory-enumeration-core-generalist.md",
 					Kind:    index.TaskKindExecution,
 					State:   index.TaskStateBlocked,
 					Retries: index.RetryPolicy{MaxAttempts: 2},
@@ -484,7 +484,7 @@ func TestRetryCommand(t *testing.T) {
 	})
 
 	t.Run("fails when numeric shorthand is ambiguous", func(t *testing.T) {
-		idxPath := filepath.Join(tempDir, "_governator", "_local-state", "index.json")
+		idxPath := filepath.Join(tempDir, ".governator", ".local-state", "index.json")
 		customIndex := index.Index{
 			SchemaVersion: 1,
 			Digests: index.Digests{
@@ -493,14 +493,14 @@ func TestRetryCommand(t *testing.T) {
 			Tasks: []index.Task{
 				{
 					ID:      "010-first-match",
-					Path:    "_governator/tasks/010-first-match.md",
+					Path:    ".governator/tasks/010-first-match.md",
 					Kind:    index.TaskKindExecution,
 					State:   index.TaskStateBlocked,
 					Retries: index.RetryPolicy{MaxAttempts: 1},
 				},
 				{
 					ID:      "10-second-match",
-					Path:    "_governator/tasks/10-second-match.md",
+					Path:    ".governator/tasks/10-second-match.md",
 					Kind:    index.TaskKindExecution,
 					State:   index.TaskStateBlocked,
 					Retries: index.RetryPolicy{MaxAttempts: 1},
@@ -653,7 +653,7 @@ func TestStatusCommand(t *testing.T) {
 
 	t.Run("status with populated index", func(t *testing.T) {
 		// Create a populated task index
-		indexPath := filepath.Join(tempDir, "_governator", "_local-state", "index.json")
+		indexPath := filepath.Join(tempDir, ".governator", ".local-state", "index.json")
 		populatedIndex := `{
 				"schema_version": 1,
 				"tasks": [
@@ -708,7 +708,7 @@ func TestWhyCommand(t *testing.T) {
 		t.Fatalf("git init failed: %v, output: %s", err, out)
 	}
 
-	logPath := filepath.Join(tempDir, "_governator", "_local-state", "supervisor", "supervisor.log")
+	logPath := filepath.Join(tempDir, ".governator", ".local-state", "supervisor", "supervisor.log")
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
 		t.Fatalf("mkdir log dir: %v", err)
 	}
@@ -793,13 +793,13 @@ func TestWhyCommand(t *testing.T) {
 		failedID := "T-FAILED-001"
 		openID := "T-OPEN-001"
 
-		indexPath := filepath.Join(tempDir, "_governator", "_local-state", "index.json")
+		indexPath := filepath.Join(tempDir, ".governator", ".local-state", "index.json")
 		indexJSON := fmt.Sprintf(`{
   "schema_version": 1,
   "tasks": [
     {
       "id": %q,
-      "path": "_governator/tasks/%s.md",
+      "path": ".governator/tasks/%s.md",
       "kind": "execution",
       "state": "blocked",
       "role": "default",
@@ -811,7 +811,7 @@ func TestWhyCommand(t *testing.T) {
     },
     {
       "id": %q,
-      "path": "_governator/tasks/%s.md",
+      "path": ".governator/tasks/%s.md",
       "kind": "execution",
       "state": "blocked",
       "blocked_reason": "worker failed",
@@ -824,7 +824,7 @@ func TestWhyCommand(t *testing.T) {
     },
     {
       "id": %q,
-      "path": "_governator/tasks/%s.md",
+      "path": ".governator/tasks/%s.md",
       "kind": "execution",
       "state": "triaged",
       "role": "default",
@@ -840,7 +840,7 @@ func TestWhyCommand(t *testing.T) {
 			t.Fatalf("write index: %v", err)
 		}
 
-		blockedRoot := filepath.Join(tempDir, "_governator", "_local-state", "task-"+blockedID, "_governator", "_local-state")
+		blockedRoot := filepath.Join(tempDir, ".governator", "worktrees", "task-"+blockedID, ".governator", ".local-state")
 		blockedOldDir := filepath.Join(blockedRoot, "worker-1-work-default")
 		blockedNewDir := filepath.Join(blockedRoot, "worker-2-work-default")
 		if err := os.MkdirAll(blockedOldDir, 0o755); err != nil {
@@ -866,7 +866,7 @@ func TestWhyCommand(t *testing.T) {
 			t.Fatalf("chtimes new log: %v", err)
 		}
 
-		failedRoot := filepath.Join(tempDir, "_governator", "_local-state", "task-"+failedID, "_governator", "_local-state")
+		failedRoot := filepath.Join(tempDir, ".governator", "worktrees", "task-"+failedID, ".governator", ".local-state")
 		failedDir := filepath.Join(failedRoot, "worker-1-test-default")
 		if err := os.MkdirAll(failedDir, 0o755); err != nil {
 			t.Fatalf("mkdir failed dir: %v", err)
@@ -890,10 +890,10 @@ func TestWhyCommand(t *testing.T) {
 		if !strings.Contains(got, "=== Supervisor 0 (unknown) last 2 lines ===\nline-29\nline-30\n") {
 			t.Fatalf("missing supervisor section in output:\n%s", got)
 		}
-		if !strings.Contains(got, "=== Task "+blockedID+" (blocked) last 3 lines from _governator/_local-state/task-"+blockedID+"/_governator/_local-state/worker-2-work-default/stdout.log ===\nnew-2\nnew-3\nnew-4\n") {
+		if !strings.Contains(got, "=== Task "+blockedID+" (blocked) last 3 lines from .governator/worktrees/task-"+blockedID+"/.governator/.local-state/worker-2-work-default/stdout.log ===\nnew-2\nnew-3\nnew-4\n") {
 			t.Fatalf("missing blocked section with most recent stdout log in output:\n%s", got)
 		}
-		if !strings.Contains(got, "=== Task "+failedID+" (blocked) last 3 lines from _governator/_local-state/task-"+failedID+"/_governator/_local-state/worker-1-test-default/stdout.log ===\nf-1\nf-2\nf-3\n") {
+		if !strings.Contains(got, "=== Task "+failedID+" (blocked) last 3 lines from .governator/worktrees/task-"+failedID+"/.governator/.local-state/worker-1-test-default/stdout.log ===\nf-1\nf-2\nf-3\n") {
 			t.Fatalf("missing second blocked section in output:\n%s", got)
 		}
 		if strings.Contains(got, openID) {
@@ -902,13 +902,13 @@ func TestWhyCommand(t *testing.T) {
 	})
 
 	t.Run("includes planning task section when supervisor failed during plan", func(t *testing.T) {
-		indexPath := filepath.Join(tempDir, "_governator", "_local-state", "index.json")
+		indexPath := filepath.Join(tempDir, ".governator", ".local-state", "index.json")
 		indexJSON := `{
   "schema_version": 1,
   "tasks": [
     {
       "id": "planning",
-      "path": "_governator/planning.json",
+      "path": ".governator/planning.json",
       "kind": "planning",
       "state": "governator_planning_not_started",
       "role": "",
@@ -924,7 +924,7 @@ func TestWhyCommand(t *testing.T) {
 			t.Fatalf("write planning index: %v", err)
 		}
 
-		statePath := filepath.Join(tempDir, "_governator", "_local-state", "supervisor", "state.json")
+		statePath := filepath.Join(tempDir, ".governator", ".local-state", "supervisor", "state.json")
 		stateJSON := `{
   "phase": "start",
   "pid": 12345,
@@ -939,7 +939,7 @@ func TestWhyCommand(t *testing.T) {
 			t.Fatalf("write supervisor state: %v", err)
 		}
 
-		planningRoot := filepath.Join(tempDir, "_governator", "_local-state", "task-planning", "_governator", "_local-state")
+		planningRoot := filepath.Join(tempDir, ".governator", "worktrees", "task-planning", ".governator", ".local-state")
 		planningWorkerDir := filepath.Join(planningRoot, "planning-architecture-baseline")
 		if err := os.MkdirAll(planningWorkerDir, 0o755); err != nil {
 			t.Fatalf("mkdir planning worker dir: %v", err)
@@ -963,19 +963,19 @@ func TestWhyCommand(t *testing.T) {
 		if !strings.Contains(got, "=== Supervisor 12345 (failed) last 1 lines ===\nline-30\n") {
 			t.Fatalf("missing supervisor section in output:\n%s", got)
 		}
-		if !strings.Contains(got, "=== Task planning (failed) last 2 lines from _governator/_local-state/task-planning/_governator/_local-state/planning-architecture-baseline/stdout.log ===\np-2\np-3\n") {
+		if !strings.Contains(got, "=== Task planning (failed) last 2 lines from .governator/worktrees/task-planning/.governator/.local-state/planning-architecture-baseline/stdout.log ===\np-2\np-3\n") {
 			t.Fatalf("missing planning section in output:\n%s", got)
 		}
 	})
 
 	t.Run("falls back to stderr log when stdout log is empty", func(t *testing.T) {
-		indexPath := filepath.Join(tempDir, "_governator", "_local-state", "index.json")
+		indexPath := filepath.Join(tempDir, ".governator", ".local-state", "index.json")
 		indexJSON := `{
   "schema_version": 1,
   "tasks": [
     {
       "id": "T-ERR-001",
-      "path": "_governator/tasks/T-ERR-001.md",
+      "path": ".governator/tasks/T-ERR-001.md",
       "kind": "execution",
       "state": "blocked",
       "blocked_reason": "worker failed",
@@ -992,7 +992,7 @@ func TestWhyCommand(t *testing.T) {
 			t.Fatalf("write index: %v", err)
 		}
 
-		workerDir := filepath.Join(tempDir, "_governator", "_local-state", "task-T-ERR-001", "_governator", "_local-state", "worker-1-work-default")
+		workerDir := filepath.Join(tempDir, ".governator", "worktrees", "task-T-ERR-001", ".governator", ".local-state", "worker-1-work-default")
 		if err := os.MkdirAll(workerDir, 0o755); err != nil {
 			t.Fatalf("mkdir worker dir: %v", err)
 		}
@@ -1013,7 +1013,7 @@ func TestWhyCommand(t *testing.T) {
 		}
 		got := string(output)
 
-		if !strings.Contains(got, "from _governator/_local-state/task-T-ERR-001/_governator/_local-state/worker-1-work-default/stderr.log ===\nx-1\nx-2\n") {
+		if !strings.Contains(got, "from .governator/worktrees/task-T-ERR-001/.governator/.local-state/worker-1-work-default/stderr.log ===\nx-1\nx-2\n") {
 			t.Fatalf("missing stderr fallback section in output:\n%s", got)
 		}
 	})

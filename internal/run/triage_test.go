@@ -110,7 +110,7 @@ func TestApplyTriageMappingWithRoles(t *testing.T) {
 	repoRoot := t.TempDir()
 
 	// Create a default role file
-	rolesDir := filepath.Join(repoRoot, "_governator", "roles")
+	rolesDir := filepath.Join(repoRoot, ".governator", "roles")
 	if err := os.MkdirAll(rolesDir, 0o755); err != nil {
 		t.Fatalf("create roles dir: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestApplyTriageMappingInvalidRole(t *testing.T) {
 	repoRoot := t.TempDir()
 
 	// Create only default role file
-	rolesDir := filepath.Join(repoRoot, "_governator", "roles")
+	rolesDir := filepath.Join(repoRoot, ".governator", "roles")
 	if err := os.MkdirAll(rolesDir, 0o755); err != nil {
 		t.Fatalf("create roles dir: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestRunBacklogTriageFinalizesMapping(t *testing.T) {
 			{ID: "task-02", Kind: index.TaskKindExecution, State: index.TaskStateBacklog},
 		},
 	}
-	if err := os.MkdirAll(filepath.Join(repoRoot, "_governator"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".governator"), 0o755); err != nil {
 		t.Fatalf("create governator dir: %v", err)
 	}
 	if err := index.Save(filepath.Join(repoRoot, indexFilePath), idx); err != nil {
@@ -223,7 +223,7 @@ func TestRunBacklogTriageFinalizesMapping(t *testing.T) {
 		t.Fatalf("write dag output: %v", err)
 	}
 
-	workerStateDir := filepath.Join(repoRoot, "_governator/_local-state/triage/test-worker")
+	workerStateDir := filepath.Join(repoRoot, ".governator/.local-state/triage/test-worker")
 	if err := os.MkdirAll(workerStateDir, 0o755); err != nil {
 		t.Fatalf("create worker state dir: %v", err)
 	}
@@ -271,6 +271,70 @@ func TestRunBacklogTriageFinalizesMapping(t *testing.T) {
 	}
 }
 
+// TestRunBacklogTriageFinalizesMappingFromFallback ensures triage can recover when
+// dag.json is emitted to the worker state directory instead of the canonical path.
+func TestRunBacklogTriageFinalizesMappingFromFallback(t *testing.T) {
+	repoRoot := t.TempDir()
+
+	idx := index.Index{
+		Tasks: []index.Task{
+			{ID: "task-01", Kind: index.TaskKindExecution, State: index.TaskStateBacklog},
+			{ID: "task-02", Kind: index.TaskKindExecution, State: index.TaskStateBacklog},
+		},
+	}
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".governator"), 0o755); err != nil {
+		t.Fatalf("create governator dir: %v", err)
+	}
+	if err := index.Save(filepath.Join(repoRoot, indexFilePath), idx); err != nil {
+		t.Fatalf("save index: %v", err)
+	}
+
+	workerStateDir := filepath.Join(repoRoot, ".governator/.local-state/triage/test-worker")
+	if err := os.MkdirAll(workerStateDir, 0o755); err != nil {
+		t.Fatalf("create worker state dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workerStateDir, triageOutputFileName), []byte("{\"task-02\": [\"task-01\"], \"task-01\": []}\n"), 0o644); err != nil {
+		t.Fatalf("write fallback dag output: %v", err)
+	}
+	exitStatus := worker.ExitStatus{
+		ExitCode:   0,
+		FinishedAt: time.Now().UTC(),
+		PID:        1234,
+	}
+	exitData, err := json.Marshal(exitStatus)
+	if err != nil {
+		t.Fatalf("marshal exit status: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workerStateDir, "exit.json"), exitData, 0o644); err != nil {
+		t.Fatalf("write exit status: %v", err)
+	}
+
+	state := TriageState{
+		Attempt:        1,
+		RunningPID:     999999,
+		WorkerStateDir: workerStateDir,
+		LastAttemptAt:  time.Now().UTC(),
+	}
+	if err := SaveTriageState(repoRoot, state); err != nil {
+		t.Fatalf("save triage state: %v", err)
+	}
+
+	var stderr bytes.Buffer
+	result, err := RunBacklogTriage(repoRoot, &idx, config.Defaults(), Options{Stdout: ioDiscard{}, Stderr: &stderr})
+	if err != nil {
+		t.Fatalf("run triage: %v", err)
+	}
+	if !result.Completed {
+		t.Fatalf("expected completed triage result")
+	}
+	if !strings.Contains(stderr.String(), "fallback path") {
+		t.Fatalf("expected fallback warning, got %q", stderr.String())
+	}
+	if !reflect.DeepEqual(idx.Tasks[1].Dependencies, []string{"task-01"}) {
+		t.Fatalf("unexpected deps for task-02: %#v", idx.Tasks[1].Dependencies)
+	}
+}
+
 // TestRunBacklogTriageRefreshesDigests ensures triage updates planning digests after applying changes.
 func TestRunBacklogTriageRefreshesDigests(t *testing.T) {
 	repoRoot := t.TempDir()
@@ -278,7 +342,7 @@ func TestRunBacklogTriageRefreshesDigests(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repoRoot, "GOVERNATOR.md"), []byte("governance v1"), 0o644); err != nil {
 		t.Fatalf("write GOVERNATOR.md: %v", err)
 	}
-	docsDir := filepath.Join(repoRoot, "_governator", "docs")
+	docsDir := filepath.Join(repoRoot, ".governator", "docs")
 	if err := os.MkdirAll(docsDir, 0o755); err != nil {
 		t.Fatalf("create docs dir: %v", err)
 	}
@@ -298,7 +362,7 @@ func TestRunBacklogTriageRefreshesDigests(t *testing.T) {
 			{ID: "task-01", Kind: index.TaskKindExecution, State: index.TaskStateBacklog},
 		},
 	}
-	if err := os.MkdirAll(filepath.Join(repoRoot, "_governator"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".governator"), 0o755); err != nil {
 		t.Fatalf("create governator dir: %v", err)
 	}
 	if err := index.Save(filepath.Join(repoRoot, indexFilePath), idx); err != nil {
@@ -317,7 +381,7 @@ func TestRunBacklogTriageRefreshesDigests(t *testing.T) {
 		t.Fatalf("write dag output: %v", err)
 	}
 
-	workerStateDir := filepath.Join(repoRoot, "_governator/_local-state/triage/test-worker")
+	workerStateDir := filepath.Join(repoRoot, ".governator/.local-state/triage/test-worker")
 	if err := os.MkdirAll(workerStateDir, 0o755); err != nil {
 		t.Fatalf("create worker state dir: %v", err)
 	}

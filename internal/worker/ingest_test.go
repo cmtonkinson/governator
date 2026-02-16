@@ -18,7 +18,7 @@ func TestIngestWorkerResultSuccess(t *testing.T) {
 	workDir := t.TempDir()
 	setupGitRepo(t, workDir)
 	createCommit(t, workDir, "test commit")
-	markerPath := filepath.Join(workDir, "_governator", "_local-state", "worked.md")
+	markerPath := filepath.Join(workDir, ".governator", ".local-state", "worked.md")
 	writeFile(t, markerPath, "Task completed successfully")
 
 	input := IngestInput{

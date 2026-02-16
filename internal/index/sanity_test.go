@@ -13,13 +13,13 @@ func TestSanityCheckHappyPath(t *testing.T) {
 		Tasks: []Task{
 			{
 				ID:    "task-1",
-				Path:  "_governator/tasks/task-1.md",
+				Path:  ".governator/tasks/task-1.md",
 				State: TaskStateOpen,
 				Role:  "planner",
 			},
 			{
 				ID:           "task-2",
-				Path:         "_governator/tasks/task-2.md",
+				Path:         ".governator/tasks/task-2.md",
 				State:        TaskStateWorked,
 				Role:         "builder",
 				Dependencies: []string{"task-1"},
@@ -47,13 +47,13 @@ func TestSanityCheckDuplicateIDs(t *testing.T) {
 		Tasks: []Task{
 			{
 				ID:    "task-1",
-				Path:  "_governator/tasks/task-1.md",
+				Path:  ".governator/tasks/task-1.md",
 				State: TaskStateOpen,
 				Role:  "planner",
 			},
 			{
 				ID:    "task-1",
-				Path:  "_governator/tasks/task-1-copy.md",
+				Path:  ".governator/tasks/task-1-copy.md",
 				State: TaskStateOpen,
 				Role:  "planner",
 			},
@@ -74,13 +74,13 @@ func TestSanityCheckWarnings(t *testing.T) {
 		Tasks: []Task{
 			{
 				ID:    "task-1",
-				Path:  "_governator/tasks/task-1.md",
+				Path:  ".governator/tasks/task-1.md",
 				State: TaskState("mystery"),
 				Role:  "planner",
 			},
 			{
 				ID:           "task-2",
-				Path:         "_governator/tasks/task-2.md",
+				Path:         ".governator/tasks/task-2.md",
 				State:        TaskStateOpen,
 				Role:         "builder",
 				Dependencies: []string{"task-99"},

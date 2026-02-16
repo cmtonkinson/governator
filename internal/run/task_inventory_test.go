@@ -16,7 +16,7 @@ func TestTaskInventoryHappyPath(t *testing.T) {
 	repo := testrepos.New(t)
 
 	// Create task files
-	tasksDir := filepath.Join(repo.Root, "_governator", "tasks")
+	tasksDir := filepath.Join(repo.Root, ".governator", "tasks")
 	if err := os.MkdirAll(tasksDir, 0755); err != nil {
 		t.Fatalf("create tasks dir: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestTaskInventoryHappyPath(t *testing.T) {
 func TestTaskInventoryMultipleTasks(t *testing.T) {
 	repo := testrepos.New(t)
 
-	tasksDir := filepath.Join(repo.Root, "_governator", "tasks")
+	tasksDir := filepath.Join(repo.Root, ".governator", "tasks")
 	if err := os.MkdirAll(tasksDir, 0755); err != nil {
 		t.Fatalf("create tasks dir: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestTaskInventoryMultipleTasks(t *testing.T) {
 func TestTaskInventoryIdempotent(t *testing.T) {
 	repo := testrepos.New(t)
 
-	tasksDir := filepath.Join(repo.Root, "_governator", "tasks")
+	tasksDir := filepath.Join(repo.Root, ".governator", "tasks")
 	if err := os.MkdirAll(tasksDir, 0755); err != nil {
 		t.Fatalf("create tasks dir: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestTaskInventoryIdempotent(t *testing.T) {
 func TestTaskInventoryUsesPathAsCanonicalIdentity(t *testing.T) {
 	repo := testrepos.New(t)
 
-	tasksDir := filepath.Join(repo.Root, "_governator", "tasks")
+	tasksDir := filepath.Join(repo.Root, ".governator", "tasks")
 	if err := os.MkdirAll(tasksDir, 0755); err != nil {
 		t.Fatalf("create tasks dir: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestTaskInventoryUsesPathAsCanonicalIdentity(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:           "legacy-id-does-not-matter-for-identity",
-				Path:         "_governator/tasks/001-task.md",
+				Path:         ".governator/tasks/001-task.md",
 				Kind:         index.TaskKindExecution,
 				State:        index.TaskStateBacklog,
 				Role:         index.Role("default"),
@@ -200,7 +200,7 @@ func TestTaskInventoryUsesPathAsCanonicalIdentity(t *testing.T) {
 func TestTaskInventoryTitleExtraction(t *testing.T) {
 	repo := testrepos.New(t)
 
-	tasksDir := filepath.Join(repo.Root, "_governator", "tasks")
+	tasksDir := filepath.Join(repo.Root, ".governator", "tasks")
 	if err := os.MkdirAll(tasksDir, 0755); err != nil {
 		t.Fatalf("create tasks dir: %v", err)
 	}
@@ -299,7 +299,7 @@ func TestTaskInventoryTitleExtraction(t *testing.T) {
 func TestTaskInventoryDefaultValues(t *testing.T) {
 	repo := testrepos.New(t)
 
-	tasksDir := filepath.Join(repo.Root, "_governator", "tasks")
+	tasksDir := filepath.Join(repo.Root, ".governator", "tasks")
 	if err := os.MkdirAll(tasksDir, 0755); err != nil {
 		t.Fatalf("create tasks dir: %v", err)
 	}
@@ -354,7 +354,7 @@ func TestTaskInventoryDefaultValues(t *testing.T) {
 func TestTaskInventoryOrderIncrement(t *testing.T) {
 	repo := testrepos.New(t)
 
-	tasksDir := filepath.Join(repo.Root, "_governator", "tasks")
+	tasksDir := filepath.Join(repo.Root, ".governator", "tasks")
 	if err := os.MkdirAll(tasksDir, 0755); err != nil {
 		t.Fatalf("create tasks dir: %v", err)
 	}
@@ -408,7 +408,7 @@ func TestTaskInventoryErrorHandling(t *testing.T) {
 	t.Run("empty_tasks_directory", func(t *testing.T) {
 		repo := testrepos.New(t)
 
-		tasksDir := filepath.Join(repo.Root, "_governator", "tasks")
+		tasksDir := filepath.Join(repo.Root, ".governator", "tasks")
 		if err := os.MkdirAll(tasksDir, 0755); err != nil {
 			t.Fatalf("create tasks dir: %v", err)
 		}
@@ -432,7 +432,7 @@ func TestTaskInventoryErrorHandling(t *testing.T) {
 
 		repo := testrepos.New(t)
 
-		tasksDir := filepath.Join(repo.Root, "_governator", "tasks")
+		tasksDir := filepath.Join(repo.Root, ".governator", "tasks")
 		if err := os.MkdirAll(tasksDir, 0755); err != nil {
 			t.Fatalf("create tasks dir: %v", err)
 		}
@@ -468,7 +468,7 @@ func TestTaskInventoryErrorHandling(t *testing.T) {
 	t.Run("malformed_task_file_empty", func(t *testing.T) {
 		repo := testrepos.New(t)
 
-		tasksDir := filepath.Join(repo.Root, "_governator", "tasks")
+		tasksDir := filepath.Join(repo.Root, ".governator", "tasks")
 		if err := os.MkdirAll(tasksDir, 0755); err != nil {
 			t.Fatalf("create tasks dir: %v", err)
 		}
@@ -501,7 +501,7 @@ func TestTaskInventoryEdgeCases(t *testing.T) {
 	t.Run("subdirectories_ignored", func(t *testing.T) {
 		repo := testrepos.New(t)
 
-		tasksDir := filepath.Join(repo.Root, "_governator", "tasks")
+		tasksDir := filepath.Join(repo.Root, ".governator", "tasks")
 		if err := os.MkdirAll(tasksDir, 0755); err != nil {
 			t.Fatalf("create tasks dir: %v", err)
 		}
@@ -538,7 +538,7 @@ func TestTaskInventoryEdgeCases(t *testing.T) {
 	t.Run("non_markdown_files_ignored", func(t *testing.T) {
 		repo := testrepos.New(t)
 
-		tasksDir := filepath.Join(repo.Root, "_governator", "tasks")
+		tasksDir := filepath.Join(repo.Root, ".governator", "tasks")
 		if err := os.MkdirAll(tasksDir, 0755); err != nil {
 			t.Fatalf("create tasks dir: %v", err)
 		}
@@ -575,7 +575,7 @@ func TestTaskInventoryEdgeCases(t *testing.T) {
 	t.Run("filenames_with_spaces", func(t *testing.T) {
 		repo := testrepos.New(t)
 
-		tasksDir := filepath.Join(repo.Root, "_governator", "tasks")
+		tasksDir := filepath.Join(repo.Root, ".governator", "tasks")
 		if err := os.MkdirAll(tasksDir, 0755); err != nil {
 			t.Fatalf("create tasks dir: %v", err)
 		}

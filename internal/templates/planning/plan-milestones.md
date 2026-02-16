@@ -11,12 +11,12 @@ early as possible.
 
 ## Inputs
 - `GOVERNATOR.md` (required)
-- Existing architectural artifacts in `_governator/docs/arch-*.md` and `_governator/docs/adr/` (expected)
-- Existing plans in `_governator/docs/plan-*.md` (possible)
+- Existing architectural artifacts in `.governator/docs/arch-*.md` and `.governator/docs/adr/` (expected)
+- Existing plans in `.governator/docs/plan-*.md` (possible)
 - Existing project state: code and config (possible)
 
 ## Outputs
-- `_governator/docs/gap-analysis.md`
+- `.governator/docs/gap-analysis.md`
 
 ## Analysis Sections
 ### Decision Ledger
@@ -28,11 +28,11 @@ early as possible.
 
 ## Output
 ### 1. Milestones
-If a milestones file exists at `_governator/docs/milestones.md`, read and review
+If a milestones file exists at `.governator/docs/milestones.md`, read and review
 it against the project `GOVERNATOR.md` file.
 
 If no milestones file exists, create it as per the template provided at
-(`_governator/templates/milestones.md`).
+(`.governator/templates/milestones.md`).
 
 In either case, ensure the milestones as defined in the file are aligned with
 the stated intent in the project `GOVERNATOR.md` file. Do not invent scope,
@@ -59,11 +59,11 @@ Start milestone identifiers at 1 prefixed with a lowercase "m" (e.g. "m1"), and
 increment by 1 for each subsequent milestone.
 
 ### 2. Epics
-If an epics file exists at `_governator/docs/epics.md`, read and review it
-against the defined project milestones at `_governator/docs/milestones.md`.
+If an epics file exists at `.governator/docs/epics.md`, read and review it
+against the defined project milestones at `.governator/docs/milestones.md`.
 
 If no epics file exists, create it as per the template provided at
-(`_governator/templates/epics.md`).
+(`.governator/templates/epics.md`).
 
 In either case, ensure the epics as defined in the file are aligned with the
 defined milestones. Do not invent scope, requirements, constraints, or
@@ -88,8 +88,8 @@ increment by 1 for each subsequent epic.
 ### 3. Tasks
 Read and review existing tasks (except "done") for context. Where gaps were 
 identified, and now certain epics exist without all the necessary tasks required
-to implement them, create those new tasks in `_governator/tasks/` using
-the standard task template at `_governator/templates/task.md`. Be sure to
+to implement them, create those new tasks in `.governator/tasks/` using
+the standard task template at `.governator/templates/task.md`. Be sure to
 include the correct milestone and epic numbers in the YAML frontmatter.
 
 Each task file:

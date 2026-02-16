@@ -40,14 +40,14 @@ func TestCheckPlanningDriftDetectsPlanningDocChange(t *testing.T) {
 		t.Fatalf("Compute error: %v", err)
 	}
 
-	roadmapPath := filepath.Join(root, "_governator", "docs", "roadmap.md")
+	roadmapPath := filepath.Join(root, ".governator", "docs", "roadmap.md")
 	if err := os.WriteFile(roadmapPath, []byte("changed plan\n"), 0o644); err != nil {
 		t.Fatalf("update roadmap: %v", err)
 	}
 
 	err = CheckPlanningDrift(root, stored)
 	assertPlanningDriftError(t, err)
-	assertErrorContains(t, err, "planning doc changed: _governator/docs/roadmap.md")
+	assertErrorContains(t, err, "planning doc changed: .governator/docs/roadmap.md")
 }
 
 // TestCheckPlanningDriftDetectsPlanningDocDeletion ensures deleted planning docs trigger replanning.
@@ -62,14 +62,14 @@ func TestCheckPlanningDriftDetectsPlanningDocDeletion(t *testing.T) {
 		t.Fatalf("Compute error: %v", err)
 	}
 
-	roadmapPath := filepath.Join(root, "_governator", "docs", "roadmap.md")
+	roadmapPath := filepath.Join(root, ".governator", "docs", "roadmap.md")
 	if err := os.Remove(roadmapPath); err != nil {
 		t.Fatalf("remove roadmap: %v", err)
 	}
 
 	err = CheckPlanningDrift(root, stored)
 	assertPlanningDriftError(t, err)
-	assertErrorContains(t, err, "planning doc missing: _governator/docs/roadmap.md")
+	assertErrorContains(t, err, "planning doc missing: .governator/docs/roadmap.md")
 }
 
 // TestCheckPlanningDriftDetectsNonADRDocAddition ensures non-ADR additions trigger replanning.
@@ -84,13 +84,13 @@ func TestCheckPlanningDriftDetectsNonADRDocAddition(t *testing.T) {
 		t.Fatalf("Compute error: %v", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(root, "_governator", "docs", "implementation-plan.md"), []byte("# plan\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".governator", "docs", "implementation-plan.md"), []byte("# plan\n"), 0o644); err != nil {
 		t.Fatalf("write planning doc: %v", err)
 	}
 
 	err = CheckPlanningDrift(root, stored)
 	assertPlanningDriftError(t, err)
-	assertErrorContains(t, err, "planning doc added: _governator/docs/implementation-plan.md")
+	assertErrorContains(t, err, "planning doc added: .governator/docs/implementation-plan.md")
 }
 
 func assertPlanningDriftError(t *testing.T, err error) {
@@ -114,7 +114,7 @@ func assertErrorContains(t *testing.T, err error, expected string) {
 
 // writeRepoFixture creates minimal planning artifacts for drift checks.
 func writeRepoFixture(root string) error {
-	docsDir := filepath.Join(root, "_governator", "docs")
+	docsDir := filepath.Join(root, ".governator", "docs")
 	if err := os.MkdirAll(docsDir, 0o755); err != nil {
 		return err
 	}

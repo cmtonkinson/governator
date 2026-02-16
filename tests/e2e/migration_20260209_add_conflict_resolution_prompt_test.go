@@ -21,13 +21,13 @@ const (
 	e2eConflictPromptName      = "conflict-resolution.md"
 	e2eConflictTemplatePath    = "planning/conflict-resolution.md"
 	e2eConflictMigrationID     = "20260209_add_conflict_resolution_prompt"
-	e2eConflictMigrationMarker = "_governator/_durable-state/migrations/20260209_add_conflict_resolution_prompt.done"
+	e2eConflictMigrationMarker = ".governator/state/migrations/20260209_add_conflict_resolution_prompt.done"
 )
 
 // TestE2EMigrationsCreatesConflictPrompt verifies startup applies migrations and writes the embedded prompt.
 func TestE2EMigrationsCreatesConflictPrompt(t *testing.T) {
 	repoRoot := setupMigrationReadyRepo(t)
-	promptPath := filepath.Join(repoRoot, "_governator", "prompts", e2eConflictPromptName)
+	promptPath := filepath.Join(repoRoot, ".governator", "prompts", e2eConflictPromptName)
 	if err := os.Remove(promptPath); err != nil {
 		t.Fatalf("remove prompt before migration test: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestE2EMigrationsCreatesConflictPrompt(t *testing.T) {
 // TestE2EMigrationsSkipsWhenTargetExists verifies migration does not overwrite an existing prompt.
 func TestE2EMigrationsSkipsWhenTargetExists(t *testing.T) {
 	repoRoot := setupMigrationReadyRepo(t)
-	promptPath := filepath.Join(repoRoot, "_governator", "prompts", e2eConflictPromptName)
+	promptPath := filepath.Join(repoRoot, ".governator", "prompts", e2eConflictPromptName)
 	custom := []byte("operator-customized conflict prompt\n")
 	if err := os.WriteFile(promptPath, custom, 0o644); err != nil {
 		t.Fatalf("seed custom conflict prompt: %v", err)
@@ -86,7 +86,7 @@ func TestE2EMigrationsSkipsWhenTargetExists(t *testing.T) {
 // TestE2EMigrationsSkipsWhenSimilarPromptExists verifies startup migration avoids duplicate prompt creation.
 func TestE2EMigrationsSkipsWhenSimilarPromptExists(t *testing.T) {
 	repoRoot := setupMigrationReadyRepo(t)
-	promptsDir := filepath.Join(repoRoot, "_governator", "prompts")
+	promptsDir := filepath.Join(repoRoot, ".governator", "prompts")
 	targetPath := filepath.Join(promptsDir, e2eConflictPromptName)
 	if err := os.Remove(targetPath); err != nil {
 		t.Fatalf("remove canonical conflict prompt: %v", err)
@@ -113,7 +113,7 @@ func TestE2EMigrationsSkipsWhenSimilarPromptExists(t *testing.T) {
 // TestE2EMigrationsSkipsWhenMarkerExists verifies migration short-circuits when already marked complete.
 func TestE2EMigrationsSkipsWhenMarkerExists(t *testing.T) {
 	repoRoot := setupMigrationReadyRepo(t)
-	promptsDir := filepath.Join(repoRoot, "_governator", "prompts")
+	promptsDir := filepath.Join(repoRoot, ".governator", "prompts")
 	targetPath := filepath.Join(promptsDir, e2eConflictPromptName)
 	if err := os.Remove(targetPath); err != nil {
 		t.Fatalf("remove canonical conflict prompt: %v", err)
@@ -139,7 +139,7 @@ func TestE2EMigrationsSkipsWhenMarkerExists(t *testing.T) {
 // TestE2EMigrationsFailsWhenPromptsPathInvalid verifies startup fails fast when migration cannot create prompts directory.
 func TestE2EMigrationsFailsWhenPromptsPathInvalid(t *testing.T) {
 	repoRoot := setupMigrationReadyRepo(t)
-	promptsDir := filepath.Join(repoRoot, "_governator", "prompts")
+	promptsDir := filepath.Join(repoRoot, ".governator", "prompts")
 	if err := os.RemoveAll(promptsDir); err != nil {
 		t.Fatalf("remove prompts directory: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestE2EMigrationsFailsWhenPromptsPathInvalid(t *testing.T) {
 // TestE2EMigrationsRerunPreservesPrompt verifies idempotent reruns preserve operator edits.
 func TestE2EMigrationsRerunPreservesPrompt(t *testing.T) {
 	repoRoot := setupMigrationReadyRepo(t)
-	promptPath := filepath.Join(repoRoot, "_governator", "prompts", e2eConflictPromptName)
+	promptPath := filepath.Join(repoRoot, ".governator", "prompts", e2eConflictPromptName)
 	if err := os.Remove(promptPath); err != nil {
 		t.Fatalf("remove prompt before migration test: %v", err)
 	}
@@ -224,7 +224,7 @@ func setupMigrationReadyRepo(t *testing.T) string {
 		t.Fatalf("seed planning index: %v", err)
 	}
 
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	idx, err := index.Load(indexPath)
 	if err != nil {
 		t.Fatalf("load index: %v", err)

@@ -14,10 +14,12 @@ import (
 
 const (
 	// localStateDirName is the relative path for transient governator state.
-	localStateDirName = "_governator/_local-state"
+	localStateDirName = ".governator/.local-state"
+	// worktreesDirName is the relative path where git worktrees are checked out.
+	worktreesDirName = ".governator/worktrees"
 	// metadataDirName holds metadata for workstreams.
 	metadataDirName = "meta"
-	// localStateDirMode defines permissions for the local state directory.
+	// localStateDirMode defines permissions for runtime state and worktree directories.
 	localStateDirMode = 0o755
 	// taskDirPrefix prefixes per-task worktree directories.
 	taskDirPrefix = "task-"
@@ -27,6 +29,7 @@ const (
 type Manager struct {
 	repoRoot      string
 	localStateDir string
+	worktreesDir  string
 }
 
 // Spec defines the inputs needed to locate or create a task worktree.
@@ -60,26 +63,27 @@ func NewManager(repoRoot string) (Manager, error) {
 		return Manager{}, fmt.Errorf("repo root %s is not a directory", absRoot)
 	}
 	localStateDir := filepath.Join(absRoot, localStateDirName)
-	return Manager{repoRoot: absRoot, localStateDir: localStateDir}, nil
+	worktreesDir := filepath.Join(absRoot, worktreesDirName)
+	return Manager{repoRoot: absRoot, localStateDir: localStateDir, worktreesDir: worktreesDir}, nil
 }
 
 // WorktreePath returns the deterministic worktree path for a task attempt.
 func (manager Manager) WorktreePath(workstreamID string) (string, error) {
-	if strings.TrimSpace(manager.localStateDir) == "" {
+	if strings.TrimSpace(manager.worktreesDir) == "" {
 		return "", errors.New("worktree manager is not initialized")
 	}
 	if err := validateWorkstreamID(workstreamID); err != nil {
 		return "", err
 	}
 	dirName := taskDirName(workstreamID)
-	return filepath.Join(manager.localStateDir, dirName), nil
+	return filepath.Join(manager.worktreesDir, dirName), nil
 }
 
 // EnsureWorktree returns a task worktree path, creating it when needed.
 // This method now integrates with branch lifecycle management to ensure
 // task branches are created before worktrees.
 func (manager Manager) EnsureWorktree(spec Spec) (Result, error) {
-	if strings.TrimSpace(manager.repoRoot) == "" || strings.TrimSpace(manager.localStateDir) == "" {
+	if strings.TrimSpace(manager.repoRoot) == "" || strings.TrimSpace(manager.worktreesDir) == "" || strings.TrimSpace(manager.localStateDir) == "" {
 		return Result{}, errors.New("worktree manager is not initialized")
 	}
 	if err := validateWorkstreamID(spec.WorkstreamID); err != nil {
@@ -89,8 +93,8 @@ func (manager Manager) EnsureWorktree(spec Spec) (Result, error) {
 		return Result{}, errors.New("branch is required")
 	}
 
-	if err := os.MkdirAll(manager.localStateDir, localStateDirMode); err != nil {
-		return Result{}, fmt.Errorf("create worktree directory %s: %w", manager.localStateDir, err)
+	if err := os.MkdirAll(manager.worktreesDir, localStateDirMode); err != nil {
+		return Result{}, fmt.Errorf("create worktree directory %s: %w", manager.worktreesDir, err)
 	}
 
 	path, reused, err := manager.locateExistingWorktree(spec)

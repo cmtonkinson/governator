@@ -74,7 +74,7 @@ func TestPhaseRunnerCompletePhaseAdvancesState(t *testing.T) {
 
 func writeRequiredDocs(t *testing.T, repoRoot string) {
 	t.Helper()
-	docsDir := filepath.Join(repoRoot, "_governator", "docs")
+	docsDir := filepath.Join(repoRoot, ".governator", "docs")
 	if err := os.MkdirAll(docsDir, 0o755); err != nil {
 		t.Fatalf("mkdir docs: %v", err)
 	}
@@ -108,7 +108,7 @@ func writeRequiredDocs(t *testing.T, repoRoot string) {
 	if err := os.WriteFile(adrPath, []byte("adr"), 0o644); err != nil {
 		t.Fatalf("write adr file: %v", err)
 	}
-	tasksDir := filepath.Join(repoRoot, "_governator", "tasks")
+	tasksDir := filepath.Join(repoRoot, ".governator", "tasks")
 	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
 		t.Fatalf("mkdir tasks: %v", err)
 	}

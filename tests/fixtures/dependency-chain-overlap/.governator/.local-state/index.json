@@ -3,18 +3,18 @@
   "digests": {
     "governator_md": "sha256:dependency-chain-overlap",
     "planning_docs": {
-      "_governator/tasks/T-201-foundation.md": "sha256:dependency-201",
-      "_governator/tasks/T-202-dependency-foundation.md": "sha256:dependency-202",
-      "_governator/tasks/T-203-chain-followup.md": "sha256:dependency-203",
-      "_governator/tasks/T-204-overlap-consumer.md": "sha256:overlap-204",
-      "_governator/tasks/T-205-overlap-monitor.md": "sha256:overlap-205"
+      ".governator/tasks/T-201-foundation.md": "sha256:dependency-201",
+      ".governator/tasks/T-202-dependency-foundation.md": "sha256:dependency-202",
+      ".governator/tasks/T-203-chain-followup.md": "sha256:dependency-203",
+      ".governator/tasks/T-204-overlap-consumer.md": "sha256:overlap-204",
+      ".governator/tasks/T-205-overlap-monitor.md": "sha256:overlap-205"
     }
   },
   "tasks": [
     {
       "id": "T-201",
       "title": "Prepare the dependency foundation",
-      "path": "_governator/tasks/T-201-foundation.md",
+      "path": ".governator/tasks/T-201-foundation.md",
       "kind": "execution",
       "state": "done",
       "role": "worker",
@@ -32,7 +32,7 @@
     {
       "id": "T-202",
       "title": "Implement the dependent task",
-      "path": "_governator/tasks/T-202-dependency-foundation.md",
+      "path": ".governator/tasks/T-202-dependency-foundation.md",
       "kind": "execution",
       "state": "open",
       "role": "worker",
@@ -50,7 +50,7 @@
     {
       "id": "T-203",
       "title": "Chain follow-up",
-      "path": "_governator/tasks/T-203-chain-followup.md",
+      "path": ".governator/tasks/T-203-chain-followup.md",
       "kind": "execution",
       "state": "open",
       "role": "worker",
@@ -68,7 +68,7 @@
     {
       "id": "T-204",
       "title": "Overlap consumer A",
-      "path": "_governator/tasks/T-204-overlap-consumer.md",
+      "path": ".governator/tasks/T-204-overlap-consumer.md",
       "kind": "execution",
       "state": "open",
       "role": "worker",
@@ -86,7 +86,7 @@
     {
       "id": "T-205",
       "title": "Overlap consumer B",
-      "path": "_governator/tasks/T-205-overlap-monitor.md",
+      "path": ".governator/tasks/T-205-overlap-monitor.md",
       "kind": "execution",
       "state": "open",
       "role": "worker",

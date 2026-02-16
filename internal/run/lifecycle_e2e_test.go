@@ -35,10 +35,10 @@ func TestLifecycleEndToEndHappyPath(t *testing.T) {
 	task := newTestTask("T-LIFE-001", "Lifecycle integration task", "worker", taskPath, 10)
 	writeTestTaskIndex(t, repoRoot, []index.Task{task})
 
-	repo.RunGit(t, "add", filepath.Join("_governator", "tasks"))
+	repo.RunGit(t, "add", filepath.Join(".governator", "tasks"))
 	repo.RunGit(t, "commit", "-m", "Add lifecycle plan outputs")
 
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	idx, err := index.Load(indexPath)
 	if err != nil {
 		t.Fatalf("load index: %v", err)
@@ -134,10 +134,10 @@ func TestLifecycleEndToEndTimeoutResume(t *testing.T) {
 	task := newTestTask("T-LIFE-001", "Lifecycle integration task", "worker", taskPath, 10)
 	writeTestTaskIndex(t, repoRoot, []index.Task{task})
 
-	repo.RunGit(t, "add", filepath.Join("_governator", "tasks"))
+	repo.RunGit(t, "add", filepath.Join(".governator", "tasks"))
 	repo.RunGit(t, "commit", "-m", "Add lifecycle plan outputs")
 
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	idx, err := index.Load(indexPath)
 	if err != nil {
 		t.Fatalf("load index: %v", err)
@@ -271,10 +271,10 @@ func TestLifecycleEndToEndWorkerNonZeroExit(t *testing.T) {
 	task := newTestTask("T-FAIL-001", "Worker failure task", "worker", taskPath, 10)
 	writeTestTaskIndex(t, repoRoot, []index.Task{task})
 
-	repo.RunGit(t, "add", filepath.Join("_governator", "tasks"))
+	repo.RunGit(t, "add", filepath.Join(".governator", "tasks"))
 	repo.RunGit(t, "commit", "-m", "Add worker failure test task")
 
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 
 	// First run: worker dispatched and fails (task starts in open/triaged state)
 	// The work stage will automatically create the worktree when dispatching
@@ -333,7 +333,7 @@ func TestLifecycleEndToEndWorkerNonZeroExit(t *testing.T) {
 	assertAuditContains(t, repoRoot, "event=task.transition from=triaged to=blocked")
 
 	// Verify no marker file was created
-	markerPath := filepath.Join(worktreePath, "_governator", "_local-state", "worked.md")
+	markerPath := filepath.Join(worktreePath, ".governator", ".local-state", "worked.md")
 	if _, err := os.Stat(markerPath); err == nil {
 		t.Fatalf("marker file %s should not exist after worker failure", markerPath)
 	}
@@ -353,10 +353,10 @@ func TestLifecycleEndToEndTestStageFailure(t *testing.T) {
 	task := newTestTask("T-TEST-FAIL-001", "Test failure task", "worker", taskPath, 10)
 	writeTestTaskIndex(t, repoRoot, []index.Task{task})
 
-	repo.RunGit(t, "add", filepath.Join("_governator", "tasks"))
+	repo.RunGit(t, "add", filepath.Join(".governator", "tasks"))
 	repo.RunGit(t, "commit", "-m", "Add test failure task")
 
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	idx, err := index.Load(indexPath)
 	if err != nil {
 		t.Fatalf("load index: %v", err)
@@ -438,10 +438,10 @@ func TestLifecycleEndToEndReviewStageFailure(t *testing.T) {
 	task.Retries.MaxAttempts = 1
 	writeTestTaskIndex(t, repoRoot, []index.Task{task})
 
-	repo.RunGit(t, "add", filepath.Join("_governator", "tasks"))
+	repo.RunGit(t, "add", filepath.Join(".governator", "tasks"))
 	repo.RunGit(t, "commit", "-m", "Add review failure task")
 
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	idx, err := index.Load(indexPath)
 	if err != nil {
 		t.Fatalf("load index: %v", err)
@@ -533,10 +533,10 @@ func TestLifecycleEndToEndRetryLimitExhausted(t *testing.T) {
 	task.Retries.MaxAttempts = 2
 	writeTestTaskIndex(t, repoRoot, []index.Task{task})
 
-	repo.RunGit(t, "add", filepath.Join("_governator", "tasks"))
+	repo.RunGit(t, "add", filepath.Join(".governator", "tasks"))
 	repo.RunGit(t, "commit", "-m", "Add retry exhaustion task")
 
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	manager, err := worktree.NewManager(repoRoot)
 	if err != nil {
 		t.Fatalf("worktree manager: %v", err)
@@ -748,7 +748,7 @@ func TestLifecycleEndToEndMultipleTasksProgressingConcurrently(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal config: %v", err)
 	}
-	configPath := filepath.Join(repoRoot, "_governator", "_durable-state", "config.json")
+	configPath := filepath.Join(repoRoot, ".governator", "state", "config.json")
 	if err := os.WriteFile(configPath, append(data, '\n'), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -770,10 +770,10 @@ func TestLifecycleEndToEndMultipleTasksProgressingConcurrently(t *testing.T) {
 
 	writeTestTaskIndex(t, repoRoot, []index.Task{t1, t2, t3, t4})
 
-	repo.RunGit(t, "add", filepath.Join("_governator", "tasks"))
+	repo.RunGit(t, "add", filepath.Join(".governator", "tasks"))
 	repo.RunGit(t, "commit", "-m", "Add multi-stage tasks")
 
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	idx, err := index.Load(indexPath)
 	if err != nil {
 		t.Fatalf("load index: %v", err)
@@ -854,10 +854,10 @@ func TestLifecycleEndToEndWorkerTimeoutWithRetry(t *testing.T) {
 	task.Retries.MaxAttempts = 1
 	writeTestTaskIndex(t, repoRoot, []index.Task{task})
 
-	repo.RunGit(t, "add", filepath.Join("_governator", "tasks"))
+	repo.RunGit(t, "add", filepath.Join(".governator", "tasks"))
 	repo.RunGit(t, "commit", "-m", "Add timeout retry task")
 
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 
 	if _, err := Run(repoRoot, Options{Stdout: io.Discard, Stderr: io.Discard}); err != nil {
 		t.Fatalf("run.Run dispatch timeout failed: %v", err)
@@ -928,14 +928,14 @@ func TestLifecycleEndToEndMergeStageForResolvedTask(t *testing.T) {
 	task.State = index.TaskStateResolved
 	writeTestTaskIndex(t, repoRoot, []index.Task{task})
 
-	repo.RunGit(t, "add", filepath.Join("_governator", "tasks"))
+	repo.RunGit(t, "add", filepath.Join(".governator", "tasks"))
 	repo.RunGit(t, "commit", "-m", "Add resolved task")
 
 	baseBranch := config.Defaults().Branches.Base
 	worktreePath := ensureTaskWorktree(t, repoRoot, task, baseBranch)
 	commitFileInWorktree(t, worktreePath, "resolved.txt", "resolved content\n", "Resolved task content")
 
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	if _, err := Run(repoRoot, Options{Stdout: io.Discard, Stderr: io.Discard}); err != nil {
 		t.Fatalf("run.Run merge resolved failed: %v", err)
 	}
@@ -968,10 +968,10 @@ func setupLifecycleRepo(t *testing.T, workerCommand []string, timeoutSeconds int
 	writeLifecycleConfig(t, repo.Root, workerCommand, timeoutSeconds)
 
 	repo.RunGit(t, "add", "GOVERNATOR.md")
-	repo.RunGit(t, "add", filepath.Join("_governator", "_durable-state", "config.json"))
-	repo.RunGit(t, "add", filepath.Join("_governator", "roles", "worker.md"))
-	repo.RunGit(t, "add", filepath.Join("_governator", "roles", "tester.md"))
-	repo.RunGit(t, "add", filepath.Join("_governator", "roles", "reviewer.md"))
+	repo.RunGit(t, "add", filepath.Join(".governator", "state", "config.json"))
+	repo.RunGit(t, "add", filepath.Join(".governator", "roles", "worker.md"))
+	repo.RunGit(t, "add", filepath.Join(".governator", "roles", "tester.md"))
+	repo.RunGit(t, "add", filepath.Join(".governator", "roles", "reviewer.md"))
 	repo.RunGit(t, "commit", "-m", "Initialize lifecycle fixture")
 
 	return repo
@@ -979,7 +979,7 @@ func setupLifecycleRepo(t *testing.T, workerCommand []string, timeoutSeconds int
 
 func writeRolePrompt(t *testing.T, repoRoot, role string) {
 	t.Helper()
-	promptPath := filepath.Join(repoRoot, "_governator", "roles", fmt.Sprintf("%s.md", role))
+	promptPath := filepath.Join(repoRoot, ".governator", "roles", fmt.Sprintf("%s.md", role))
 	content := fmt.Sprintf("# %s role agent\n", role)
 	if err := os.WriteFile(promptPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("write %s role prompt: %v", role, err)
@@ -998,7 +998,7 @@ func writeLifecycleConfig(t *testing.T, repoRoot string, workerCommand []string,
 	if err != nil {
 		t.Fatalf("marshal config: %v", err)
 	}
-	configPath := filepath.Join(repoRoot, "_governator", "_durable-state", "config.json")
+	configPath := filepath.Join(repoRoot, ".governator", "state", "config.json")
 	if err := os.WriteFile(configPath, append(data, '\n'), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -1006,7 +1006,7 @@ func writeLifecycleConfig(t *testing.T, repoRoot string, workerCommand []string,
 
 func assertAuditContains(t *testing.T, repoRoot, substring string) {
 	t.Helper()
-	auditPath := filepath.Join(repoRoot, "_governator", "_local-state", "audit.log")
+	auditPath := filepath.Join(repoRoot, ".governator", ".local-state", "audit.log")
 	data, err := os.ReadFile(auditPath)
 	if err != nil {
 		t.Fatalf("read audit log: %v", err)
@@ -1086,7 +1086,7 @@ func TestLifecycleWorkerHelper(t *testing.T) {
 	}
 	stateDir := os.Getenv("GOVERNATOR_WORKER_STATE_PATH")
 	if stateDir == "" {
-		stateDir = filepath.Join("_governator", "_local-state")
+		stateDir = filepath.Join(".governator", ".local-state")
 	}
 	markerPath := filepath.Join(stateDir, marker)
 	if err := os.MkdirAll(filepath.Dir(markerPath), 0o755); err != nil {
@@ -1145,10 +1145,10 @@ func setupLifecycleConflictFixture(t *testing.T, workerCommand []string) lifecyc
 	task := newTestTask("T-CONFLICT-001", "Merge conflict task", "worker", taskPath, 10)
 	writeTestTaskIndex(t, repoRoot, []index.Task{task})
 
-	repo.RunGit(t, "add", filepath.Join("_governator", "tasks"))
+	repo.RunGit(t, "add", filepath.Join(".governator", "tasks"))
 	repo.RunGit(t, "commit", "-m", "Add conflict task")
 
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	idx, err := index.Load(indexPath)
 	if err != nil {
 		t.Fatalf("load index: %v", err)

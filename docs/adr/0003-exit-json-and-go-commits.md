@@ -11,7 +11,7 @@ signals:
 2. A stage marker file (for example, `worked.md`) exists.
 
 In practice, worker agents have not been reliably creating commits or marker
-files. Meanwhile, the dispatcher already writes `_governator/_local-state/.../exit.json`
+files. Meanwhile, the dispatcher already writes `.governator/.local-state/.../exit.json`
 as a deterministic signal that a worker has finished, including its exit code.
 
 ## Decision
@@ -21,7 +21,7 @@ contract for all worker stages.
 On a successful exit code:
 
 - Governator captures `git status --untracked-files=all` into
-  `_governator/_local-state/.../git-changes.txt` for posterity.
+  `.governator/.local-state/.../git-changes.txt` for posterity.
 - Governator stages all worktree changes with `git add -A`.
 - Governator creates a deterministic commit with a message of the form:
   - subject: `[<state>] <task title>`

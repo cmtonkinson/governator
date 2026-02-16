@@ -13,10 +13,10 @@ import (
 
 const (
 	governatorFileName = "GOVERNATOR.md"
-	docsDirName        = "_governator/docs"
+	docsDirName        = ".governator/docs"
 )
 
-// Compute builds digests for GOVERNATOR.md and planning artifacts under _governator/docs.
+// Compute builds digests for GOVERNATOR.md and planning artifacts under .governator/docs.
 func Compute(repoRoot string) (index.Digests, error) {
 	if repoRoot == "" {
 		return index.Digests{}, fmt.Errorf("repo root is required")
@@ -52,7 +52,7 @@ func digestFile(path string) (string, error) {
 	return fmt.Sprintf("sha256:%x", sum), nil
 }
 
-// docsDigests collects digests for all regular files under _governator/docs.
+// docsDigests collects digests for all regular files under .governator/docs.
 func docsDigests(repoRoot string) (map[string]string, error) {
 	docsRoot := filepath.Join(repoRoot, docsDirName)
 	entries := map[string]string{}

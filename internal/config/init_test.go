@@ -62,7 +62,7 @@ func TestInitRepoConfig(t *testing.T) {
 		}
 
 		for _, prompt := range planningPromptTemplates {
-			path := filepath.Join(tempDir, "_governator", "prompts", prompt.name)
+			path := filepath.Join(tempDir, ".governator", "prompts", prompt.name)
 			data, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatalf("read planning prompt %s: %v", prompt.name, err)
@@ -84,7 +84,7 @@ func TestInitRepoConfig(t *testing.T) {
 			t.Fatalf("InitFullLayout failed: %v", err)
 		}
 
-		path := filepath.Join(tempDir, "_governator", "planning.json")
+		path := filepath.Join(tempDir, ".governator", "planning.json")
 		data, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("read planning spec: %v", err)
@@ -152,9 +152,9 @@ func TestInitRepoConfig(t *testing.T) {
 		}
 
 		// Verify nested directory structure
-		governatorDir := filepath.Join(tempDir, "_governator")
+		governatorDir := filepath.Join(tempDir, ".governator")
 		if _, err := os.Stat(governatorDir); os.IsNotExist(err) {
-			t.Errorf("_governator directory was not created")
+			t.Errorf(".governator directory was not created")
 		}
 
 		durableStateDir := filepath.Join(tempDir, repoDurableStateDir)
@@ -162,7 +162,7 @@ func TestInitRepoConfig(t *testing.T) {
 			t.Errorf("durable state directory %s was not created", repoDurableStateDir)
 		}
 
-		legacyConfigDir := filepath.Join(tempDir, "_governator", "config")
+		legacyConfigDir := filepath.Join(tempDir, ".governator", "config")
 		if _, err := os.Stat(legacyConfigDir); err == nil {
 			t.Errorf("legacy config dir %s should not be created", legacyConfigDir)
 		}
@@ -190,9 +190,9 @@ func TestInitFullLayout(t *testing.T) {
 
 		// Verify reasoning prompts were created
 		reasoningFiles := []string{
-			"_governator/reasoning/high.md",
-			"_governator/reasoning/medium.md",
-			"_governator/reasoning/low.md",
+			".governator/reasoning/high.md",
+			".governator/reasoning/medium.md",
+			".governator/reasoning/low.md",
 		}
 		for _, file := range reasoningFiles {
 			filePath := filepath.Join(tempDir, file)
@@ -216,7 +216,7 @@ func TestInitFullLayout(t *testing.T) {
 		}
 	})
 
-	t.Run("copies embedded templates into _governator/templates", func(t *testing.T) {
+	t.Run("copies embedded templates into .governator/templates", func(t *testing.T) {
 		tempDir := t.TempDir()
 
 		if err := InitFullLayout(tempDir, InitOptions{}); err != nil {
@@ -271,7 +271,7 @@ func TestInitFullLayout(t *testing.T) {
 			t.Fatalf("Failed to write custom config: %v", err)
 		}
 
-		keepPath := filepath.Join(tempDir, "_governator", "architecture", ".keep")
+		keepPath := filepath.Join(tempDir, ".governator", "architecture", ".keep")
 		if err := os.MkdirAll(filepath.Dir(keepPath), 0755); err != nil {
 			t.Fatalf("Failed to create adr dir: %v", err)
 		}

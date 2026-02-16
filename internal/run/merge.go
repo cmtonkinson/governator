@@ -148,7 +148,7 @@ func ExecuteReviewMergeFlow(input MergeFlowInput) (MergeFlowResult, error) {
 	}
 
 	// Step 6: Remove task worktree to allow branch deletion.
-	worktreePath := filepath.Join(input.RepoRoot, "_governator", "_local-state", fmt.Sprintf("task-%s", input.Task.ID))
+	worktreePath := filepath.Join(input.RepoRoot, ".governator", "worktrees", fmt.Sprintf("task-%s", input.Task.ID))
 	if _, err := os.Stat(worktreePath); err == nil {
 		if err := runGitInRepo(input.RepoRoot, "worktree", "remove", "--force", worktreePath); err != nil {
 			// Log warning but don't fail merge
@@ -302,7 +302,7 @@ func ensureCleanWorktree(worktreePath string) error {
 			continue
 		}
 		path := strings.TrimSpace(line[3:])
-		if strings.HasPrefix(path, "_governator/_local-state") {
+		if strings.HasPrefix(path, ".governator/.local-state") {
 			continue
 		}
 		return fmt.Errorf("worktree %s has uncommitted changes: %s", worktreePath, line)
@@ -322,7 +322,7 @@ func createMergeWorktree(repoRoot string, mainBranch string, taskID string) (str
 		return "", nil, fmt.Errorf("task id is required")
 	}
 
-	mergeDir := filepath.Join(repoRoot, "_governator", "_local-state", "merge-worktrees")
+	mergeDir := filepath.Join(repoRoot, ".governator", "worktrees", "merge-worktrees")
 	if err := os.MkdirAll(mergeDir, 0o755); err != nil {
 		return "", nil, fmt.Errorf("create merge worktree dir %s: %w", mergeDir, err)
 	}

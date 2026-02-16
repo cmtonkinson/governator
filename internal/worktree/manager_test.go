@@ -21,7 +21,7 @@ func TestWorktreePathStable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WorktreePath error: %v", err)
 	}
-	want := filepath.Join(repoRoot, "_governator", "_local-state", "task-T-014")
+	want := filepath.Join(repoRoot, ".governator", "worktrees", "task-T-014")
 	if path != want {
 		t.Fatalf("WorktreePath = %q, want %q", path, want)
 	}
@@ -57,8 +57,8 @@ func TestEnsureWorktreeCreatesWorktree(t *testing.T) {
 	if current != branch {
 		t.Fatalf("worktree branch = %q, want %q", current, branch)
 	}
-	if result.RelativePath != "_governator/_local-state/task-T-001" {
-		t.Fatalf("relative path = %q, want %q", result.RelativePath, "_governator/_local-state/task-T-001")
+	if result.RelativePath != ".governator/worktrees/task-T-001" {
+		t.Fatalf("relative path = %q, want %q", result.RelativePath, ".governator/worktrees/task-T-001")
 	}
 }
 

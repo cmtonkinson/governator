@@ -12,7 +12,7 @@ import (
 	"github.com/cmtonkinson/governator/internal/worker"
 )
 
-const localStateDirName = "_governator/_local-state"
+const localStateDirName = ".governator/.local-state"
 
 func newWorkerStageInput(repoRoot, worktreeRoot string, task index.Task, stage roles.Stage, role index.Role, attempt int, cfg config.Config, warn func(string)) worker.StageInput {
 	agentUsesCodex := false

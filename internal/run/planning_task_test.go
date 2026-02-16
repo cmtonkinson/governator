@@ -24,7 +24,7 @@ func TestPlanningTaskStepForPhase(t *testing.T) {
 	if step.workstreamID() != planningIndexTaskID {
 		t.Fatalf("workstream id = %q", step.workstreamID())
 	}
-	expectedPrompt := filepath.ToSlash(filepath.Join("_governator", "prompts", "architecture-baseline.md"))
+	expectedPrompt := filepath.ToSlash(filepath.Join(".governator", "prompts", "architecture-baseline.md"))
 	if step.promptPath != expectedPrompt {
 		t.Fatalf("prompt path = %q, want %q", step.promptPath, expectedPrompt)
 	}

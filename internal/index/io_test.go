@@ -87,7 +87,7 @@ func TestIndexSaveDeterministicTasksAndDeps(t *testing.T) {
 		Tasks: []Task{
 			{
 				ID:           "task-b",
-				Path:         "_governator/tasks/task-b.md",
+				Path:         ".governator/tasks/task-b.md",
 				State:        TaskStateOpen,
 				Role:         "worker",
 				Dependencies: []string{"dep-b", "dep-a"},
@@ -96,7 +96,7 @@ func TestIndexSaveDeterministicTasksAndDeps(t *testing.T) {
 			},
 			{
 				ID:           "task-a",
-				Path:         "_governator/tasks/task-a.md",
+				Path:         ".governator/tasks/task-a.md",
 				State:        TaskStateOpen,
 				Role:         "worker",
 				Dependencies: []string{"dep-d", "dep-c"},
@@ -151,7 +151,7 @@ func TestIndexSaveRoundTripDeterministic(t *testing.T) {
 		Tasks: []Task{
 			{
 				ID:           "task-b",
-				Path:         "_governator/tasks/task-b.md",
+				Path:         ".governator/tasks/task-b.md",
 				State:        TaskStateOpen,
 				Role:         "worker",
 				Dependencies: []string{"dep-b", "dep-a"},
@@ -159,7 +159,7 @@ func TestIndexSaveRoundTripDeterministic(t *testing.T) {
 			},
 			{
 				ID:           "task-a",
-				Path:         "_governator/tasks/task-a.md",
+				Path:         ".governator/tasks/task-a.md",
 				State:        TaskStateOpen,
 				Role:         "worker",
 				Dependencies: []string{"dep-d", "dep-c"},
@@ -256,7 +256,7 @@ func TestNormalizeTasksForWriteTieBreakers(t *testing.T) {
 	unordered := []Task{
 		{
 			ID:           "task-b",
-			Path:         "_governator/tasks/task-b.md",
+			Path:         ".governator/tasks/task-b.md",
 			Role:         "worker",
 			Order:        1,
 			Dependencies: []string{"dep-b", "dep-a"},
@@ -264,7 +264,7 @@ func TestNormalizeTasksForWriteTieBreakers(t *testing.T) {
 		},
 		{
 			ID:           "task-a",
-			Path:         "_governator/tasks/task-z.md",
+			Path:         ".governator/tasks/task-z.md",
 			Role:         "worker",
 			Order:        1,
 			Dependencies: []string{"dep-b", "dep-a"},
@@ -272,7 +272,7 @@ func TestNormalizeTasksForWriteTieBreakers(t *testing.T) {
 		},
 		{
 			ID:           "task-a",
-			Path:         "_governator/tasks/task-a.md",
+			Path:         ".governator/tasks/task-a.md",
 			Role:         "worker",
 			Order:        1,
 			Dependencies: []string{"dep-b", "dep-a"},
@@ -280,7 +280,7 @@ func TestNormalizeTasksForWriteTieBreakers(t *testing.T) {
 		},
 		{
 			ID:           "task-a",
-			Path:         "_governator/tasks/task-a.md",
+			Path:         ".governator/tasks/task-a.md",
 			Role:         "architect",
 			Order:        1,
 			Dependencies: []string{"dep-b", "dep-a"},
@@ -298,10 +298,10 @@ func TestNormalizeTasksForWriteTieBreakers(t *testing.T) {
 		path string
 		role string
 	}{
-		{"task-a", "_governator/tasks/task-a.md", "architect"},
-		{"task-a", "_governator/tasks/task-a.md", "worker"},
-		{"task-a", "_governator/tasks/task-z.md", "worker"},
-		{"task-b", "_governator/tasks/task-b.md", "worker"},
+		{"task-a", ".governator/tasks/task-a.md", "architect"},
+		{"task-a", ".governator/tasks/task-a.md", "worker"},
+		{"task-a", ".governator/tasks/task-z.md", "worker"},
+		{"task-b", ".governator/tasks/task-b.md", "worker"},
 	}
 
 	for i, expected := range want {

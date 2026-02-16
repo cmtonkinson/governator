@@ -467,7 +467,7 @@ func readSupervisorLogTail(repoRoot string, supervisors []status.SupervisorSumma
 		logPath = strings.TrimSpace(supervisors[0].LogPath)
 	}
 	if logPath == "" {
-		logPath = filepath.Join(repoRoot, "_governator", "_local-state", "supervisor", "supervisor.log")
+		logPath = filepath.Join(repoRoot, ".governator", ".local-state", "supervisor", "supervisor.log")
 	}
 
 	file, err := os.Open(logPath)

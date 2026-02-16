@@ -2,6 +2,7 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -17,6 +18,10 @@ import (
 )
 
 const (
+	legacyGovernatorDirName            = "_governator"
+	legacyDurableStateDir              = "_governator/_durable-state"
+	legacyLocalStateRelPath            = "_governator/_local-state"
+	layoutMigrationID                  = "20260216_migrate_workspace_layout"
 	conflictResolutionPromptName       = "conflict-resolution.md"
 	conflictResolutionTemplatePath     = "planning/conflict-resolution.md"
 	conflictResolutionMigrationID      = "20260209_add_conflict_resolution_prompt"
@@ -31,6 +36,11 @@ type repoMigration struct {
 }
 
 var repoMigrations = []repoMigration{
+	{
+		id:          layoutMigrationID,
+		destructive: false,
+		apply:       migrateWorkspaceLayout,
+	},
 	{
 		id:          conflictResolutionMigrationID,
 		destructive: false,
@@ -89,10 +99,9 @@ func pendingRepoMigrations(repoRoot string) ([]repoMigration, error) {
 		if strings.TrimSpace(migration.id) == "" {
 			continue
 		}
-		markerPath := filepath.Join(migrationsDir, migration.id+".done")
-		exists, err := pathExists(markerPath)
+		exists, err := migrationMarkerExists(repoRoot, migrationsDir, migration.id)
 		if err != nil {
-			return nil, fmt.Errorf("check migration marker %s: %w", markerPath, err)
+			return nil, err
 		}
 		if !exists {
 			pending = append(pending, migration)
@@ -119,9 +128,9 @@ func StampExistingMigrations(repoRoot string, opts InitOptions) error {
 			continue
 		}
 		markerPath := filepath.Join(migrationsDir, migration.id+".done")
-		exists, err := pathExists(markerPath)
+		exists, err := migrationMarkerExists(repoRoot, migrationsDir, migration.id)
 		if err != nil {
-			return fmt.Errorf("check migration marker %s: %w", markerPath, err)
+			return err
 		}
 		if exists {
 			continue
@@ -167,8 +176,301 @@ func ApplyRepoMigrations(repoRoot string, opts InitOptions) error {
 	return nil
 }
 
+// migrationMarkerExists checks both current and legacy marker locations for migration completion.
+func migrationMarkerExists(repoRoot, migrationsDir, migrationID string) (bool, error) {
+	current := filepath.Join(migrationsDir, migrationID+".done")
+	exists, err := pathExists(current)
+	if err != nil {
+		return false, fmt.Errorf("check migration marker %s: %w", current, err)
+	}
+	if exists {
+		return true, nil
+	}
+
+	legacy := filepath.Join(repoRoot, legacyDurableStateDir, "migrations", migrationID+".done")
+	exists, err = pathExists(legacy)
+	if err != nil {
+		return false, fmt.Errorf("check legacy migration marker %s: %w", legacy, err)
+	}
+	return exists, nil
+}
+
+// migrateWorkspaceLayout upgrades legacy _governator layout to the dot-prefixed workspace layout.
+func migrateWorkspaceLayout(repoRoot string, opts InitOptions) error {
+	legacyRoot := filepath.Join(repoRoot, legacyGovernatorDirName)
+	legacyExists, err := pathExists(legacyRoot)
+	if err != nil {
+		return fmt.Errorf("check legacy governator dir %s: %w", legacyRoot, err)
+	}
+	if !legacyExists {
+		if err := ensureDotLayoutScaffold(repoRoot, opts); err != nil {
+			return err
+		}
+		return ensureWorkspaceGitignore(repoRoot)
+	}
+
+	targetRoot := filepath.Join(repoRoot, ".governator")
+	if err := ensureDir(targetRoot, opts); err != nil {
+		return fmt.Errorf("create .governator directory %s: %w", targetRoot, err)
+	}
+
+	entries, err := os.ReadDir(legacyRoot)
+	if err != nil {
+		return fmt.Errorf("read legacy workspace %s: %w", legacyRoot, err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		sourcePath := filepath.Join(legacyRoot, name)
+		targetName := name
+		switch name {
+		case "_durable-state":
+			targetName = "state"
+		case "_local-state":
+			targetName = ".local-state"
+		}
+		targetPath := filepath.Join(targetRoot, targetName)
+		if err := mergePath(sourcePath, targetPath); err != nil {
+			return err
+		}
+	}
+
+	if err := migrateLegacyWorktreeDirs(repoRoot); err != nil {
+		return err
+	}
+	if err := rewriteLegacyMetadataWorktreePaths(repoRoot); err != nil {
+		return err
+	}
+	if err := ensureDotLayoutScaffold(repoRoot, opts); err != nil {
+		return err
+	}
+	if err := ensureWorkspaceGitignore(repoRoot); err != nil {
+		return err
+	}
+
+	legacyEntries, err := os.ReadDir(legacyRoot)
+	if err != nil {
+		return fmt.Errorf("read legacy workspace %s after migration: %w", legacyRoot, err)
+	}
+	if len(legacyEntries) == 0 {
+		if err := os.Remove(legacyRoot); err != nil {
+			return fmt.Errorf("remove legacy workspace %s: %w", legacyRoot, err)
+		}
+	}
+	return nil
+}
+
+// ensureDotLayoutScaffold creates required directories/files for the new layout.
+func ensureDotLayoutScaffold(repoRoot string, opts InitOptions) error {
+	worktreesDir := filepath.Join(repoRoot, ".governator", "worktrees")
+	if err := ensureDir(worktreesDir, opts); err != nil {
+		return fmt.Errorf("create worktrees directory %s: %w", worktreesDir, err)
+	}
+	if err := ensureKeepFile(filepath.Join(worktreesDir, ".keep"), opts); err != nil {
+		return fmt.Errorf("ensure worktrees .keep: %w", err)
+	}
+	localStateDir := filepath.Join(repoRoot, ".governator", ".local-state")
+	if err := ensureDir(localStateDir, opts); err != nil {
+		return fmt.Errorf("create local-state directory %s: %w", localStateDir, err)
+	}
+	return nil
+}
+
+// ensureWorkspaceGitignore ensures .governator/.gitignore contains required runtime ignore rules.
+func ensureWorkspaceGitignore(repoRoot string) error {
+	gitignorePath := filepath.Join(repoRoot, ".governator", ".gitignore")
+	requiredRules := []string{
+		".local-state/*",
+		"!.local-state/.keep",
+		"worktrees/*",
+		"!worktrees/.keep",
+	}
+
+	exists, err := pathExists(gitignorePath)
+	if err != nil {
+		return fmt.Errorf("check workspace gitignore %s: %w", gitignorePath, err)
+	}
+	if !exists {
+		content := strings.Join(requiredRules, "\n") + "\n"
+		if err := os.WriteFile(gitignorePath, []byte(content), 0o644); err != nil {
+			return fmt.Errorf("write workspace gitignore %s: %w", gitignorePath, err)
+		}
+		return nil
+	}
+
+	current, err := os.ReadFile(gitignorePath)
+	if err != nil {
+		return fmt.Errorf("read workspace gitignore %s: %w", gitignorePath, err)
+	}
+	lines := strings.Split(strings.ReplaceAll(string(current), "\r\n", "\n"), "\n")
+	seen := map[string]struct{}{}
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+	}
+	changed := false
+	for _, rule := range requiredRules {
+		if _, ok := seen[rule]; ok {
+			continue
+		}
+		lines = append(lines, rule)
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+	updated := strings.Join(lines, "\n")
+	updated = strings.TrimRight(updated, "\n") + "\n"
+	if err := os.WriteFile(gitignorePath, []byte(updated), 0o644); err != nil {
+		return fmt.Errorf("update workspace gitignore %s: %w", gitignorePath, err)
+	}
+	return nil
+}
+
+// mergePath moves source into destination, merging directories and rejecting conflicting files.
+func mergePath(sourcePath, targetPath string) error {
+	sourceInfo, err := os.Stat(sourcePath)
+	if err != nil {
+		return fmt.Errorf("stat source path %s: %w", sourcePath, err)
+	}
+
+	targetInfo, err := os.Stat(targetPath)
+	if errors.Is(err, os.ErrNotExist) {
+		if err := os.Rename(sourcePath, targetPath); err != nil {
+			return fmt.Errorf("move %s to %s: %w", sourcePath, targetPath, err)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("stat target path %s: %w", targetPath, err)
+	}
+	if sourceInfo.IsDir() != targetInfo.IsDir() {
+		return fmt.Errorf("layout migration conflict: %s and %s have different types", sourcePath, targetPath)
+	}
+	if !sourceInfo.IsDir() {
+		sourceBytes, readErr := os.ReadFile(sourcePath)
+		if readErr != nil {
+			return fmt.Errorf("read source file %s: %w", sourcePath, readErr)
+		}
+		targetBytes, readErr := os.ReadFile(targetPath)
+		if readErr != nil {
+			return fmt.Errorf("read target file %s: %w", targetPath, readErr)
+		}
+		if string(sourceBytes) != string(targetBytes) {
+			return fmt.Errorf("layout migration conflict: destination exists with different content: %s", targetPath)
+		}
+		if err := os.Remove(sourcePath); err != nil {
+			return fmt.Errorf("remove duplicate source file %s: %w", sourcePath, err)
+		}
+		return nil
+	}
+
+	entries, err := os.ReadDir(sourcePath)
+	if err != nil {
+		return fmt.Errorf("read source directory %s: %w", sourcePath, err)
+	}
+	for _, entry := range entries {
+		childSource := filepath.Join(sourcePath, entry.Name())
+		childTarget := filepath.Join(targetPath, entry.Name())
+		if err := mergePath(childSource, childTarget); err != nil {
+			return err
+		}
+	}
+	if err := os.Remove(sourcePath); err != nil {
+		return fmt.Errorf("remove merged source directory %s: %w", sourcePath, err)
+	}
+	return nil
+}
+
+// migrateLegacyWorktreeDirs moves legacy task and merge worktree directories into .governator/worktrees.
+func migrateLegacyWorktreeDirs(repoRoot string) error {
+	localStateDir := filepath.Join(repoRoot, ".governator", ".local-state")
+	worktreesDir := filepath.Join(repoRoot, ".governator", "worktrees")
+	entries, err := os.ReadDir(localStateDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read local state dir %s: %w", localStateDir, err)
+	}
+	if err := os.MkdirAll(worktreesDir, 0o755); err != nil {
+		return fmt.Errorf("create worktrees dir %s: %w", worktreesDir, err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if name != "merge-worktrees" && !strings.HasPrefix(name, "task-") {
+			continue
+		}
+		sourcePath := filepath.Join(localStateDir, name)
+		targetPath := filepath.Join(worktreesDir, name)
+		if err := mergePath(sourcePath, targetPath); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// rewriteLegacyMetadataWorktreePaths rewrites metadata worktree_rel_path values to .governator/worktrees/*.
+func rewriteLegacyMetadataWorktreePaths(repoRoot string) error {
+	metaDir := filepath.Join(repoRoot, ".governator", ".local-state", "meta")
+	entries, err := os.ReadDir(metaDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read metadata dir %s: %w", metaDir, err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		path := filepath.Join(metaDir, entry.Name())
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read metadata file %s: %w", path, err)
+		}
+
+		var decoded map[string]any
+		if err := json.Unmarshal(raw, &decoded); err != nil {
+			return fmt.Errorf("decode metadata file %s: %w", path, err)
+		}
+		value, ok := decoded["worktree_rel_path"].(string)
+		if !ok || strings.TrimSpace(value) == "" {
+			continue
+		}
+
+		normalized := filepath.ToSlash(filepath.Clean(value))
+		var replacement string
+		switch {
+		case strings.HasPrefix(normalized, legacyLocalStateRelPath+"/task-"):
+			replacement = strings.Replace(normalized, legacyLocalStateRelPath+"/", ".governator/worktrees/", 1)
+		case strings.HasPrefix(normalized, ".governator/.local-state/task-"):
+			replacement = strings.Replace(normalized, ".governator/.local-state/", ".governator/worktrees/", 1)
+		}
+		if replacement == "" || replacement == value {
+			continue
+		}
+		decoded["worktree_rel_path"] = replacement
+		updated, err := json.MarshalIndent(decoded, "", "  ")
+		if err != nil {
+			return fmt.Errorf("encode metadata file %s: %w", path, err)
+		}
+		updated = append(updated, '\n')
+		if err := os.WriteFile(path, updated, 0o644); err != nil {
+			return fmt.Errorf("write metadata file %s: %w", path, err)
+		}
+	}
+	return nil
+}
+
 func migrateConflictResolutionPrompt(repoRoot string, opts InitOptions) error {
-	promptsDir := filepath.Join(repoRoot, "_governator", "prompts")
+	promptsDir := filepath.Join(repoRoot, ".governator", "prompts")
 	if err := ensureDir(promptsDir, opts); err != nil {
 		return fmt.Errorf("create prompts directory %s: %w", promptsDir, err)
 	}
@@ -237,7 +539,7 @@ func normalizePromptStem(name string) string {
 }
 
 func migrateResetOpenTasksStripRoleSuffix(repoRoot string, opts InitOptions) error {
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	indexExists, err := pathExists(indexPath)
 	if err != nil {
 		return fmt.Errorf("check task index %s: %w", indexPath, err)
@@ -342,7 +644,7 @@ func roleSuffixCandidates(repoRoot string, idx index.Index) (map[string]struct{}
 		}
 	}
 
-	rolesDir := filepath.Join(repoRoot, "_governator", "roles")
+	rolesDir := filepath.Join(repoRoot, ".governator", "roles")
 	entries, err := os.ReadDir(rolesDir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -490,7 +792,7 @@ func purgeTaskWorktreesAndBranches(repoRoot string, openTaskIDs map[string]struc
 }
 
 func removeTaskWorktreeDir(repoRoot string, taskID string) error {
-	abs := filepath.Join(repoRoot, "_governator", "_local-state", "task-"+taskID)
+	abs := filepath.Join(repoRoot, ".governator", "worktrees", "task-"+taskID)
 	exists, err := pathExists(abs)
 	if err != nil || !exists {
 		return err
@@ -504,7 +806,7 @@ func removeTaskWorktreeDir(repoRoot string, taskID string) error {
 }
 
 func removeTaskMetaFile(repoRoot string, taskID string) error {
-	metaPath := filepath.Join(repoRoot, "_governator", "_local-state", "meta", taskID+".json")
+	metaPath := filepath.Join(repoRoot, ".governator", ".local-state", "meta", taskID+".json")
 	if err := os.Remove(metaPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("remove worktree metadata %s: %w", metaPath, err)
 	}

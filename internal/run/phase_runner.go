@@ -337,10 +337,10 @@ func ensureCleanRepoRoot(repoRoot string) error {
 			return fmt.Errorf("repository has uncommitted changes: %s", line)
 		}
 		path := strings.TrimSpace(line[3:])
-		if strings.HasPrefix(path, "_governator/_local-state") {
+		if strings.HasPrefix(path, ".governator/.local-state") {
 			continue
 		}
-		if strings.HasPrefix(path, "_governator/index.json") {
+		if strings.HasPrefix(path, ".governator/index.json") {
 			continue
 		}
 		return fmt.Errorf("repository has uncommitted changes: %s", line)

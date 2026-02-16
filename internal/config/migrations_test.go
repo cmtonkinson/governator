@@ -51,7 +51,7 @@ func TestPendingRepoMigrationsIncludesMissingMarkers(t *testing.T) {
 // TestPendingRepoMigrationsSkipsCompletedMarkers verifies completed migrations are excluded from pending output.
 func TestPendingRepoMigrationsSkipsCompletedMarkers(t *testing.T) {
 	repoRoot := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(repoRoot, "_governator", "prompts"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".governator", "prompts"), 0o755); err != nil {
 		t.Fatalf("mkdir prompts: %v", err)
 	}
 	if err := ApplyRepoMigrations(repoRoot, InitOptions{}); err != nil {
@@ -70,7 +70,7 @@ func TestPendingRepoMigrationsSkipsCompletedMarkers(t *testing.T) {
 // TestApplyRepoMigrationsCreatesConflictResolutionPrompt verifies the migration writes the embedded prompt and marker.
 func TestApplyRepoMigrationsCreatesConflictResolutionPrompt(t *testing.T) {
 	repoRoot := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(repoRoot, "_governator", "prompts"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".governator", "prompts"), 0o755); err != nil {
 		t.Fatalf("mkdir prompts: %v", err)
 	}
 
@@ -78,7 +78,7 @@ func TestApplyRepoMigrationsCreatesConflictResolutionPrompt(t *testing.T) {
 		t.Fatalf("ApplyRepoMigrations: %v", err)
 	}
 
-	promptPath := filepath.Join(repoRoot, "_governator", "prompts", conflictResolutionPromptName)
+	promptPath := filepath.Join(repoRoot, ".governator", "prompts", conflictResolutionPromptName)
 	got, err := os.ReadFile(promptPath)
 	if err != nil {
 		t.Fatalf("read migrated prompt: %v", err)
@@ -107,7 +107,7 @@ func TestApplyRepoMigrationsCreatesConflictResolutionPrompt(t *testing.T) {
 // TestApplyRepoMigrationsSkipsWhenTargetPromptExists ensures operator changes are preserved.
 func TestApplyRepoMigrationsSkipsWhenTargetPromptExists(t *testing.T) {
 	repoRoot := t.TempDir()
-	promptsDir := filepath.Join(repoRoot, "_governator", "prompts")
+	promptsDir := filepath.Join(repoRoot, ".governator", "prompts")
 	if err := os.MkdirAll(promptsDir, 0o755); err != nil {
 		t.Fatalf("mkdir prompts: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestApplyRepoMigrationsSkipsWhenTargetPromptExists(t *testing.T) {
 // TestApplyRepoMigrationsSkipsWhenSimilarPromptExists ensures migration avoids creating duplicates.
 func TestApplyRepoMigrationsSkipsWhenSimilarPromptExists(t *testing.T) {
 	repoRoot := t.TempDir()
-	promptsDir := filepath.Join(repoRoot, "_governator", "prompts")
+	promptsDir := filepath.Join(repoRoot, ".governator", "prompts")
 	if err := os.MkdirAll(promptsDir, 0o755); err != nil {
 		t.Fatalf("mkdir prompts: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestApplyRepoMigrationsSkipsWhenSimilarPromptExists(t *testing.T) {
 // TestApplyRepoMigrationsIsIdempotentPreservesPostMigrationEdits verifies reruns are marker-gated.
 func TestApplyRepoMigrationsIsIdempotentPreservesPostMigrationEdits(t *testing.T) {
 	repoRoot := t.TempDir()
-	promptsDir := filepath.Join(repoRoot, "_governator", "prompts")
+	promptsDir := filepath.Join(repoRoot, ".governator", "prompts")
 	if err := os.MkdirAll(promptsDir, 0o755); err != nil {
 		t.Fatalf("mkdir prompts: %v", err)
 	}
@@ -198,7 +198,7 @@ func TestApplyRepoMigrationsSkipsWhenMarkerExists(t *testing.T) {
 		t.Fatalf("ApplyRepoMigrations: %v", err)
 	}
 
-	targetPath := filepath.Join(repoRoot, "_governator", "prompts", conflictResolutionPromptName)
+	targetPath := filepath.Join(repoRoot, ".governator", "prompts", conflictResolutionPromptName)
 	if _, err := os.Stat(targetPath); !os.IsNotExist(err) {
 		t.Fatalf("prompt should not be created when marker exists")
 	}
@@ -207,9 +207,9 @@ func TestApplyRepoMigrationsSkipsWhenMarkerExists(t *testing.T) {
 // TestApplyRepoMigrationsDoesNotWriteMarkerWhenMigrationFails verifies failure is explicit and non-committing.
 func TestApplyRepoMigrationsDoesNotWriteMarkerWhenMigrationFails(t *testing.T) {
 	repoRoot := t.TempDir()
-	governatorRoot := filepath.Join(repoRoot, "_governator")
+	governatorRoot := filepath.Join(repoRoot, ".governator")
 	if err := os.MkdirAll(governatorRoot, 0o755); err != nil {
-		t.Fatalf("mkdir _governator: %v", err)
+		t.Fatalf("mkdir .governator: %v", err)
 	}
 	// Make prompts path invalid for ensureDir by creating a regular file.
 	if err := os.WriteFile(filepath.Join(governatorRoot, "prompts"), []byte("not-a-directory"), 0o644); err != nil {
@@ -352,20 +352,20 @@ func TestPendingRepoMigrationInfoIncludesDestructiveMigration(t *testing.T) {
 func TestApplyRepoMigrationsResetOpenTasksAndStripRoleSuffix(t *testing.T) {
 	repoRoot := t.TempDir()
 	initGitRepo(t, repoRoot)
-	if err := os.MkdirAll(filepath.Join(repoRoot, "_governator", "prompts"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".governator", "prompts"), 0o755); err != nil {
 		t.Fatalf("mkdir prompts: %v", err)
 	}
-	if err := os.MkdirAll(filepath.Join(repoRoot, "_governator", "roles"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".governator", "roles"), 0o755); err != nil {
 		t.Fatalf("mkdir roles: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(repoRoot, "_governator", "roles", "architect.md"), []byte("# Architect\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(repoRoot, ".governator", "roles", "architect.md"), []byte("# Architect\n"), 0o644); err != nil {
 		t.Fatalf("write architect role: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(repoRoot, "_governator", "roles", "default.md"), []byte("# Default\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(repoRoot, ".governator", "roles", "default.md"), []byte("# Default\n"), 0o644); err != nil {
 		t.Fatalf("write default role: %v", err)
 	}
 
-	tasksDir := filepath.Join(repoRoot, "_governator", "tasks")
+	tasksDir := filepath.Join(repoRoot, ".governator", "tasks")
 	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
 		t.Fatalf("mkdir tasks: %v", err)
 	}
@@ -385,14 +385,14 @@ func TestApplyRepoMigrationsResetOpenTasksAndStripRoleSuffix(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "planning",
-				Path:  "_governator/planning.json",
+				Path:  ".governator/planning.json",
 				Kind:  index.TaskKindPlanning,
 				State: index.TaskState("governator_planning_complete"),
 				Role:  "planner",
 			},
 			{
 				ID:           "001-build-api-architect",
-				Path:         "_governator/tasks/001-build-api-architect.md",
+				Path:         ".governator/tasks/001-build-api-architect.md",
 				Kind:         index.TaskKindExecution,
 				State:        index.TaskStateTriaged,
 				Role:         "architect",
@@ -400,7 +400,7 @@ func TestApplyRepoMigrationsResetOpenTasksAndStripRoleSuffix(t *testing.T) {
 			},
 			{
 				ID:            "002-test-api-default",
-				Path:          "_governator/tasks/002-test-api-default.md",
+				Path:          ".governator/tasks/002-test-api-default.md",
 				Kind:          index.TaskKindExecution,
 				State:         index.TaskStateBlocked,
 				Role:          "default",
@@ -410,7 +410,7 @@ func TestApplyRepoMigrationsResetOpenTasksAndStripRoleSuffix(t *testing.T) {
 			},
 			{
 				ID:           "003-release-notes",
-				Path:         "_governator/tasks/003-release-notes.md",
+				Path:         ".governator/tasks/003-release-notes.md",
 				Kind:         index.TaskKindExecution,
 				State:        index.TaskStateMerged,
 				Role:         "default",
@@ -418,7 +418,7 @@ func TestApplyRepoMigrationsResetOpenTasksAndStripRoleSuffix(t *testing.T) {
 			},
 		},
 	}
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	if err := os.MkdirAll(filepath.Dir(indexPath), 0o755); err != nil {
 		t.Fatalf("mkdir index dir: %v", err)
 	}
@@ -439,12 +439,12 @@ func TestApplyRepoMigrationsResetOpenTasksAndStripRoleSuffix(t *testing.T) {
 
 	runGitCommand(t, repoRoot, "branch", "001-build-api-architect")
 	runGitCommand(t, repoRoot, "branch", "task-002-test-api-default")
-	worktreePath := filepath.Join(repoRoot, "_governator", "_local-state", "task-001-build-api-architect")
+	worktreePath := filepath.Join(repoRoot, ".governator", "worktrees", "task-001-build-api-architect")
 	runGitCommand(t, repoRoot, "worktree", "add", worktreePath, "001-build-api-architect")
-	if err := os.MkdirAll(filepath.Join(repoRoot, "_governator", "_local-state", "meta"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".governator", ".local-state", "meta"), 0o755); err != nil {
 		t.Fatalf("mkdir meta: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(repoRoot, "_governator", "_local-state", "meta", "001-build-api-architect.json"), []byte("{}\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(repoRoot, ".governator", ".local-state", "meta", "001-build-api-architect.json"), []byte("{}\n"), 0o644); err != nil {
 		t.Fatalf("write meta: %v", err)
 	}
 
@@ -474,8 +474,8 @@ func TestApplyRepoMigrationsResetOpenTasksAndStripRoleSuffix(t *testing.T) {
 	if taskA.State != index.TaskStateBacklog {
 		t.Fatalf("taskA state = %s, want backlog", taskA.State)
 	}
-	if taskA.Path != "_governator/tasks/001-build-api.md" {
-		t.Fatalf("taskA path = %s, want _governator/tasks/001-build-api.md", taskA.Path)
+	if taskA.Path != ".governator/tasks/001-build-api.md" {
+		t.Fatalf("taskA path = %s, want .governator/tasks/001-build-api.md", taskA.Path)
 	}
 
 	taskB, ok := taskByID["002-test-api"]
@@ -503,10 +503,10 @@ func TestApplyRepoMigrationsResetOpenTasksAndStripRoleSuffix(t *testing.T) {
 		t.Fatalf("taskC dependencies = %#v, want [002-test-api]", taskC.Dependencies)
 	}
 
-	if _, err := os.Stat(filepath.Join(repoRoot, "_governator", "tasks", "001-build-api.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(repoRoot, ".governator", "tasks", "001-build-api.md")); err != nil {
 		t.Fatalf("renamed file 001-build-api.md missing: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(repoRoot, "_governator", "tasks", "001-build-api-architect.md")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(repoRoot, ".governator", "tasks", "001-build-api-architect.md")); !os.IsNotExist(err) {
 		t.Fatalf("old suffixed file should be removed, stat err=%v", err)
 	}
 
@@ -537,20 +537,20 @@ func TestApplyRepoMigrationsResetOpenTasksAndStripRoleSuffix(t *testing.T) {
 // TestApplyRepoMigrationsResetOpenTasksStripRoleSuffixFailsOnCollision verifies rename collisions fail and do not mark completion.
 func TestApplyRepoMigrationsResetOpenTasksStripRoleSuffixFailsOnCollision(t *testing.T) {
 	repoRoot := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(repoRoot, "_governator", "prompts"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".governator", "prompts"), 0o755); err != nil {
 		t.Fatalf("mkdir prompts: %v", err)
 	}
-	if err := os.MkdirAll(filepath.Join(repoRoot, "_governator", "roles"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".governator", "roles"), 0o755); err != nil {
 		t.Fatalf("mkdir roles: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(repoRoot, "_governator", "roles", "architect.md"), []byte("# Architect\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(repoRoot, ".governator", "roles", "architect.md"), []byte("# Architect\n"), 0o644); err != nil {
 		t.Fatalf("write architect role: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(repoRoot, "_governator", "roles", "planner.md"), []byte("# Planner\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(repoRoot, ".governator", "roles", "planner.md"), []byte("# Planner\n"), 0o644); err != nil {
 		t.Fatalf("write planner role: %v", err)
 	}
 
-	tasksDir := filepath.Join(repoRoot, "_governator", "tasks")
+	tasksDir := filepath.Join(repoRoot, ".governator", "tasks")
 	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
 		t.Fatalf("mkdir tasks: %v", err)
 	}
@@ -565,11 +565,11 @@ func TestApplyRepoMigrationsResetOpenTasksStripRoleSuffixFailsOnCollision(t *tes
 		SchemaVersion: 1,
 		Digests:       index.Digests{PlanningDocs: map[string]string{}},
 		Tasks: []index.Task{
-			{ID: "001-feature-architect", Path: "_governator/tasks/001-feature-architect.md", Kind: index.TaskKindExecution, State: index.TaskStateTriaged},
-			{ID: "001-feature-planner", Path: "_governator/tasks/001-feature-planner.md", Kind: index.TaskKindExecution, State: index.TaskStateTriaged},
+			{ID: "001-feature-architect", Path: ".governator/tasks/001-feature-architect.md", Kind: index.TaskKindExecution, State: index.TaskStateTriaged},
+			{ID: "001-feature-planner", Path: ".governator/tasks/001-feature-planner.md", Kind: index.TaskKindExecution, State: index.TaskStateTriaged},
 		},
 	}
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	if err := os.MkdirAll(filepath.Dir(indexPath), 0o755); err != nil {
 		t.Fatalf("mkdir index dir: %v", err)
 	}
@@ -592,6 +592,136 @@ func TestApplyRepoMigrationsResetOpenTasksStripRoleSuffixFailsOnCollision(t *tes
 	markerPath := filepath.Join(repoRoot, repoDurableStateDir, "migrations", resetOpenTasksMigrationID+".done")
 	if _, statErr := os.Stat(markerPath); !os.IsNotExist(statErr) {
 		t.Fatalf("destructive migration marker should be absent on failure")
+	}
+}
+
+// TestApplyRepoMigrationsMigratesLegacyWorkspaceLayout verifies legacy _governator paths are migrated to the dot-prefixed layout.
+func TestApplyRepoMigrationsMigratesLegacyWorkspaceLayout(t *testing.T) {
+	repoRoot := t.TempDir()
+
+	legacyRoot := filepath.Join(repoRoot, "_governator")
+	if err := os.MkdirAll(filepath.Join(legacyRoot, "_durable-state", "migrations"), 0o755); err != nil {
+		t.Fatalf("mkdir legacy durable state: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(legacyRoot, "_durable-state", "config.json"), []byte("{\"branches\":{\"base\":\"main\"}}\n"), 0o644); err != nil {
+		t.Fatalf("write legacy config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(legacyRoot, "_durable-state", "migrations", conflictResolutionMigrationID+".done"), []byte("ok\n"), 0o644); err != nil {
+		t.Fatalf("write legacy conflict marker: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(legacyRoot, "_durable-state", "migrations", resetOpenTasksMigrationID+".done"), []byte("ok\n"), 0o644); err != nil {
+		t.Fatalf("write legacy reset marker: %v", err)
+	}
+
+	legacyLocalState := filepath.Join(legacyRoot, "_local-state")
+	if err := os.MkdirAll(filepath.Join(legacyLocalState, "meta"), 0o755); err != nil {
+		t.Fatalf("mkdir legacy meta dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(legacyLocalState, "index.json"), []byte("{\"schema_version\":1,\"tasks\":[],\"digests\":{\"planning_docs\":{}}}\n"), 0o644); err != nil {
+		t.Fatalf("write legacy index: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(legacyLocalState, "dag.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatalf("write legacy dag: %v", err)
+	}
+	legacyTaskWorktree := filepath.Join(legacyLocalState, "task-T-001")
+	if err := os.MkdirAll(legacyTaskWorktree, 0o755); err != nil {
+		t.Fatalf("mkdir legacy task worktree: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(legacyLocalState, "merge-worktrees", "tmp"), 0o755); err != nil {
+		t.Fatalf("mkdir legacy merge worktrees: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(legacyLocalState, "merge-worktrees", "tmp", "touch.txt"), []byte("ok\n"), 0o644); err != nil {
+		t.Fatalf("write legacy merge worktree file: %v", err)
+	}
+	metaPath := filepath.Join(legacyLocalState, "meta", "T-001.json")
+	metaContent := []byte("{\"worktree_rel_path\":\"_governator/_local-state/task-T-001\",\"branch\":\"task-T-001\"}\n")
+	if err := os.WriteFile(metaPath, metaContent, 0o644); err != nil {
+		t.Fatalf("write legacy metadata: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(legacyRoot, ".gitignore"), []byte("_local-state/*\n!_local-state/.keep\n"), 0o644); err != nil {
+		t.Fatalf("write legacy gitignore: %v", err)
+	}
+
+	if err := ApplyRepoMigrations(repoRoot, InitOptions{}); err != nil {
+		t.Fatalf("ApplyRepoMigrations: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(repoRoot, ".governator", "state", "config.json")); err != nil {
+		t.Fatalf("expected migrated config in .governator/state: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repoRoot, ".governator", ".local-state", "index.json")); err != nil {
+		t.Fatalf("expected migrated index in .governator/.local-state: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repoRoot, ".governator", "worktrees", "task-T-001")); err != nil {
+		t.Fatalf("expected task worktree moved to .governator/worktrees: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repoRoot, ".governator", "worktrees", "merge-worktrees", "tmp", "touch.txt")); err != nil {
+		t.Fatalf("expected merge worktree moved to .governator/worktrees: %v", err)
+	}
+
+	metaBytes, err := os.ReadFile(filepath.Join(repoRoot, ".governator", ".local-state", "meta", "T-001.json"))
+	if err != nil {
+		t.Fatalf("read migrated metadata: %v", err)
+	}
+	var metadata map[string]any
+	if err := json.Unmarshal(metaBytes, &metadata); err != nil {
+		t.Fatalf("decode migrated metadata: %v", err)
+	}
+	if got, _ := metadata["worktree_rel_path"].(string); got != ".governator/worktrees/task-T-001" {
+		t.Fatalf("metadata worktree_rel_path = %q, want %q", got, ".governator/worktrees/task-T-001")
+	}
+
+	gitignoreBytes, err := os.ReadFile(filepath.Join(repoRoot, ".governator", ".gitignore"))
+	if err != nil {
+		t.Fatalf("read migrated gitignore: %v", err)
+	}
+	gitignore := string(gitignoreBytes)
+	for _, rule := range []string{".local-state/*", "!.local-state/.keep", "worktrees/*", "!worktrees/.keep"} {
+		if !strings.Contains(gitignore, rule) {
+			t.Fatalf("expected gitignore to contain %q, got:\n%s", rule, gitignore)
+		}
+	}
+
+	if _, err := os.Stat(filepath.Join(repoRoot, "_governator")); !os.IsNotExist(err) {
+		t.Fatalf("legacy _governator directory should be removed; stat err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repoRoot, ".governator", "state", "migrations", layoutMigrationID+".done")); err != nil {
+		t.Fatalf("layout migration marker missing: %v", err)
+	}
+}
+
+// TestApplyRepoMigrationsLayoutFailsOnConflictingFiles verifies conflicting target files fail explicitly.
+func TestApplyRepoMigrationsLayoutFailsOnConflictingFiles(t *testing.T) {
+	repoRoot := t.TempDir()
+
+	legacyPath := filepath.Join(repoRoot, "_governator", "docs", "adr.md")
+	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o755); err != nil {
+		t.Fatalf("mkdir legacy docs dir: %v", err)
+	}
+	if err := os.WriteFile(legacyPath, []byte("legacy\n"), 0o644); err != nil {
+		t.Fatalf("write legacy docs file: %v", err)
+	}
+
+	targetPath := filepath.Join(repoRoot, ".governator", "docs", "adr.md")
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+		t.Fatalf("mkdir target docs dir: %v", err)
+	}
+	if err := os.WriteFile(targetPath, []byte("new-layout\n"), 0o644); err != nil {
+		t.Fatalf("write target docs file: %v", err)
+	}
+
+	err := ApplyRepoMigrations(repoRoot, InitOptions{})
+	if err == nil {
+		t.Fatal("expected layout migration conflict error")
+	}
+	if !strings.Contains(err.Error(), "layout migration conflict") {
+		t.Fatalf("expected layout migration conflict, got: %v", err)
+	}
+
+	markerPath := filepath.Join(repoRoot, repoDurableStateDir, "migrations", layoutMigrationID+".done")
+	if _, statErr := os.Stat(markerPath); !os.IsNotExist(statErr) {
+		t.Fatalf("layout migration marker should not exist on failure")
 	}
 }
 

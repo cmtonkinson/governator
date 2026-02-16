@@ -29,7 +29,7 @@ func TestExecuteWorkStageHappyPath(t *testing.T) {
 	repo := testrepos.New(t)
 	repoRoot := repo.Root
 
-	roleDir := filepath.Join(repoRoot, "_governator", "roles")
+	roleDir := filepath.Join(repoRoot, ".governator", "roles")
 	if err := os.MkdirAll(roleDir, 0o755); err != nil {
 		t.Fatalf("create roles dir: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestExecuteWorkStageHappyPath(t *testing.T) {
 		t.Fatalf("write role prompt: %v", err)
 	}
 
-	taskDir := filepath.Join(repoRoot, "_governator", "tasks")
+	taskDir := filepath.Join(repoRoot, ".governator", "tasks")
 	if err := os.MkdirAll(taskDir, 0o755); err != nil {
 		t.Fatalf("create tasks dir: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestExecuteWorkStageHappyPath(t *testing.T) {
 		t.Fatalf("write task file: %v", err)
 	}
 
-	repo.RunGit(t, "add", "_governator/roles/worker.md", "_governator/tasks/T-001-work.md")
+	repo.RunGit(t, "add", ".governator/roles/worker.md", ".governator/tasks/T-001-work.md")
 	repo.RunGit(t, "commit", "-m", "Add role and task prompts")
 
 	workerCommand := []string{os.Args[0], "-test.run=TestWorkStageWorkerHelper", "--", "{task_path}"}
@@ -60,7 +60,7 @@ func TestExecuteWorkStageHappyPath(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "T-001",
-				Path:  "_governator/tasks/T-001-work.md",
+				Path:  ".governator/tasks/T-001-work.md",
 				Kind:  index.TaskKindExecution,
 				State: index.TaskStateOpen,
 				Role:  "worker",
@@ -116,7 +116,7 @@ func TestWorkStageWorkerHelper(t *testing.T) {
 
 	markerBase := os.Getenv("GOVERNATOR_WORKER_STATE_PATH")
 	if markerBase == "" {
-		markerBase = filepath.Join("_governator", "_local-state")
+		markerBase = filepath.Join(".governator", ".local-state")
 	}
 	markerPath := filepath.Join(markerBase, "worked.md")
 	if err := os.MkdirAll(filepath.Dir(markerPath), 0o755); err != nil {

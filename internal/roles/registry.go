@@ -66,7 +66,7 @@ func LoadRegistry(root string, warn func(string)) (Registry, error) {
 	if strings.TrimSpace(root) == "" {
 		return Registry{}, errors.New("root is required")
 	}
-	rolesDir := filepath.Join(root, "_governator", "roles")
+	rolesDir := filepath.Join(root, ".governator", "roles")
 	roleEntries, err := os.ReadDir(rolesDir)
 	if err != nil {
 		return Registry{}, fmt.Errorf("read roles dir: %w", err)
@@ -96,7 +96,7 @@ func LoadRegistry(root string, warn func(string)) (Registry, error) {
 		return roleOrder[i] < roleOrder[j]
 	})
 
-	customDir := filepath.Join(root, "_governator", "custom-prompts")
+	customDir := filepath.Join(root, ".governator", "custom-prompts")
 	customGlobal := ""
 	customRoles := map[index.Role]string{}
 	customEntries, err := os.ReadDir(customDir)
@@ -161,9 +161,9 @@ func (registry Registry) RolePromptPath(role index.Role) (string, bool) {
 // PromptFiles returns the ordered prompt files for the supplied role.
 //
 // Prompt order:
-//  1. _governator/roles/<role>.md
-//  2. _governator/custom-prompts/_global.md
-//  3. _governator/custom-prompts/<role>.md
+//  1. .governator/roles/<role>.md
+//  2. .governator/custom-prompts/_global.md
+//  3. .governator/custom-prompts/<role>.md
 func (registry Registry) PromptFiles(role index.Role) []string {
 	prompts := []string{}
 	if def, ok := registry.roles[role]; ok {

@@ -7,7 +7,7 @@ rules:
   - pattern: 'Architecture Baseline|Power Six|Architecturally Significant Requirements'
     actions:
       - write:
-          path: '_governator/docs/arch-asr.md'
+          path: '.governator/docs/arch-asr.md'
           content: |
             # Architecturally Significant Requirements (ASRs)
 
@@ -20,7 +20,7 @@ rules:
             **Rationale**: Portability and minimal dependencies.
 
       - write:
-          path: '_governator/docs/arch-arc42.md'
+          path: '.governator/docs/arch-arc42.md'
           content: |
             # Architecture Overview (arc42)
 
@@ -32,14 +32,14 @@ rules:
             - No external dependencies
 
       - write:
-          path: '_governator/docs/arch-wardley.md'
+          path: '.governator/docs/arch-wardley.md'
           content: |
             # Wardley Map
 
             [Intentionally omitted - project scope too small for meaningful map]
 
       - write:
-          path: '_governator/docs/arch-c4.md'
+          path: '.governator/docs/arch-c4.md'
           content: |
             # C4 Diagrams
 
@@ -47,7 +47,7 @@ rules:
             Single binary CLI tool.
 
       - write:
-          path: '_governator/docs/adr/adr-0001-posix-c-stdlib.md'
+          path: '.governator/docs/adr/adr-0001-posix-c-stdlib.md'
           content: |
             # ADR-0001: Use POSIX C Standard Library Only
 
@@ -66,7 +66,7 @@ rules:
             - Manual memory management required
 
       - write:
-          path: '_governator/docs/adr/adr-0002-timestamp-format.md'
+          path: '.governator/docs/adr/adr-0002-timestamp-format.md'
           content: |
             # ADR-0002: Timestamp Format Policy
 
@@ -88,7 +88,7 @@ rules:
   - pattern: 'Gap Analysis|gap analysis|missing requirements|unresolved decisions'
     actions:
       - write:
-          path: '_governator/docs/gap-register.md'
+          path: '.governator/docs/gap-register.md'
           content: |
             # Gap Register
 
@@ -105,7 +105,7 @@ rules:
             **Description**: Platform-specific creation time API selection needed.
 
       - write:
-          path: '_governator/docs/gap-decision-ledger.md'
+          path: '.governator/docs/gap-decision-ledger.md'
           content: |
             # Gap Decision Ledger
 
@@ -116,7 +116,7 @@ rules:
             - GR-003: Select birth time API strategy
 
       - write:
-          path: '_governator/docs/gap-planning-constraints.md'
+          path: '.governator/docs/gap-planning-constraints.md'
           content: |
             # Gap-Derived Planning Constraints
 
@@ -129,7 +129,7 @@ rules:
   - pattern: 'Project Planning|roadmap|milestones|epics'
     actions:
       - write:
-          path: '_governator/docs/milestones.md'
+          path: '.governator/docs/milestones.md'
           content: |
             # Project Milestones
 
@@ -158,7 +158,7 @@ rules:
             - Handle errors explicitly
 
       - write:
-          path: '_governator/docs/epics.md'
+          path: '.governator/docs/epics.md'
           content: |
             # Project Epics
 
@@ -193,7 +193,7 @@ rules:
   - pattern: 'Task Planning|task planning|decompose epics|create tasks'
     actions:
       - write:
-          path: '_governator/tasks/001-output-format-contract-architect.md'
+          path: '.governator/tasks/001-output-format-contract-architect.md'
           content: |
             ---
             milestone: m1
@@ -210,14 +210,14 @@ rules:
             ## Requirements
             - [ ] Decide exact column widths for permissions, times, name
             - [ ] Define alignment and padding rules
-            - [ ] Record in ADR under `_governator/docs`
+            - [ ] Record in ADR under `.governator/docs`
 
             ## Acceptance Criteria
             - [ ] Output-format widths explicitly documented
             - [ ] GR-002 marked resolved
 
       - write:
-          path: '_governator/tasks/002-metadata-error-policies-architect.md'
+          path: '.governator/tasks/002-metadata-error-policies-architect.md'
           content: |
             ---
             milestone: m1
@@ -241,7 +241,7 @@ rules:
             - [ ] GR-003 marked resolved
 
       - write:
-          path: '_governator/tasks/003-repository-layout-build-planner.md'
+          path: '.governator/tasks/003-repository-layout-build-planner.md'
           content: |
             ---
             milestone: m1
@@ -266,10 +266,10 @@ rules:
 
   # Unified supervisor triage step
   # Matches: triage DAG ordering prompt and writes mapping consumed by triage.
-  - pattern: 'Create a DAG among those issues|Write the DAG to `_governator/_local-state/dag.json`'
+  - pattern: 'Create a DAG among those issues|Write the DAG to `.governator/.local-state/dag.json`'
     actions:
       - write:
-          path: '_governator/_local-state/dag.json'
+          path: '.governator/.local-state/dag.json'
           content: |
             {
               "001-output-format-contract-architect": [],
@@ -281,7 +281,7 @@ rules:
   - pattern: 'planning.*complete|task.*complete'
     actions:
       - write:
-          path: '_governator/_local-state/planning-notes.md'
+          path: '.governator/.local-state/planning-notes.md'
           content: |
             # Planning Notes
 

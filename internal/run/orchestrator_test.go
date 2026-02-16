@@ -47,7 +47,7 @@ func TestRunHappyPathWithResume(t *testing.T) {
 	}
 
 	// Save the index
-	indexPath := filepath.Join(repoRoot, "_governator/_local-state/index.json")
+	indexPath := filepath.Join(repoRoot, ".governator/.local-state/index.json")
 	if err := index.Save(indexPath, idx); err != nil {
 		t.Fatalf("save index: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestRunBlocksTasksExceedingRetryLimit(t *testing.T) {
 	}
 
 	// Save the index
-	indexPath := filepath.Join(repoRoot, "_governator/_local-state/index.json")
+	indexPath := filepath.Join(repoRoot, ".governator/.local-state/index.json")
 	if err := index.Save(indexPath, idx); err != nil {
 		t.Fatalf("save index: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestRunNoResumeCandidates(t *testing.T) {
 	}
 
 	// Save the index
-	indexPath := filepath.Join(repoRoot, "_governator/_local-state/index.json")
+	indexPath := filepath.Join(repoRoot, ".governator/.local-state/index.json")
 	if err := index.Save(indexPath, idx); err != nil {
 		t.Fatalf("save index: %v", err)
 	}
@@ -242,7 +242,7 @@ func TestRunPlanningDriftMessage(t *testing.T) {
 
 	repoRoot := setupTestRepoWithConfig(t)
 
-	docDir := filepath.Join(repoRoot, "_governator", "docs")
+	docDir := filepath.Join(repoRoot, ".governator", "docs")
 	if err := os.MkdirAll(docDir, 0o755); err != nil {
 		t.Fatalf("create docs dir: %v", err)
 	}
@@ -263,7 +263,7 @@ func TestRunPlanningDriftMessage(t *testing.T) {
 		Tasks:         mergedPlanningTasks(t, repoRoot),
 	}
 
-	indexPath := filepath.Join(repoRoot, "_governator/_local-state/index.json")
+	indexPath := filepath.Join(repoRoot, ".governator/.local-state/index.json")
 	if err := index.Save(indexPath, idx); err != nil {
 		t.Fatalf("save index: %v", err)
 	}
@@ -348,7 +348,7 @@ func setupTestRepoWithConfig(t *testing.T) string {
 	repoRoot := testrepos.New(t).Root
 
 	// Create config directory and file
-	configDir := filepath.Join(repoRoot, "_governator")
+	configDir := filepath.Join(repoRoot, ".governator")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("create config directory: %v", err)
 	}
@@ -385,7 +385,7 @@ func setupTestRepoWithConfig(t *testing.T) string {
 	}
 
 	// Create placeholder role prompts required by phase runner
-	rolesDir := filepath.Join(repoRoot, "_governator", "roles")
+	rolesDir := filepath.Join(repoRoot, ".governator", "roles")
 	if err := os.MkdirAll(rolesDir, 0o755); err != nil {
 		t.Fatalf("create roles dir: %v", err)
 	}
@@ -398,7 +398,7 @@ func setupTestRepoWithConfig(t *testing.T) string {
 	}
 
 	// Create planning prompts
-	promptsDir := filepath.Join(repoRoot, "_governator", "prompts")
+	promptsDir := filepath.Join(repoRoot, ".governator", "prompts")
 	if err := os.MkdirAll(promptsDir, 0o755); err != nil {
 		t.Fatalf("create prompts dir: %v", err)
 	}
@@ -415,7 +415,7 @@ func setupTestRepoWithConfig(t *testing.T) string {
 		}
 	}
 
-	workerContract := filepath.Join(repoRoot, "_governator", "worker-contract.md")
+	workerContract := filepath.Join(repoRoot, ".governator", "worker-contract.md")
 	if err := os.WriteFile(workerContract, []byte("# Worker Contract\n\nPlaceholder.\n"), 0o644); err != nil {
 		t.Fatalf("write worker contract: %v", err)
 	}

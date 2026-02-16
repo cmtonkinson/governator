@@ -13,26 +13,27 @@ import (
 )
 
 const (
-	repoDurableStateDir = "_governator/_durable-state"
+	repoDurableStateDir = ".governator/state"
 	repoConfigFileName  = "config.json"
-	templatesDirName    = "_governator/templates"
+	templatesDirName    = ".governator/templates"
 )
 
 // v2DirectoryStructure defines the complete directory layout for Governator v2.
 // Each entry is created by gov init and should include a .keep file so Git persists the tree.
 var v2DirectoryStructure = []string{
-	"_governator",
+	".governator",
 	repoDurableStateDir,
 	filepath.Join(repoDurableStateDir, "migrations"),
-	"_governator/docs",
-	filepath.Join("_governator", "docs", "adr"),
-	"_governator/tasks",
-	"_governator/roles",
-	"_governator/custom-prompts",
-	"_governator/prompts",
-	"_governator/templates",
-	"_governator/reasoning",
-	filepath.Join("_governator", "_local-state"),
+	filepath.Join(".governator", "worktrees"),
+	".governator/docs",
+	filepath.Join(".governator", "docs", "adr"),
+	".governator/tasks",
+	".governator/roles",
+	".governator/custom-prompts",
+	".governator/prompts",
+	".governator/templates",
+	".governator/reasoning",
+	filepath.Join(".governator", ".local-state"),
 }
 
 // InitOptions configures init-time behaviors such as verbose logging.
@@ -159,7 +160,7 @@ func InitFullLayout(repoRoot string, opts InitOptions) error {
 
 func ensureRolePrompts(repoRoot string, opts InitOptions) error {
 	roles := []string{"architect", "default", "planner"}
-	rolesDir := filepath.Join(repoRoot, "_governator", "roles")
+	rolesDir := filepath.Join(repoRoot, ".governator", "roles")
 	if err := ensureDir(rolesDir, opts); err != nil {
 		return fmt.Errorf("ensure roles directory %s: %w", rolesDir, err)
 	}
@@ -195,7 +196,7 @@ var planningPromptTemplates = []struct {
 }
 
 func ensurePlanningPrompts(repoRoot string, opts InitOptions) error {
-	promptsDir := filepath.Join(repoRoot, "_governator", "prompts")
+	promptsDir := filepath.Join(repoRoot, ".governator", "prompts")
 	if err := ensureDir(promptsDir, opts); err != nil {
 		return fmt.Errorf("create planning prompts directory %s: %w", promptsDir, err)
 	}
@@ -220,7 +221,7 @@ func ensurePlanningPrompts(repoRoot string, opts InitOptions) error {
 
 // ensurePlanningSpec writes the planning workstream spec if it does not already exist.
 func ensurePlanningSpec(repoRoot string, opts InitOptions) error {
-	path := filepath.Join(repoRoot, "_governator", "planning.json")
+	path := filepath.Join(repoRoot, ".governator", "planning.json")
 	if _, err := os.Stat(path); err == nil {
 		return nil
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -238,7 +239,7 @@ func ensurePlanningSpec(repoRoot string, opts InitOptions) error {
 }
 
 func ensureWorkerContract(repoRoot string, opts InitOptions) error {
-	path := filepath.Join(repoRoot, "_governator", "worker-contract.md")
+	path := filepath.Join(repoRoot, ".governator", "worker-contract.md")
 	if _, err := os.Stat(path); err == nil {
 		return nil
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -256,7 +257,7 @@ func ensureWorkerContract(repoRoot string, opts InitOptions) error {
 }
 
 func ensureCustomPrompts(repoRoot string, opts InitOptions) error {
-	promptsDir := filepath.Join(repoRoot, "_governator", "custom-prompts")
+	promptsDir := filepath.Join(repoRoot, ".governator", "custom-prompts")
 	if err := ensureDir(promptsDir, opts); err != nil {
 		return fmt.Errorf("create custom prompts directory %s: %w", promptsDir, err)
 	}
@@ -298,7 +299,7 @@ func ensureCustomPrompts(repoRoot string, opts InitOptions) error {
 }
 
 func ensureGitignore(repoRoot string, opts InitOptions) error {
-	gitignoreDir := filepath.Join(repoRoot, "_governator")
+	gitignoreDir := filepath.Join(repoRoot, ".governator")
 	if err := ensureDir(gitignoreDir, opts); err != nil {
 		return fmt.Errorf("create governator dir %s: %w", gitignoreDir, err)
 	}
@@ -308,7 +309,8 @@ func ensureGitignore(repoRoot string, opts InitOptions) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("stat gitignore %s: %w", path, err)
 	}
-	content := "_local-state/*\n!_local-state/.keep\n"
+	content := ".local-state/*\n!.local-state/.keep\n"
+	content += "worktrees/*\n!worktrees/.keep\n"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write gitignore %s: %w", path, err)
 	}
@@ -317,7 +319,7 @@ func ensureGitignore(repoRoot string, opts InitOptions) error {
 }
 
 func ensureReasoningPrompts(repoRoot string, opts InitOptions) error {
-	reasoningDir := filepath.Join(repoRoot, "_governator", "reasoning")
+	reasoningDir := filepath.Join(repoRoot, ".governator", "reasoning")
 	if err := ensureDir(reasoningDir, opts); err != nil {
 		return fmt.Errorf("create reasoning directory %s: %w", reasoningDir, err)
 	}

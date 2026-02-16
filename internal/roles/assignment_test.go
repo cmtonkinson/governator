@@ -164,7 +164,7 @@ func sampleRoleAssignmentRequest() RoleAssignmentRequest {
 		Task: RoleAssignmentTask{
 			ID:      "T-01",
 			Title:   "Sample task",
-			Path:    "_governator/tasks/task-01.md",
+			Path:    ".governator/tasks/task-01.md",
 			Content: "# Task 01\n\nDo the thing.",
 		},
 		Stage:          StageWork,

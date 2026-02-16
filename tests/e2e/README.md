@@ -83,7 +83,7 @@ The test worker logs to stderr:
 
 ```
 [test-worker] Matched rule 0: planning.*epic
-[test-worker] Writing file: _governator/planning/epics.md
+[test-worker] Writing file: .governator/planning/epics.md
 [test-worker] Completed successfully (matched 1 rule(s))
 ```
 
@@ -113,7 +113,7 @@ func TestPlanningWorkflow(t *testing.T) {
     require.NoError(t, err)
 
     // Create a planning task
-    taskPath := filepath.Join(repo.Dir, "_governator/tasks/plan-epic.md")
+    taskPath := filepath.Join(repo.Dir, ".governator/tasks/plan-epic.md")
     err = os.WriteFile(taskPath, []byte("Create an epic for planning feature X"), 0644)
     require.NoError(t, err)
 
@@ -121,7 +121,7 @@ func TestPlanningWorkflow(t *testing.T) {
     // ...
 
     // Assert that test worker created expected output
-    epicsPath := filepath.Join(repo.Dir, "_governator/planning/epics.md")
+    epicsPath := filepath.Join(repo.Dir, ".governator/planning/epics.md")
     require.FileExists(t, epicsPath)
 
     content, _ := os.ReadFile(epicsPath)

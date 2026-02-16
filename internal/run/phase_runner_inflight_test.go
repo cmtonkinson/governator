@@ -127,7 +127,7 @@ func setupPlanningRepo(t *testing.T, repoRoot string, repo *testrepos.TempRepo) 
 		"default":   command,
 		"planner":   command,
 	}
-	configPath := filepath.Join(repoRoot, "_governator", "_durable-state", "config.json")
+	configPath := filepath.Join(repoRoot, ".governator", "state", "config.json")
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		t.Fatalf("marshal config: %v", err)

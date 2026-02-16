@@ -101,15 +101,15 @@ func (r *TempRepo) initialize(tb testing.TB) {
 	r.RunGit(tb, "add", "README.md")
 	r.RunGit(tb, "commit", "-m", "Initial commit")
 	r.setupGovernatorBaseline(tb)
-	r.RunGit(tb, "add", filepath.Join("_governator", "worker-contract.md"), filepath.Join("_governator", "reasoning"))
+	r.RunGit(tb, "add", filepath.Join(".governator", "worker-contract.md"), filepath.Join(".governator", "reasoning"))
 	r.RunGit(tb, "commit", "-m", "Add governator scaffolding")
 }
 
 func (r *TempRepo) setupGovernatorBaseline(tb testing.TB) {
 	tb.Helper()
-	baseDir := filepath.Join(r.Root, "_governator")
+	baseDir := filepath.Join(r.Root, ".governator")
 	if err := os.MkdirAll(baseDir, 0o755); err != nil {
-		tb.Fatalf("create _governator dir: %v", err)
+		tb.Fatalf("create .governator dir: %v", err)
 	}
 
 	contractPath := filepath.Join(baseDir, "worker-contract.md")

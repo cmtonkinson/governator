@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	tasksDirName      = "_governator/tasks"
-	taskIndexFileName = "_governator/_local-state/index.json"
+	tasksDirName      = ".governator/tasks"
+	taskIndexFileName = ".governator/.local-state/index.json"
 	taskIndexSchema   = 1
 )
 

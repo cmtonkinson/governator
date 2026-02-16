@@ -24,7 +24,7 @@ func TestExecuteConflictResolutionAgent_Success(t *testing.T) {
 	}
 
 	// Create roles directory with a test role
-	rolesDir := filepath.Join(tempDir, "_governator", "roles")
+	rolesDir := filepath.Join(tempDir, ".governator", "roles")
 	if err := os.MkdirAll(rolesDir, 0755); err != nil {
 		t.Fatalf("failed to create roles dir: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestConfigureConflictResolutionStageInput(t *testing.T) {
 	task := index.Task{
 		ID:    "010-task",
 		Title: "Resolve merge conflict",
-		Path:  "_governator/tasks/010-task.md",
+		Path:  ".governator/tasks/010-task.md",
 	}
 	stageInput := newWorkerStageInput(
 		tempDir,

@@ -25,7 +25,7 @@ This document outlines opportunities for adding or improving unit test coverage 
     - **`TestValidateArchitectureArtifacts`**: Test with both required artifacts present and missing.
     - **`TestValidateGapReport`**: Test the different possible locations for the gap report and the case where it is missing.
     - **`TestValidateRoadmapArtifacts`**: Test with `milestones.md` and `epics.md` present and missing.
-    - **`TestValidateTaskBacklog`**: Test with an empty `_governator/tasks` directory, a directory with empty files, and a directory with valid task files.
+    - **`TestValidateTaskBacklog`**: Test with an empty `.governator/tasks` directory, a directory with empty files, and a directory with valid task files.
     - **`TestFileExists`**: Test `fileExists` with a path to a file, a directory, and a non-existent path.
     - **`TestRelativePath`**: Add tests for the `relativePath` helper to cover different root and target path combinations.
 

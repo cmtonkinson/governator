@@ -20,7 +20,7 @@ func TestFinalizeStageSuccessCommitsChanges(t *testing.T) {
 	worktreePath := repo.Root
 	configureLocalStateIgnore(t, repo)
 
-	workerStateDir := filepath.Join(worktreePath, "_governator", "_local-state", "worker-test")
+	workerStateDir := filepath.Join(worktreePath, ".governator", ".local-state", "worker-test")
 	if err := os.MkdirAll(workerStateDir, 0o755); err != nil {
 		t.Fatalf("mkdir worker state: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestFinalizeStageSuccessNoChanges(t *testing.T) {
 	worktreePath := repo.Root
 	configureLocalStateIgnore(t, repo)
 
-	workerStateDir := filepath.Join(worktreePath, "_governator", "_local-state", "worker-test")
+	workerStateDir := filepath.Join(worktreePath, ".governator", ".local-state", "worker-test")
 	if err := os.MkdirAll(workerStateDir, 0o755); err != nil {
 		t.Fatalf("mkdir worker state: %v", err)
 	}
@@ -108,14 +108,14 @@ func runGitLog(t *testing.T, dir string) string {
 // configureLocalStateIgnore mimics the production layout's local-state gitignore.
 func configureLocalStateIgnore(t *testing.T, repo *testrepos.TempRepo) {
 	t.Helper()
-	ignorePath := filepath.Join(repo.Root, "_governator", ".gitignore")
+	ignorePath := filepath.Join(repo.Root, ".governator", ".gitignore")
 	if err := os.MkdirAll(filepath.Dir(ignorePath), 0o755); err != nil {
-		t.Fatalf("mkdir _governator: %v", err)
+		t.Fatalf("mkdir .governator: %v", err)
 	}
-	content := "_local-state/*\n!_local-state/.keep\n"
+	content := ".local-state/*\n!.local-state/.keep\n"
 	if err := os.WriteFile(ignorePath, []byte(content), 0o644); err != nil {
 		t.Fatalf("write .gitignore: %v", err)
 	}
-	repo.RunGit(t, "add", filepath.Join("_governator", ".gitignore"))
+	repo.RunGit(t, "add", filepath.Join(".governator", ".gitignore"))
 	repo.RunGit(t, "commit", "-m", "Ignore local state")
 }

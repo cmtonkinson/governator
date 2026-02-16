@@ -16,7 +16,7 @@ import (
 
 const (
 	e2eResetMigrationID     = "20260214_reset_open_tasks_strip_role_suffix"
-	e2eResetMigrationMarker = "_governator/_durable-state/migrations/20260214_reset_open_tasks_strip_role_suffix.done"
+	e2eResetMigrationMarker = ".governator/state/migrations/20260214_reset_open_tasks_strip_role_suffix.done"
 )
 
 // TestE2EMigrationResetOpenTasksHappyPath verifies the destructive migration resets open tasks, strips suffixes, and purges branch/worktree state.
@@ -25,17 +25,17 @@ func TestE2EMigrationResetOpenTasksHappyPath(t *testing.T) {
 	repoRoot := repo.Root
 	TrackE2ERepo(t, repoRoot)
 
-	if err := os.MkdirAll(filepath.Join(repoRoot, "_governator", "roles"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".governator", "roles"), 0o755); err != nil {
 		t.Fatalf("mkdir roles: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(repoRoot, "_governator", "roles", "architect.md"), []byte("# Architect\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(repoRoot, ".governator", "roles", "architect.md"), []byte("# Architect\n"), 0o644); err != nil {
 		t.Fatalf("write architect role: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(repoRoot, "_governator", "roles", "default.md"), []byte("# Default\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(repoRoot, ".governator", "roles", "default.md"), []byte("# Default\n"), 0o644); err != nil {
 		t.Fatalf("write default role: %v", err)
 	}
 
-	tasksDir := filepath.Join(repoRoot, "_governator", "tasks")
+	tasksDir := filepath.Join(repoRoot, ".governator", "tasks")
 	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
 		t.Fatalf("mkdir tasks: %v", err)
 	}
@@ -55,14 +55,14 @@ func TestE2EMigrationResetOpenTasksHappyPath(t *testing.T) {
 		Tasks: []index.Task{
 			{
 				ID:    "planning",
-				Path:  "_governator/planning.json",
+				Path:  ".governator/planning.json",
 				Kind:  index.TaskKindPlanning,
 				State: index.TaskState("governator_planning_not_started"),
 				Role:  "planner",
 			},
 			{
 				ID:           "010-api-client-architect",
-				Path:         "_governator/tasks/010-api-client-architect.md",
+				Path:         ".governator/tasks/010-api-client-architect.md",
 				Kind:         index.TaskKindExecution,
 				State:        index.TaskStateTriaged,
 				Role:         "architect",
@@ -70,7 +70,7 @@ func TestE2EMigrationResetOpenTasksHappyPath(t *testing.T) {
 			},
 			{
 				ID:            "011-api-tests-default",
-				Path:          "_governator/tasks/011-api-tests-default.md",
+				Path:          ".governator/tasks/011-api-tests-default.md",
 				Kind:          index.TaskKindExecution,
 				State:         index.TaskStateBlocked,
 				Role:          "default",
@@ -79,7 +79,7 @@ func TestE2EMigrationResetOpenTasksHappyPath(t *testing.T) {
 			},
 			{
 				ID:           "012-release-notes",
-				Path:         "_governator/tasks/012-release-notes.md",
+				Path:         ".governator/tasks/012-release-notes.md",
 				Kind:         index.TaskKindExecution,
 				State:        index.TaskStateMerged,
 				Role:         "default",
@@ -88,7 +88,7 @@ func TestE2EMigrationResetOpenTasksHappyPath(t *testing.T) {
 		},
 	}
 
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	if err := os.MkdirAll(filepath.Dir(indexPath), 0o755); err != nil {
 		t.Fatalf("mkdir index dir: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestE2EMigrationResetOpenTasksHappyPath(t *testing.T) {
 	}
 
 	repo.RunGit(t, "branch", "010-api-client-architect")
-	worktreePath := filepath.Join(repoRoot, "_governator", "_local-state", "task-010-api-client-architect")
+	worktreePath := filepath.Join(repoRoot, ".governator", "worktrees", "task-010-api-client-architect")
 	repo.RunGit(t, "worktree", "add", worktreePath, "010-api-client-architect")
 	repo.RunGit(t, "branch", "task-011-api-tests-default")
 
@@ -132,8 +132,8 @@ func TestE2EMigrationResetOpenTasksHappyPath(t *testing.T) {
 	if task010.State != index.TaskStateBacklog {
 		t.Fatalf("task010 state = %s, want backlog", task010.State)
 	}
-	if task010.Path != "_governator/tasks/010-api-client.md" {
-		t.Fatalf("task010 path = %s, want _governator/tasks/010-api-client.md", task010.Path)
+	if task010.Path != ".governator/tasks/010-api-client.md" {
+		t.Fatalf("task010 path = %s, want .governator/tasks/010-api-client.md", task010.Path)
 	}
 
 	task011 := byID["011-api-tests"]
@@ -152,10 +152,10 @@ func TestE2EMigrationResetOpenTasksHappyPath(t *testing.T) {
 		t.Fatalf("task012 dependencies = %#v, want [011-api-tests]", task012.Dependencies)
 	}
 
-	if _, err := os.Stat(filepath.Join(repoRoot, "_governator", "tasks", "010-api-client.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(repoRoot, ".governator", "tasks", "010-api-client.md")); err != nil {
 		t.Fatalf("renamed task file missing: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(repoRoot, "_governator", "tasks", "010-api-client-architect.md")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(repoRoot, ".governator", "tasks", "010-api-client-architect.md")); !os.IsNotExist(err) {
 		t.Fatalf("old suffixed task file should be gone, stat err=%v", err)
 	}
 
@@ -187,17 +187,17 @@ func TestE2EMigrationResetOpenTasksCollisionFailure(t *testing.T) {
 	repoRoot := repo.Root
 	TrackE2ERepo(t, repoRoot)
 
-	if err := os.MkdirAll(filepath.Join(repoRoot, "_governator", "roles"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".governator", "roles"), 0o755); err != nil {
 		t.Fatalf("mkdir roles: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(repoRoot, "_governator", "roles", "architect.md"), []byte("# Architect\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(repoRoot, ".governator", "roles", "architect.md"), []byte("# Architect\n"), 0o644); err != nil {
 		t.Fatalf("write architect role: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(repoRoot, "_governator", "roles", "planner.md"), []byte("# Planner\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(repoRoot, ".governator", "roles", "planner.md"), []byte("# Planner\n"), 0o644); err != nil {
 		t.Fatalf("write planner role: %v", err)
 	}
 
-	tasksDir := filepath.Join(repoRoot, "_governator", "tasks")
+	tasksDir := filepath.Join(repoRoot, ".governator", "tasks")
 	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
 		t.Fatalf("mkdir tasks: %v", err)
 	}
@@ -212,11 +212,11 @@ func TestE2EMigrationResetOpenTasksCollisionFailure(t *testing.T) {
 		SchemaVersion: 1,
 		Digests:       index.Digests{PlanningDocs: map[string]string{}},
 		Tasks: []index.Task{
-			{ID: "020-dup-architect", Path: "_governator/tasks/020-dup-architect.md", Kind: index.TaskKindExecution, State: index.TaskStateTriaged},
-			{ID: "020-dup-planner", Path: "_governator/tasks/020-dup-planner.md", Kind: index.TaskKindExecution, State: index.TaskStateTriaged},
+			{ID: "020-dup-architect", Path: ".governator/tasks/020-dup-architect.md", Kind: index.TaskKindExecution, State: index.TaskStateTriaged},
+			{ID: "020-dup-planner", Path: ".governator/tasks/020-dup-planner.md", Kind: index.TaskKindExecution, State: index.TaskStateTriaged},
 		},
 	}
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	if err := os.MkdirAll(filepath.Dir(indexPath), 0o755); err != nil {
 		t.Fatalf("mkdir index dir: %v", err)
 	}

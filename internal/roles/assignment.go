@@ -18,7 +18,7 @@ import (
 
 const (
 	// roleAssignmentPromptPath is the repo-relative location of the role assignment prompt.
-	roleAssignmentPromptPath = "_governator/prompts/role-assignment.md"
+	roleAssignmentPromptPath = ".governator/prompts/role-assignment.md"
 	// roleAssignmentAgentName is the audit agent name used for role selection.
 	roleAssignmentAgentName = "role-assignment"
 )

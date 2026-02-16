@@ -94,7 +94,7 @@ func TestExecuteWorkerHappyPath(t *testing.T) {
 	}
 
 	// Check log file paths are repo-relative and live in the worker state dir
-	expectedPrefix := filepath.ToSlash(filepath.Join("_governator", "_local-state", "worker-test")) + "/"
+	expectedPrefix := filepath.ToSlash(filepath.Join(".governator", ".local-state", "worker-test")) + "/"
 	if !strings.HasPrefix(result.StdoutPath, expectedPrefix) {
 		t.Fatalf("stdout path = %q, want prefix %q", result.StdoutPath, expectedPrefix)
 	}
@@ -184,7 +184,7 @@ func TestExecuteWorkerTimeoutWithAuditLogging(t *testing.T) {
 		Warn:           warn,
 		AuditLogger:    mockAuditLogger,
 		Role:           "worker",
-		WorktreePath:   "_governator/_local-state/task-T-003",
+		WorktreePath:   ".governator/worktrees/task-T-003",
 		WorkerStateDir: workerStateDir,
 	}
 
@@ -210,8 +210,8 @@ func TestExecuteWorkerTimeoutWithAuditLogging(t *testing.T) {
 	if call.timeoutSecs != 1 {
 		t.Fatalf("audit call timeout seconds = %d, want %d", call.timeoutSecs, 1)
 	}
-	if call.worktreePath != "_governator/_local-state/task-T-003" {
-		t.Fatalf("audit call worktree path = %q, want %q", call.worktreePath, "_governator/_local-state/task-T-003")
+	if call.worktreePath != ".governator/worktrees/task-T-003" {
+		t.Fatalf("audit call worktree path = %q, want %q", call.worktreePath, ".governator/worktrees/task-T-003")
 	}
 }
 
@@ -234,7 +234,7 @@ func TestExecuteWorkerTimeoutWithoutAuditLogger(t *testing.T) {
 		Warn:           warn,
 		AuditLogger:    nil, // No audit logger
 		Role:           "worker",
-		WorktreePath:   "_governator/_local-state/task-T-004",
+		WorktreePath:   ".governator/worktrees/task-T-004",
 		WorkerStateDir: workerStateDir,
 	}
 
@@ -319,7 +319,7 @@ func TestExecuteWorkerNonTimeoutFailureNoTimeoutMessage(t *testing.T) {
 		Warn:           warn,
 		AuditLogger:    mockAuditLogger,
 		Role:           "worker",
-		WorktreePath:   "_governator/_local-state/task-T-006",
+		WorktreePath:   ".governator/worktrees/task-T-006",
 		WorkerStateDir: workerStateDir,
 	}
 

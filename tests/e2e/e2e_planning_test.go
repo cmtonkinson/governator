@@ -87,7 +87,7 @@ func TestE2EPlanning(t *testing.T) {
 	}
 
 	// Write config to the expected location
-	configPath := filepath.Join(repoRoot, "_governator/_durable-state/config.json")
+	configPath := filepath.Join(repoRoot, ".governator/state/config.json")
 	configJSON, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		t.Fatalf("marshal config: %v", err)
@@ -105,48 +105,48 @@ func TestE2EPlanning(t *testing.T) {
 			{
 				ID:     "architecture-baseline",
 				Name:   "Architecture Baseline",
-				Prompt: "_governator/prompts/architecture-baseline.md",
+				Prompt: ".governator/prompts/architecture-baseline.md",
 				Role:   "architect",
 				Validations: []run.PlanningValidationSpec{
-					{Type: "file", Path: "_governator/docs/arch-asr.md"},
-					{Type: "file", Path: "_governator/docs/arch-arc42.md"},
-					{Type: "file", Path: "_governator/docs/adr/[Aa][Dd][Rr]-*.md"},
+					{Type: "file", Path: ".governator/docs/arch-asr.md"},
+					{Type: "file", Path: ".governator/docs/arch-arc42.md"},
+					{Type: "file", Path: ".governator/docs/adr/[Aa][Dd][Rr]-*.md"},
 				},
 			},
 			{
 				ID:     "gap-analysis",
 				Name:   "Gap Analysis",
-				Prompt: "_governator/prompts/gap-analysis.md",
+				Prompt: ".governator/prompts/gap-analysis.md",
 				Role:   "default",
 				Validations: []run.PlanningValidationSpec{
-					{Type: "file", Path: "_governator/docs/gap-decision-ledger.md"},
-					{Type: "file", Path: "_governator/docs/gap-register.md"},
-					{Type: "file", Path: "_governator/docs/gap-planning-constraints.md"},
+					{Type: "file", Path: ".governator/docs/gap-decision-ledger.md"},
+					{Type: "file", Path: ".governator/docs/gap-register.md"},
+					{Type: "file", Path: ".governator/docs/gap-planning-constraints.md"},
 				},
 			},
 			{
 				ID:     "project-planning",
 				Name:   "Project Planning",
-				Prompt: "_governator/prompts/roadmap.md",
+				Prompt: ".governator/prompts/roadmap.md",
 				Role:   "planner",
 				Validations: []run.PlanningValidationSpec{
-					{Type: "file", Path: "_governator/docs/milestones.md"},
-					{Type: "file", Path: "_governator/docs/epics.md"},
+					{Type: "file", Path: ".governator/docs/milestones.md"},
+					{Type: "file", Path: ".governator/docs/epics.md"},
 				},
 			},
 			{
 				ID:     "task-planning",
 				Name:   "Task Planning",
-				Prompt: "_governator/prompts/task-planning.md",
+				Prompt: ".governator/prompts/task-planning.md",
 				Role:   "planner",
 				Validations: []run.PlanningValidationSpec{
-					{Type: "directory", Path: "_governator/tasks"},
+					{Type: "directory", Path: ".governator/tasks"},
 				},
 			},
 		},
 	}
 
-	planningSpecPath := filepath.Join(repoRoot, "_governator/planning.json")
+	planningSpecPath := filepath.Join(repoRoot, ".governator/planning.json")
 	planningJSON, err := json.MarshalIndent(planningSpec, "", "  ")
 	if err != nil {
 		t.Fatalf("marshal planning spec: %v", err)
@@ -157,7 +157,7 @@ func TestE2EPlanning(t *testing.T) {
 	}
 
 	// Create minimal prompt files (test worker matches on prompt content patterns)
-	err = os.MkdirAll(filepath.Join(repoRoot, "_governator/prompts"), 0755)
+	err = os.MkdirAll(filepath.Join(repoRoot, ".governator/prompts"), 0755)
 	if err != nil {
 		t.Fatalf("create prompts dir: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestE2EPlanning(t *testing.T) {
 	}
 
 	for filename, content := range prompts {
-		promptPath := filepath.Join(repoRoot, "_governator/prompts", filename)
+		promptPath := filepath.Join(repoRoot, ".governator/prompts", filename)
 		err = os.WriteFile(promptPath, []byte(content), 0644)
 		if err != nil {
 			t.Fatalf("write prompt %s: %v", filename, err)
@@ -195,7 +195,7 @@ func TestE2EPlanning(t *testing.T) {
 	}
 
 	// Commit all governator setup files (matching what `governator init` does)
-	repo.RunGit(t, "add", "GOVERNATOR.md", "_governator")
+	repo.RunGit(t, "add", "GOVERNATOR.md", ".governator")
 	repo.RunGit(t, "commit", "-m", "Add governator configuration")
 
 	// Run unified supervisor
@@ -214,7 +214,7 @@ func TestE2EPlanning(t *testing.T) {
 
 		// Show directory structure
 		t.Logf("Directory structure:")
-		filepath.Walk(filepath.Join(repoRoot, "_governator"), func(path string, info os.FileInfo, err error) error {
+		filepath.Walk(filepath.Join(repoRoot, ".governator"), func(path string, info os.FileInfo, err error) error {
 			if err == nil {
 				rel, _ := filepath.Rel(repoRoot, path)
 				if info.IsDir() {
@@ -299,15 +299,15 @@ func TestE2EPlanning(t *testing.T) {
 
 	// Verify Step 1: Architecture Baseline outputs
 	t.Run("architecture_baseline_outputs", func(t *testing.T) {
-		assertFileExists(t, repoRoot, "_governator/docs/arch-asr.md")
-		assertFileExists(t, repoRoot, "_governator/docs/arch-arc42.md")
-		assertFileExists(t, repoRoot, "_governator/docs/arch-wardley.md")
-		assertFileExists(t, repoRoot, "_governator/docs/arch-c4.md")
-		assertFileExists(t, repoRoot, "_governator/docs/adr/adr-0001-posix-c-stdlib.md")
-		assertFileExists(t, repoRoot, "_governator/docs/adr/adr-0002-timestamp-format.md")
+		assertFileExists(t, repoRoot, ".governator/docs/arch-asr.md")
+		assertFileExists(t, repoRoot, ".governator/docs/arch-arc42.md")
+		assertFileExists(t, repoRoot, ".governator/docs/arch-wardley.md")
+		assertFileExists(t, repoRoot, ".governator/docs/arch-c4.md")
+		assertFileExists(t, repoRoot, ".governator/docs/adr/adr-0001-posix-c-stdlib.md")
+		assertFileExists(t, repoRoot, ".governator/docs/adr/adr-0002-timestamp-format.md")
 
 		// Verify content
-		asrContent, err := os.ReadFile(filepath.Join(repoRoot, "_governator/docs/arch-asr.md"))
+		asrContent, err := os.ReadFile(filepath.Join(repoRoot, ".governator/docs/arch-asr.md"))
 		if err != nil {
 			t.Fatalf("read ASR file: %v", err)
 		}
@@ -317,12 +317,12 @@ func TestE2EPlanning(t *testing.T) {
 
 	// Verify Step 2: Gap Analysis outputs
 	t.Run("gap_analysis_outputs", func(t *testing.T) {
-		assertFileExists(t, repoRoot, "_governator/docs/gap-register.md")
-		assertFileExists(t, repoRoot, "_governator/docs/gap-decision-ledger.md")
-		assertFileExists(t, repoRoot, "_governator/docs/gap-planning-constraints.md")
+		assertFileExists(t, repoRoot, ".governator/docs/gap-register.md")
+		assertFileExists(t, repoRoot, ".governator/docs/gap-decision-ledger.md")
+		assertFileExists(t, repoRoot, ".governator/docs/gap-planning-constraints.md")
 
 		// Verify content
-		gapContent, err := os.ReadFile(filepath.Join(repoRoot, "_governator/docs/gap-register.md"))
+		gapContent, err := os.ReadFile(filepath.Join(repoRoot, ".governator/docs/gap-register.md"))
 		if err != nil {
 			t.Fatalf("read gap register: %v", err)
 		}
@@ -331,17 +331,17 @@ func TestE2EPlanning(t *testing.T) {
 
 	// Verify Step 3: Project Planning outputs
 	t.Run("project_planning_outputs", func(t *testing.T) {
-		assertFileExists(t, repoRoot, "_governator/docs/milestones.md")
-		assertFileExists(t, repoRoot, "_governator/docs/epics.md")
+		assertFileExists(t, repoRoot, ".governator/docs/milestones.md")
+		assertFileExists(t, repoRoot, ".governator/docs/epics.md")
 
 		// Verify content
-		milestonesContent, err := os.ReadFile(filepath.Join(repoRoot, "_governator/docs/milestones.md"))
+		milestonesContent, err := os.ReadFile(filepath.Join(repoRoot, ".governator/docs/milestones.md"))
 		if err != nil {
 			t.Fatalf("read milestones: %v", err)
 		}
 		assertContains(t, string(milestonesContent), "Milestone m1")
 
-		epicsContent, err := os.ReadFile(filepath.Join(repoRoot, "_governator/docs/epics.md"))
+		epicsContent, err := os.ReadFile(filepath.Join(repoRoot, ".governator/docs/epics.md"))
 		if err != nil {
 			t.Fatalf("read epics: %v", err)
 		}
@@ -350,12 +350,12 @@ func TestE2EPlanning(t *testing.T) {
 
 	// Verify Step 4: Task Planning outputs
 	t.Run("task_planning_outputs", func(t *testing.T) {
-		assertFileExists(t, repoRoot, "_governator/tasks/001-output-format-contract-architect.md")
-		assertFileExists(t, repoRoot, "_governator/tasks/002-metadata-error-policies-architect.md")
-		assertFileExists(t, repoRoot, "_governator/tasks/003-repository-layout-build-planner.md")
+		assertFileExists(t, repoRoot, ".governator/tasks/001-output-format-contract-architect.md")
+		assertFileExists(t, repoRoot, ".governator/tasks/002-metadata-error-policies-architect.md")
+		assertFileExists(t, repoRoot, ".governator/tasks/003-repository-layout-build-planner.md")
 
 		// Verify content
-		task001, err := os.ReadFile(filepath.Join(repoRoot, "_governator/tasks/001-output-format-contract-architect.md"))
+		task001, err := os.ReadFile(filepath.Join(repoRoot, ".governator/tasks/001-output-format-contract-architect.md"))
 		if err != nil {
 			t.Fatalf("read task 001: %v", err)
 		}
@@ -365,7 +365,7 @@ func TestE2EPlanning(t *testing.T) {
 
 	// Verify task inventory updated the execution index after planning completes.
 	t.Run("task_inventory_indexed", func(t *testing.T) {
-		indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+		indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 		idx, err := index.Load(indexPath)
 		if err != nil {
 			t.Fatalf("load task index: %v", err)

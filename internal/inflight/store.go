@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	localStateDirName = "_governator/_local-state"
+	localStateDirName = ".governator/.local-state"
 	inFlightFileName  = "in-flight.json"
 	inFlightFileMode  = 0o644
 	localStateDirMode = 0o755

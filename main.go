@@ -156,7 +156,7 @@ func runInit(verbose bool, args []string) {
 
 DESCRIPTION:
     Initialize a new governator workspace in the current git repository.
-    Creates the _governator/ directory structure with default configuration,
+    Creates the .governator/ directory structure with default configuration,
     seeds the planning index, and commits the initialization.
 
 OPTIONS:
@@ -242,13 +242,13 @@ OPTIONS:
 }
 
 func commitInit(repoRoot string) error {
-	addCmd := exec.Command("git", "add", "--", "_governator", "GOVERNATOR.md")
+	addCmd := exec.Command("git", "add", "--", ".governator", "GOVERNATOR.md")
 	addCmd.Dir = repoRoot
 	if out, err := addCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git add failed: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 
-	diffCmd := exec.Command("git", "diff", "--cached", "--quiet", "--", "_governator", "GOVERNATOR.md")
+	diffCmd := exec.Command("git", "diff", "--cached", "--quiet", "--", ".governator", "GOVERNATOR.md")
 	diffCmd.Dir = repoRoot
 	if err := diffCmd.Run(); err != nil {
 		var exitErr *exec.ExitError
@@ -646,7 +646,7 @@ OPTIONS:
 		os.Exit(2)
 	}
 
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	indexWriteLock, err := index.AcquireWriteLock(indexPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
@@ -873,7 +873,7 @@ OPTIONS:
 		os.Exit(2)
 	}
 
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	idx, err := index.Load(indexPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
@@ -1081,7 +1081,7 @@ type whyTaskSection struct {
 
 // collectWhyTaskSections returns per-task sections for blocked/failed execution tasks.
 func collectWhyTaskSections(repoRoot string, taskLines int, supervisorState supervisor.SupervisorStateInfo, hasSupervisorState bool) ([]whyTaskSection, error) {
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	idx, err := index.Load(indexPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -1141,11 +1141,11 @@ func latestTaskStdoutLog(repoRoot string, taskID string) (string, error) {
 	}
 	taskStateDir := filepath.Join(
 		repoRoot,
-		"_governator",
-		"_local-state",
+		".governator",
+		"worktrees",
 		"task-"+taskID,
-		"_governator",
-		"_local-state",
+		".governator",
+		".local-state",
 	)
 	entries, err := os.ReadDir(taskStateDir)
 	if err != nil {

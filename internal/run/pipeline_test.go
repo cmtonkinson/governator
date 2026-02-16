@@ -35,10 +35,10 @@ func TestPipelineIntegrationHappyPath(t *testing.T) {
 	task := newTestTask("T-PIPE-001", "Pipeline integration task", "worker", taskPath, 10)
 	writeTestTaskIndex(t, repoRoot, []index.Task{task})
 
-	repo.RunGit(t, "add", filepath.Join("_governator", "tasks"))
+	repo.RunGit(t, "add", filepath.Join(".governator", "tasks"))
 	repo.RunGit(t, "commit", "-m", "Add plan outputs")
 
-	indexPath := filepath.Join(repoRoot, "_governator", "_local-state", "index.json")
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
 	idx, err := index.Load(indexPath)
 	if err != nil {
 		t.Fatalf("load index: %v", err)
@@ -129,7 +129,7 @@ func TestPipelineIntegrationDrift(t *testing.T) {
 	task := newTestTask("T-PIPE-001", "Pipeline integration task", "worker", taskPath, 10)
 	writeTestTaskIndex(t, repoRoot, []index.Task{task})
 
-	adrDir := filepath.Join(repoRoot, "_governator", "docs", "adr")
+	adrDir := filepath.Join(repoRoot, ".governator", "docs", "adr")
 	if err := os.MkdirAll(adrDir, 0o755); err != nil {
 		t.Fatalf("create ADR dir: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestPipelineWorkerHelper(t *testing.T) {
 	}
 	stateDir := os.Getenv("GOVERNATOR_WORKER_STATE_PATH")
 	if stateDir == "" {
-		stateDir = filepath.Join("_governator", "_local-state")
+		stateDir = filepath.Join(".governator", ".local-state")
 	}
 	markerPath := filepath.Join(stateDir, marker)
 	if err := os.MkdirAll(filepath.Dir(markerPath), 0o755); err != nil {
@@ -198,7 +198,7 @@ func setupPipelineRepo(t *testing.T, workerCommand []string) *testrepos.TempRepo
 	}
 	repo.RunGit(t, "add", "GOVERNATOR.md")
 	repo.RunGit(t, "commit", "-m", "Add GOVERNATOR")
-	rolesDir := filepath.Join(repo.Root, "_governator", "roles")
+	rolesDir := filepath.Join(repo.Root, ".governator", "roles")
 	if err := os.MkdirAll(rolesDir, 0o755); err != nil {
 		t.Fatalf("mkdir roles: %v", err)
 	}
@@ -206,7 +206,7 @@ func setupPipelineRepo(t *testing.T, workerCommand []string) *testrepos.TempRepo
 	if err := os.WriteFile(roleFile, []byte("# Worker role prompt\n"), 0o644); err != nil {
 		t.Fatalf("write worker role: %v", err)
 	}
-	repo.RunGit(t, "add", filepath.Join("_governator", "roles", "worker.md"))
+	repo.RunGit(t, "add", filepath.Join(".governator", "roles", "worker.md"))
 	repo.RunGit(t, "commit", "-m", "Add worker role prompt")
 	writePipelineConfig(t, repo.Root, workerCommand)
 	return repo
@@ -217,7 +217,7 @@ func writePipelineConfig(t *testing.T, repoRoot string, workerCommand []string) 
 	t.Helper()
 	cfg := config.Defaults()
 	cfg.Workers.Commands.Default = append([]string(nil), workerCommand...)
-	cfgPath := filepath.Join(repoRoot, "_governator", "_durable-state", "config.json")
+	cfgPath := filepath.Join(repoRoot, ".governator", "state", "config.json")
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		t.Fatalf("marshal config: %v", err)
@@ -292,21 +292,21 @@ func markerFileForStage(stage string) string {
 
 func commitWorktreeChange(t *testing.T, worktreePath, taskID string) error {
 	t.Helper()
-	markerPath := filepath.Join(worktreePath, "_governator", "_local-state", "worked.md")
+	markerPath := filepath.Join(worktreePath, ".governator", ".local-state", "worked.md")
 	if err := os.MkdirAll(filepath.Dir(markerPath), 0o755); err != nil {
 		return fmt.Errorf("mkdir marker dir: %w", err)
 	}
 	if err := os.WriteFile(markerPath, []byte("workstage marker\n"), 0o644); err != nil {
 		return fmt.Errorf("write worked marker: %w", err)
 	}
-	stateMarkerDir := filepath.Join(worktreePath, "_governator", "_local-state", "worker-1-work-worker")
+	stateMarkerDir := filepath.Join(worktreePath, ".governator", ".local-state", "worker-1-work-worker")
 	if err := os.MkdirAll(stateMarkerDir, 0o755); err != nil {
 		return fmt.Errorf("mkdir worker state dir: %w", err)
 	}
 	if err := os.WriteFile(filepath.Join(stateMarkerDir, "worked.md"), []byte("workstage marker\n"), 0o644); err != nil {
 		return fmt.Errorf("write worker state marker: %w", err)
 	}
-	if _, err := execGitCommand(worktreePath, "add", "_governator/_local-state/worked.md"); err != nil {
+	if _, err := execGitCommand(worktreePath, "add", ".governator/.local-state/worked.md"); err != nil {
 		return err
 	}
 	if _, err := execGitCommand(worktreePath, "commit", "-m", fmt.Sprintf("Work for %s", taskID)); err != nil {

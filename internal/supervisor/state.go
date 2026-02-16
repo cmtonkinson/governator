@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	localStateDirName   = "_governator/_local-state"
+	localStateDirName   = ".governator/.local-state"
 	supervisorDirName   = "supervisor"
 	supervisorStateFile = "state.json"
 	supervisorLogFile   = "supervisor.log"

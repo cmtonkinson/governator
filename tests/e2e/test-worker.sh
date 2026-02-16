@@ -31,7 +31,7 @@ if [[ "$prompt_file" != /* ]]; then
         if [ -f "$prompt_file_from_worktree" ]; then
             prompt_file="$prompt_file_from_worktree"
         else
-            # Strategy 3: Go up from worktree to repo root (_local-state/task-planning → repo)
+            # Strategy 3: Go up from worktree to repo root (worktrees/task-planning -> repo)
             repo_root="$GOVERNATOR_WORKTREE_DIR/../../.."
             prompt_file_from_repo="$repo_root/$prompt_file"
             if [ -f "$prompt_file_from_repo" ]; then

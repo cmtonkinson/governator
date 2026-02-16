@@ -16,7 +16,7 @@ func TestTransitionHappyPath(t *testing.T) {
 		Tasks: []Task{
 			{
 				ID:    "task-1",
-				Path:  "_governator/tasks/task-1.md",
+				Path:  ".governator/tasks/task-1.md",
 				State: TaskStateTriaged,
 				Role:  "builder",
 			},
@@ -57,7 +57,7 @@ func TestTransitionConflictResolutionFlow(t *testing.T) {
 		Tasks: []Task{
 			{
 				ID:    "task-1",
-				Path:  "_governator/tasks/task-1.md",
+				Path:  ".governator/tasks/task-1.md",
 				State: TaskStateTriaged,
 				Role:  "builder",
 			},
@@ -95,7 +95,7 @@ func TestTransitionBlockedReset(t *testing.T) {
 		Tasks: []Task{
 			{
 				ID:    "task-1",
-				Path:  "_governator/tasks/task-1.md",
+				Path:  ".governator/tasks/task-1.md",
 				State: TaskStateBlocked,
 				Role:  "builder",
 			},
@@ -117,7 +117,7 @@ func TestIncrementTaskAttempt(t *testing.T) {
 		Tasks: []Task{
 			{
 				ID:    "task-1",
-				Path:  "_governator/tasks/task-1.md",
+				Path:  ".governator/tasks/task-1.md",
 				State: TaskStateTriaged,
 				Role:  "builder",
 				Attempts: AttemptCounters{
@@ -142,7 +142,7 @@ func TestIncrementTaskFailedAttempt(t *testing.T) {
 		Tasks: []Task{
 			{
 				ID:    "task-1",
-				Path:  "_governator/tasks/task-1.md",
+				Path:  ".governator/tasks/task-1.md",
 				State: TaskStateTriaged,
 				Role:  "builder",
 				Attempts: AttemptCounters{
@@ -167,7 +167,7 @@ func TestTransitionFromDoneToWorkedFails(t *testing.T) {
 		Tasks: []Task{
 			{
 				ID:    "task-1",
-				Path:  "_governator/tasks/task-1.md",
+				Path:  ".governator/tasks/task-1.md",
 				State: TaskStateMerged,
 				Role:  "builder",
 			},
@@ -203,7 +203,7 @@ func TestTransitionTaskStateWithAuditLogs(t *testing.T) {
 		Tasks: []Task{
 			{
 				ID:    "task-1",
-				Path:  "_governator/tasks/task-1.md",
+				Path:  ".governator/tasks/task-1.md",
 				State: TaskStateTriaged,
 				Role:  "builder",
 			},
@@ -233,7 +233,7 @@ func TestTransitionTaskStateWithAuditIgnoresAuditFailures(t *testing.T) {
 		Tasks: []Task{
 			{
 				ID:    "task-1",
-				Path:  "_governator/tasks/task-1.md",
+				Path:  ".governator/tasks/task-1.md",
 				State: TaskStateTriaged,
 				Role:  "builder",
 			},

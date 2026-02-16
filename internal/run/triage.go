@@ -210,9 +210,12 @@ func finalizeTriageAttempt(repoRoot string, idx *index.Index, cfg config.Config,
 		return failTriageAttempt(repoRoot, state, fmt.Errorf("triage agent exited with code %d", exitStatus.ExitCode), opts)
 	}
 
-	mapping, err := readTriageMapping(repoRoot, triageOutputPath(repoRoot))
+	mapping, mappingSource, err := loadTriageMapping(repoRoot, triageOutputPath(repoRoot), state.WorkerStateDir)
 	if err != nil {
 		return failTriageAttempt(repoRoot, state, err, opts)
+	}
+	if mappingSource != triageOutputPath(repoRoot) && opts.Stderr != nil {
+		fmt.Fprintf(opts.Stderr, "Warning: triage mapping loaded from fallback path %s\n", mappingSource)
 	}
 
 	warnings := applyTriageMapping(idx, mapping, repoRoot)
@@ -237,6 +240,69 @@ func finalizeTriageAttempt(repoRoot string, idx *index.Index, cfg config.Config,
 
 	fmt.Fprintln(opts.Stdout, "triage complete")
 	return TriageCycleResult{Completed: true}, nil
+}
+
+// loadTriageMapping loads triage output from the canonical path and retries/falls back when needed.
+func loadTriageMapping(repoRoot string, primaryPath string, workerStateDir string) (map[string]TriageTaskInfo, string, error) {
+	mapping, err := readTriageMapping(repoRoot, primaryPath)
+	if err == nil {
+		return mapping, primaryPath, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return nil, "", err
+	}
+
+	// On some filesystems (notably mounted volumes), file visibility can lag worker
+	// process completion slightly. Retry before treating this as a hard failure.
+	lastErr := err
+	for range 5 {
+		time.Sleep(150 * time.Millisecond)
+		mapping, err = readTriageMapping(repoRoot, primaryPath)
+		if err == nil {
+			return mapping, primaryPath, nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, "", err
+		}
+		lastErr = err
+	}
+
+	for _, fallbackPath := range triageFallbackOutputPaths(repoRoot, primaryPath, workerStateDir) {
+		mapping, err = readTriageMapping(repoRoot, fallbackPath)
+		if err == nil {
+			return mapping, fallbackPath, nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, "", err
+		}
+		lastErr = err
+	}
+	return nil, "", fmt.Errorf("%w; searched fallback triage output paths", lastErr)
+}
+
+// triageFallbackOutputPaths returns non-canonical paths where a triage agent may emit dag output.
+func triageFallbackOutputPaths(repoRoot string, primaryPath string, workerStateDir string) []string {
+	seen := map[string]struct{}{filepath.Clean(primaryPath): {}}
+	candidates := []string{
+		filepath.Join(repoRoot, localStateDirName, triageDirName, triageOutputFileName),
+		filepath.Join(workerStateDir, triageOutputFileName),
+		filepath.Join(workerStateDir, localStateDirName, triageOutputFileName),
+	}
+
+	paths := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		cleaned := filepath.Clean(candidate)
+		if _, ok := seen[cleaned]; ok {
+			continue
+		}
+		seen[cleaned] = struct{}{}
+		paths = append(paths, cleaned)
+	}
+	return paths
 }
 
 // failTriageAttempt records failure metadata and enforces retry limits.
@@ -435,7 +501,7 @@ func prepareTriageTask(repoRoot string, idx index.Index) error {
 func buildTriageTaskContent(template string, idx index.Index) string {
 	var b strings.Builder
 	b.WriteString(strings.TrimSpace(template))
-	b.WriteString("\n\nOutput the JSON mapping to `_governator/_local-state/dag.json`.\n")
+	b.WriteString("\n\nOutput the JSON mapping to `.governator/.local-state/dag.json`.\n")
 	b.WriteString("Schema: {\"task-id\": {\"dependencies\": [\"dep1\"], \"role\": \"backend\"}}\n")
 	b.WriteString("  - dependencies: array of task IDs (or [] for independent tasks)\n")
 	b.WriteString("  - role: string role name (optional, defaults to \"default\")\n")

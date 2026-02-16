@@ -37,11 +37,11 @@ omit/skip if the scope or complexity of the project do not justify their
 production._
 
 ## Artifact Rules
-- All artifacts MUST use the templates provided in `_governator/templates/`.
+- All artifacts MUST use the templates provided in `.governator/templates/`.
 - All artifacts MUST be written in markdown.
-- Power Six artifacts MUST be stored as `_governator/docs/arch-*.md` (e.g.
-  `_governator/docs/arch-arc42.md`).
-- ADRs MUST live in `_governator/docs/adr/`.
+- Power Six artifacts MUST be stored as `.governator/docs/arch-*.md` (e.g.
+  `.governator/docs/arch-arc42.md`).
+- ADRs MUST live in `.governator/docs/adr/`.
 - Sections may not be removed.
 - Empty sections must be explicitly marked as intentionally omitted, with an
   explanation as to why.

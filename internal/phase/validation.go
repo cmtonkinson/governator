@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	docsDirName   = "_governator/docs"
-	tasksDirName  = "_governator/tasks"
+	docsDirName   = ".governator/docs"
+	tasksDirName  = ".governator/tasks"
 	gapFileName   = "gap-analysis.md"
 	milestones    = "milestones.md"
 	epics         = "epics.md"

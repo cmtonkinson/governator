@@ -11,19 +11,19 @@ func TestValidatePlanningValidationsRejectsUnexpectedFields(t *testing.T) {
 		{
 			name: "directory rejects regex",
 			validations: []PlanningValidationSpec{
-				{Type: "directory", Path: "_governator/tasks", FileRegex: "x"},
+				{Type: "directory", Path: ".governator/tasks", FileRegex: "x"},
 			},
 		},
 		{
 			name: "file rejects command",
 			validations: []PlanningValidationSpec{
-				{Type: "file", Path: "_governator/docs/doc.md", Command: "echo hi"},
+				{Type: "file", Path: ".governator/docs/doc.md", Command: "echo hi"},
 			},
 		},
 		{
 			name: "command rejects path",
 			validations: []PlanningValidationSpec{
-				{Type: "command", Command: "echo hi", Path: "_governator/docs/doc.md"},
+				{Type: "command", Command: "echo hi", Path: ".governator/docs/doc.md"},
 			},
 		},
 		{
@@ -45,7 +45,7 @@ func TestValidatePlanningValidationsRejectsUnexpectedFields(t *testing.T) {
 
 func TestValidatePlanningValidationsAcceptsDirectoryPath(t *testing.T) {
 	if err := validatePlanningValidations("step", []PlanningValidationSpec{
-		{Type: "directory", Path: "_governator/tasks"},
+		{Type: "directory", Path: ".governator/tasks"},
 	}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

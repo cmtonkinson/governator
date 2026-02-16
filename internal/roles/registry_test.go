@@ -14,9 +14,9 @@ import (
 func TestRegistryPromptFilesOrder(t *testing.T) {
 	t.Helper()
 	root := t.TempDir()
-	writeFile(t, filepath.Join(root, "_governator", "roles", "engineer.md"), "role")
-	writeFile(t, filepath.Join(root, "_governator", "custom-prompts", "_global.md"), "global")
-	writeFile(t, filepath.Join(root, "_governator", "custom-prompts", "engineer.md"), "custom")
+	writeFile(t, filepath.Join(root, ".governator", "roles", "engineer.md"), "role")
+	writeFile(t, filepath.Join(root, ".governator", "custom-prompts", "_global.md"), "global")
+	writeFile(t, filepath.Join(root, ".governator", "custom-prompts", "engineer.md"), "custom")
 
 	registry, err := LoadRegistry(root, nil)
 	if err != nil {
@@ -25,9 +25,9 @@ func TestRegistryPromptFilesOrder(t *testing.T) {
 
 	got := registry.PromptFiles(index.Role("engineer"))
 	want := []string{
-		"_governator/roles/engineer.md",
-		"_governator/custom-prompts/_global.md",
-		"_governator/custom-prompts/engineer.md",
+		".governator/roles/engineer.md",
+		".governator/custom-prompts/_global.md",
+		".governator/custom-prompts/engineer.md",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("PromptFiles = %#v, want %#v", got, want)
@@ -38,9 +38,9 @@ func TestRegistryPromptFilesOrder(t *testing.T) {
 func TestRegistryPromptFilesMissingRoleWarns(t *testing.T) {
 	t.Helper()
 	root := t.TempDir()
-	writeDir(t, filepath.Join(root, "_governator", "roles"))
-	writeFile(t, filepath.Join(root, "_governator", "custom-prompts", "_global.md"), "global")
-	writeFile(t, filepath.Join(root, "_governator", "custom-prompts", "ghost.md"), "custom")
+	writeDir(t, filepath.Join(root, ".governator", "roles"))
+	writeFile(t, filepath.Join(root, ".governator", "custom-prompts", "_global.md"), "global")
+	writeFile(t, filepath.Join(root, ".governator", "custom-prompts", "ghost.md"), "custom")
 
 	var warnings []string
 	registry, err := LoadRegistry(root, func(message string) {
@@ -52,8 +52,8 @@ func TestRegistryPromptFilesMissingRoleWarns(t *testing.T) {
 
 	got := registry.PromptFiles(index.Role("ghost"))
 	want := []string{
-		"_governator/custom-prompts/_global.md",
-		"_governator/custom-prompts/ghost.md",
+		".governator/custom-prompts/_global.md",
+		".governator/custom-prompts/ghost.md",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("PromptFiles = %#v, want %#v", got, want)

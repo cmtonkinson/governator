@@ -32,7 +32,7 @@ func NewTaskInventory(repoRoot string, idx *index.Index) *TaskInventory {
 func (inventory *TaskInventory) InventoryTasks() (TaskInventoryResult, error) {
 	result := TaskInventoryResult{}
 
-	tasksDir := filepath.Join(inventory.repoRoot, "_governator", "tasks")
+	tasksDir := filepath.Join(inventory.repoRoot, ".governator", "tasks")
 
 	// Check if tasks directory exists
 	if _, err := os.Stat(tasksDir); err != nil {
