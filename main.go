@@ -242,13 +242,13 @@ OPTIONS:
 }
 
 func commitInit(repoRoot string) error {
-	addCmd := exec.Command("git", "add", "--", "_governator")
+	addCmd := exec.Command("git", "add", "--", "_governator", "GOVERNATOR.md")
 	addCmd.Dir = repoRoot
 	if out, err := addCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git add _governator failed: %s: %w", strings.TrimSpace(string(out)), err)
+		return fmt.Errorf("git add failed: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 
-	diffCmd := exec.Command("git", "diff", "--cached", "--quiet", "--", "_governator")
+	diffCmd := exec.Command("git", "diff", "--cached", "--quiet", "--", "_governator", "GOVERNATOR.md")
 	diffCmd.Dir = repoRoot
 	if err := diffCmd.Run(); err != nil {
 		var exitErr *exec.ExitError
