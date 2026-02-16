@@ -303,6 +303,11 @@ func TestInitCommand(t *testing.T) {
 		t.Fatalf("Failed to init git repo: %v", err)
 	}
 
+	// Create GOVERNATOR.md (required by commitInit)
+	if err := os.WriteFile(filepath.Join(tempDir, "GOVERNATOR.md"), []byte("# Test\n"), 0o644); err != nil {
+		t.Fatalf("Failed to create GOVERNATOR.md: %v", err)
+	}
+
 	// Run init command
 	cmd = exec.Command(binaryPath, "init")
 	output, err := cmd.CombinedOutput()
@@ -375,6 +380,11 @@ func TestRetryCommand(t *testing.T) {
 	gitInitCmd.Dir = tempDir
 	if out, err := gitInitCmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init failed: %v, output: %s", err, out)
+	}
+
+	// Create GOVERNATOR.md (required by commitInit)
+	if err := os.WriteFile(filepath.Join(tempDir, "GOVERNATOR.md"), []byte("# Test\n"), 0o644); err != nil {
+		t.Fatalf("Failed to create GOVERNATOR.md: %v", err)
 	}
 
 	initCmd := exec.Command(binaryPath, "init")
@@ -588,6 +598,11 @@ func TestStatusCommand(t *testing.T) {
 	gitCmd := exec.Command("git", "init")
 	if err := gitCmd.Run(); err != nil {
 		t.Fatalf("Failed to init git repo: %v", err)
+	}
+
+	// Create GOVERNATOR.md (required by commitInit)
+	if err := os.WriteFile(filepath.Join(tempDir, "GOVERNATOR.md"), []byte("# Test\n"), 0o644); err != nil {
+		t.Fatalf("Failed to create GOVERNATOR.md: %v", err)
 	}
 
 	t.Run("status without index fails", func(t *testing.T) {
