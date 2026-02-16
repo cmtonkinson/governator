@@ -278,6 +278,10 @@ func launchSupervisor(commandArg string) {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(2)
 	}
+	if err := ensureCleanCheckout(repoRoot); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
 	if _, running, err := supervisor.AnyRunning(repoRoot); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -433,6 +437,23 @@ OPTIONS:
 	}
 
 	launchSupervisor("start")
+}
+
+// ensureCleanCheckout verifies the repository checkout has no uncommitted or untracked changes.
+func ensureCleanCheckout(repoRoot string) error {
+	cmd := exec.Command("git", "status", "--porcelain", "--untracked-files=all")
+	cmd.Dir = repoRoot
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("check checkout cleanliness: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+	status := strings.TrimSpace(string(out))
+	if status == "" {
+		return nil
+	}
+
+	firstLine := strings.Split(status, "\n")[0]
+	return fmt.Errorf("local checkout is dirty (%s); commit, stash, or discard changes before running governator start", firstLine)
 }
 
 func runStartSupervisor() {

@@ -171,9 +171,87 @@ func ApplyRepoMigrations(repoRoot string, opts InitOptions) error {
 		if err := os.WriteFile(markerPath, []byte("ok\n"), 0o644); err != nil {
 			return fmt.Errorf("write migration marker %s: %w", markerPath, err)
 		}
+		if err := commitAppliedRepoMigration(repoRoot, migration.id); err != nil {
+			return err
+		}
 	}
 
 	return nil
+}
+
+// commitAppliedRepoMigration creates a dedicated commit for one applied migration in a git repository.
+func commitAppliedRepoMigration(repoRoot string, appliedID string) error {
+	if strings.TrimSpace(appliedID) == "" {
+		return nil
+	}
+	ok, err := isGitRepository(repoRoot)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+
+	stagePaths := []string{".governator"}
+	trackedLegacy, err := legacyWorkspaceTracked(repoRoot)
+	if err != nil {
+		return err
+	}
+	if trackedLegacy {
+		stagePaths = append(stagePaths, "_governator")
+	}
+
+	addArgs := append([]string{"add", "-A", "--"}, stagePaths...)
+	if _, err := runGit(repoRoot, addArgs...); err != nil {
+		return fmt.Errorf("stage migration changes: %w", err)
+	}
+
+	diffArgs := append([]string{"diff", "--cached", "--quiet", "--"}, stagePaths...)
+	if _, err := runGit(repoRoot, diffArgs...); err == nil {
+		return nil // Nothing staged for commit.
+	} else if !isGitExitCode(err, 1) {
+		return fmt.Errorf("inspect staged migration changes: %w", err)
+	}
+
+	if _, err := runGitWithEnv(repoRoot, []string{
+		"GIT_AUTHOR_NAME=Governator CLI",
+		"GIT_AUTHOR_EMAIL=governator@localhost",
+		"GIT_COMMITTER_NAME=Governator CLI",
+		"GIT_COMMITTER_EMAIL=governator@localhost",
+	}, "commit", "-m", fmt.Sprintf("governator: apply repo migration %s", appliedID)); err != nil {
+		return fmt.Errorf("commit repo migrations: %w", err)
+	}
+	return nil
+}
+
+// isGitRepository reports whether repoRoot is a git work tree.
+func isGitRepository(repoRoot string) (bool, error) {
+	output, err := runGit(repoRoot, "rev-parse", "--is-inside-work-tree")
+	if err != nil {
+		if strings.Contains(err.Error(), "not a git repository") {
+			return false, nil
+		}
+		return false, fmt.Errorf("verify git repository: %w", err)
+	}
+	return strings.TrimSpace(output) == "true", nil
+}
+
+// legacyWorkspaceTracked reports whether _governator has tracked entries in git.
+func legacyWorkspaceTracked(repoRoot string) (bool, error) {
+	output, err := runGit(repoRoot, "ls-files", "--", "_governator")
+	if err != nil {
+		return false, fmt.Errorf("list tracked legacy workspace files: %w", err)
+	}
+	return strings.TrimSpace(output) != "", nil
+}
+
+// isGitExitCode checks whether the wrapped git invocation exited with the provided status code.
+func isGitExitCode(err error, code int) bool {
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		return false
+	}
+	return exitErr.ExitCode() == code
 }
 
 // migrationMarkerExists checks both current and legacy marker locations for migration completion.
@@ -828,8 +906,15 @@ func deleteBranchIfExists(repoRoot string, branch string) error {
 }
 
 func runGit(repoRoot string, args ...string) (string, error) {
+	return runGitWithEnv(repoRoot, nil, args...)
+}
+
+func runGitWithEnv(repoRoot string, extraEnv []string, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = repoRoot
+	if len(extraEnv) > 0 {
+		cmd.Env = append(os.Environ(), extraEnv...)
+	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return string(output), fmt.Errorf("git %s failed: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))

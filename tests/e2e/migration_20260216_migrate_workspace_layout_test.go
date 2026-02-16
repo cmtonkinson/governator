@@ -4,6 +4,7 @@ package test
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -102,6 +103,13 @@ func TestE2EMigrationWorkspaceLayoutHappyPath(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(repoRoot, e2eLayoutMigrationMarker)); err != nil {
 		t.Fatalf("layout migration marker missing: %v", err)
 	}
+	subject := e2eGitOutput(t, repoRoot, "log", "-1", "--pretty=%s")
+	if !strings.Contains(subject, "governator: apply repo migration") {
+		t.Fatalf("expected migration commit subject, got: %q", subject)
+	}
+	if !strings.Contains(subject, e2eLayoutMigrationID) {
+		t.Fatalf("expected layout migration id in commit subject, got: %q", subject)
+	}
 }
 
 // TestE2EMigrationWorkspaceLayoutConflictFailure verifies migration fails on conflicting destination content.
@@ -126,6 +134,7 @@ func TestE2EMigrationWorkspaceLayoutConflictFailure(t *testing.T) {
 		t.Fatalf("write target docs file: %v", err)
 	}
 
+	beforeCount := e2eGitOutput(t, repoRoot, "rev-list", "--count", "HEAD")
 	err := config.ApplyRepoMigrations(repoRoot, config.InitOptions{})
 	if err == nil {
 		t.Fatal("expected layout migration conflict failure")
@@ -140,4 +149,19 @@ func TestE2EMigrationWorkspaceLayoutConflictFailure(t *testing.T) {
 	if _, statErr := os.Stat(filepath.Join(repoRoot, e2eLayoutMigrationMarker)); !os.IsNotExist(statErr) {
 		t.Fatalf("layout migration marker should be absent after failure")
 	}
+	afterCount := e2eGitOutput(t, repoRoot, "rev-list", "--count", "HEAD")
+	if beforeCount != afterCount {
+		t.Fatalf("expected no commit on migration failure, before=%s after=%s", beforeCount, afterCount)
+	}
+}
+
+func e2eGitOutput(t *testing.T, repoRoot string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repoRoot
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s failed: %v: %s", strings.Join(args, " "), err, string(output))
+	}
+	return strings.TrimSpace(string(output))
 }

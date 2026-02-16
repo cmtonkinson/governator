@@ -725,6 +725,72 @@ func TestApplyRepoMigrationsLayoutFailsOnConflictingFiles(t *testing.T) {
 	}
 }
 
+// TestApplyRepoMigrationsCreatesCommitWhenApplied verifies successful migrations are committed atomically.
+func TestApplyRepoMigrationsCreatesCommitWhenApplied(t *testing.T) {
+	repoRoot := t.TempDir()
+	initGitRepo(t, repoRoot)
+
+	if err := os.MkdirAll(filepath.Join(repoRoot, "_governator", "_durable-state", "migrations"), 0o755); err != nil {
+		t.Fatalf("mkdir legacy migration dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, "_governator", "_durable-state", "config.json"), []byte("{\"workers\":{}}\n"), 0o644); err != nil {
+		t.Fatalf("write legacy config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, "_governator", ".gitignore"), []byte("_local-state/*\n!_local-state/.keep\n"), 0o644); err != nil {
+		t.Fatalf("write legacy gitignore: %v", err)
+	}
+	runGitCommand(t, repoRoot, "add", "_governator")
+	runGitCommand(t, repoRoot, "commit", "-m", "seed legacy governator layout")
+
+	if err := ApplyRepoMigrations(repoRoot, InitOptions{}); err != nil {
+		t.Fatalf("ApplyRepoMigrations: %v", err)
+	}
+
+	commitCount := runGitOutput(t, repoRoot, "rev-list", "--count", "HEAD")
+	if commitCount != "5" {
+		t.Fatalf("expected 5 commits total (2 seed + 3 migrations), got %s", commitCount)
+	}
+
+	subjects := runGitOutput(t, repoRoot, "log", "-3", "--pretty=%s")
+	for _, migrationID := range []string{
+		layoutMigrationID,
+		conflictResolutionMigrationID,
+		resetOpenTasksMigrationID,
+	} {
+		want := "governator: apply repo migration " + migrationID
+		if !strings.Contains(subjects, want) {
+			t.Fatalf("expected migration commit subject %q in recent commits, got:\n%s", want, subjects)
+		}
+	}
+}
+
+// TestApplyRepoMigrationsNoPendingDoesNotCreateCommit verifies no-op runs do not create extra commits.
+func TestApplyRepoMigrationsNoPendingDoesNotCreateCommit(t *testing.T) {
+	repoRoot := t.TempDir()
+	initGitRepo(t, repoRoot)
+
+	if err := os.MkdirAll(filepath.Join(repoRoot, repoDurableStateDir, "migrations"), 0o755); err != nil {
+		t.Fatalf("mkdir migrations dir: %v", err)
+	}
+	for _, migration := range repoMigrations {
+		markerPath := filepath.Join(repoRoot, repoDurableStateDir, "migrations", migration.id+".done")
+		if err := os.WriteFile(markerPath, []byte("ok\n"), 0o644); err != nil {
+			t.Fatalf("write marker %s: %v", migration.id, err)
+		}
+	}
+	runGitCommand(t, repoRoot, "add", ".governator")
+	runGitCommand(t, repoRoot, "commit", "-m", "seed migration markers")
+
+	before := runGitOutput(t, repoRoot, "rev-list", "--count", "HEAD")
+	if err := ApplyRepoMigrations(repoRoot, InitOptions{}); err != nil {
+		t.Fatalf("ApplyRepoMigrations: %v", err)
+	}
+	after := runGitOutput(t, repoRoot, "rev-list", "--count", "HEAD")
+	if before != after {
+		t.Fatalf("expected commit count unchanged, before=%s after=%s", before, after)
+	}
+}
+
 // TestStampExistingMigrationsWritesMarkers verifies that all known migrations get stamped.
 func TestStampExistingMigrationsWritesMarkers(t *testing.T) {
 	repoRoot := t.TempDir()
@@ -836,6 +902,17 @@ func runGitCommand(t *testing.T, repoRoot string, args ...string) {
 	if err != nil {
 		t.Fatalf("git %s failed: %v: %s", strings.Join(args, " "), err, string(output))
 	}
+}
+
+func runGitOutput(t *testing.T, repoRoot string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repoRoot
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s failed: %v: %s", strings.Join(args, " "), err, string(output))
+	}
+	return strings.TrimSpace(string(output))
 }
 
 func branchExists(t *testing.T, repoRoot string, branch string) bool {

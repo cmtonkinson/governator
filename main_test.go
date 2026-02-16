@@ -270,6 +270,78 @@ func TestEnsureNoSupervisorLocks(t *testing.T) {
 	})
 }
 
+func TestEnsureCleanCheckout(t *testing.T) {
+	t.Run("returns nil for clean checkout", func(t *testing.T) {
+		repoRoot := t.TempDir()
+
+		gitInitCmd := exec.Command("git", "init")
+		gitInitCmd.Dir = repoRoot
+		if out, err := gitInitCmd.CombinedOutput(); err != nil {
+			t.Fatalf("git init failed: %v, output: %s", err, out)
+		}
+
+		readmePath := filepath.Join(repoRoot, "README.md")
+		if err := os.WriteFile(readmePath, []byte("ok\n"), 0o644); err != nil {
+			t.Fatalf("write README: %v", err)
+		}
+
+		gitAddCmd := exec.Command("git", "add", "README.md")
+		gitAddCmd.Dir = repoRoot
+		if out, err := gitAddCmd.CombinedOutput(); err != nil {
+			t.Fatalf("git add failed: %v, output: %s", err, out)
+		}
+
+		gitCommitCmd := exec.Command("git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "init")
+		gitCommitCmd.Dir = repoRoot
+		if out, err := gitCommitCmd.CombinedOutput(); err != nil {
+			t.Fatalf("git commit failed: %v, output: %s", err, out)
+		}
+
+		if err := ensureCleanCheckout(repoRoot); err != nil {
+			t.Fatalf("expected clean checkout, got: %v", err)
+		}
+	})
+
+	t.Run("returns error for dirty checkout", func(t *testing.T) {
+		repoRoot := t.TempDir()
+
+		gitInitCmd := exec.Command("git", "init")
+		gitInitCmd.Dir = repoRoot
+		if out, err := gitInitCmd.CombinedOutput(); err != nil {
+			t.Fatalf("git init failed: %v, output: %s", err, out)
+		}
+
+		readmePath := filepath.Join(repoRoot, "README.md")
+		if err := os.WriteFile(readmePath, []byte("ok\n"), 0o644); err != nil {
+			t.Fatalf("write README: %v", err)
+		}
+
+		gitAddCmd := exec.Command("git", "add", "README.md")
+		gitAddCmd.Dir = repoRoot
+		if out, err := gitAddCmd.CombinedOutput(); err != nil {
+			t.Fatalf("git add failed: %v, output: %s", err, out)
+		}
+
+		gitCommitCmd := exec.Command("git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "init")
+		gitCommitCmd.Dir = repoRoot
+		if out, err := gitCommitCmd.CombinedOutput(); err != nil {
+			t.Fatalf("git commit failed: %v, output: %s", err, out)
+		}
+
+		if err := os.WriteFile(readmePath, []byte("dirty\n"), 0o644); err != nil {
+			t.Fatalf("modify README: %v", err)
+		}
+
+		err := ensureCleanCheckout(repoRoot)
+		if err == nil {
+			t.Fatal("expected dirty checkout error, got nil")
+		}
+		if !strings.Contains(err.Error(), "local checkout is dirty") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
 func TestInitCommand(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "governator-init-test")
