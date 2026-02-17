@@ -1145,6 +1145,7 @@ func TestResetCommand(t *testing.T) {
 	if err := buildCmd.Run(); err != nil {
 		t.Fatalf("failed to build CLI binary: %v", err)
 	}
+	deadPID := findDeadPID(t)
 
 	t.Run("rejects worker stop flags", func(t *testing.T) {
 		repoRoot := t.TempDir()
@@ -1281,7 +1282,7 @@ func TestResetCommand(t *testing.T) {
 				AssignedRole:  "worker",
 				BlockedReason: "flaky",
 				MergeConflict: true,
-				PID:           1234,
+				PID:           deadPID,
 				Attempts: index.AttemptCounters{
 					Total:  3,
 					Failed: 2,
@@ -1494,4 +1495,17 @@ func terminateProcessForTest(t *testing.T, cmd *exec.Cmd) {
 	_ = cmd.Process.Signal(syscall.SIGTERM)
 	_ = cmd.Process.Kill()
 	_ = cmd.Wait()
+}
+
+func findDeadPID(t *testing.T) int {
+	t.Helper()
+	// Search for a known-dead PID in a high range to avoid collisions with active processes.
+	for pid := 900000; pid < 1000000; pid++ {
+		err := syscall.Kill(pid, 0)
+		if errors.Is(err, syscall.ESRCH) {
+			return pid
+		}
+	}
+	t.Fatal("failed to find a dead pid for reset tests")
+	return 0
 }
