@@ -3,17 +3,21 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/cmtonkinson/governator/internal/config"
 	"github.com/cmtonkinson/governator/internal/index"
+	"github.com/cmtonkinson/governator/internal/inflight"
+	"github.com/cmtonkinson/governator/internal/supervisor"
 	"github.com/cmtonkinson/governator/internal/supervisorlock"
 )
 
@@ -1133,4 +1137,361 @@ func TestHandleTailQuitInput(t *testing.T) {
 			t.Fatal("did not expect cancel to be called")
 		}
 	})
+}
+
+func TestResetCommand(t *testing.T) {
+	binaryPath := filepath.Join(t.TempDir(), "governator-test")
+	buildCmd := exec.Command("go", "build", "-o", binaryPath, ".")
+	if err := buildCmd.Run(); err != nil {
+		t.Fatalf("failed to build CLI binary: %v", err)
+	}
+
+	t.Run("rejects worker stop flags", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		initResetRepo(t, repoRoot)
+
+		cmd := exec.Command(binaryPath, "reset", "-w")
+		cmd.Dir = repoRoot
+		output, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Fatalf("expected reset -w to fail, output: %s", output)
+		}
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("expected ExitError, got %T", err)
+		}
+		if exitErr.ExitCode() != 2 {
+			t.Fatalf("exit code = %d, want 2", exitErr.ExitCode())
+		}
+		if !strings.Contains(string(output), "-w/--worker is not supported") {
+			t.Fatalf("expected unsupported worker flag error, got: %s", output)
+		}
+	})
+
+	t.Run("fails while supervisor is running", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		initResetRepo(t, repoRoot)
+
+		sleepCmd := exec.Command("sleep", "60")
+		if err := sleepCmd.Start(); err != nil {
+			t.Fatalf("start sleep process: %v", err)
+		}
+		defer terminateProcessForTest(t, sleepCmd)
+
+		now := time.Now().UTC()
+		if err := supervisor.SaveState(repoRoot, supervisor.SupervisorStateInfo{
+			Phase:          "start",
+			PID:            sleepCmd.Process.Pid,
+			State:          supervisor.SupervisorStateRunning,
+			StartedAt:      now,
+			LastTransition: now,
+		}); err != nil {
+			t.Fatalf("save supervisor state: %v", err)
+		}
+
+		cmd := exec.Command(binaryPath, "reset")
+		cmd.Dir = repoRoot
+		output, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Fatalf("expected reset to fail when supervisor is running, output: %s", output)
+		}
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("expected ExitError, got %T", err)
+		}
+		if exitErr.ExitCode() != 1 {
+			t.Fatalf("exit code = %d, want 1", exitErr.ExitCode())
+		}
+		if !strings.Contains(string(output), "supervisor is running; run governator stop first") {
+			t.Fatalf("unexpected output: %s", output)
+		}
+	})
+
+	t.Run("fails when live workers exist", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		initResetRepo(t, repoRoot)
+		writeResetIndex(t, repoRoot, []index.Task{
+			{
+				ID:      "T-001",
+				Path:    ".governator/tasks/T-001.md",
+				Kind:    index.TaskKindExecution,
+				State:   index.TaskStateTriaged,
+				Role:    "default",
+				Order:   1,
+				Overlap: []string{},
+			},
+		})
+
+		sleepCmd := exec.Command("sleep", "60")
+		if err := sleepCmd.Start(); err != nil {
+			t.Fatalf("start sleep process: %v", err)
+		}
+		defer terminateProcessForTest(t, sleepCmd)
+
+		workerStateDir := filepath.Join(repoRoot, ".governator", ".local-state", "workers", "T-001")
+		if err := os.MkdirAll(workerStateDir, 0o755); err != nil {
+			t.Fatalf("mkdir worker state dir: %v", err)
+		}
+		dispatch := fmt.Sprintf("{\"wrapper_pid\":%d}\n", sleepCmd.Process.Pid)
+		if err := os.WriteFile(filepath.Join(workerStateDir, "dispatch.json"), []byte(dispatch), 0o644); err != nil {
+			t.Fatalf("write dispatch metadata: %v", err)
+		}
+		store, err := inflight.NewStore(repoRoot)
+		if err != nil {
+			t.Fatalf("create in-flight store: %v", err)
+		}
+		if err := store.Save(inflight.Set{
+			"T-001": {
+				ID:             "T-001",
+				WorkerStateDir: workerStateDir,
+			},
+		}); err != nil {
+			t.Fatalf("seed in-flight store: %v", err)
+		}
+
+		cmd := exec.Command(binaryPath, "reset")
+		cmd.Dir = repoRoot
+		output, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Fatalf("expected reset to fail with live worker, output: %s", output)
+		}
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("expected ExitError, got %T", err)
+		}
+		if exitErr.ExitCode() != 1 {
+			t.Fatalf("exit code = %d, want 1", exitErr.ExitCode())
+		}
+		if !strings.Contains(string(output), "live workers are still running") {
+			t.Fatalf("expected live worker failure, got: %s", output)
+		}
+	})
+
+	t.Run("resets non-merged execution tasks and clears transient state", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		initResetRepo(t, repoRoot)
+
+		writeResetIndex(t, repoRoot, []index.Task{
+			{
+				ID:            "T-001",
+				Path:          ".governator/tasks/T-001.md",
+				Kind:          index.TaskKindExecution,
+				State:         index.TaskStateBlocked,
+				Role:          "worker",
+				AssignedRole:  "worker",
+				BlockedReason: "flaky",
+				MergeConflict: true,
+				PID:           1234,
+				Attempts: index.AttemptCounters{
+					Total:  3,
+					Failed: 2,
+				},
+				Order:   1,
+				Overlap: []string{},
+			},
+			{
+				ID:      "T-002",
+				Path:    ".governator/tasks/T-002.md",
+				Kind:    index.TaskKindExecution,
+				State:   index.TaskStateMerged,
+				Role:    "reviewer",
+				Order:   2,
+				Overlap: []string{},
+			},
+			{
+				ID:      "planning",
+				Path:    ".governator/tasks/planning.md",
+				Kind:    index.TaskKindPlanning,
+				State:   index.TaskStateMerged,
+				Role:    "default",
+				Order:   0,
+				Overlap: []string{},
+			},
+		})
+
+		// Seed transient runtime files.
+		worktreePath := filepath.Join(repoRoot, ".governator", "worktrees", "task-T-001")
+		if err := os.MkdirAll(worktreePath, 0o755); err != nil {
+			t.Fatalf("mkdir worktree: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(worktreePath, "marker.txt"), []byte("x\n"), 0o644); err != nil {
+			t.Fatalf("write worktree marker: %v", err)
+		}
+		metaPath := filepath.Join(repoRoot, ".governator", ".local-state", "meta", "T-001.json")
+		if err := os.MkdirAll(filepath.Dir(metaPath), 0o755); err != nil {
+			t.Fatalf("mkdir meta dir: %v", err)
+		}
+		if err := os.WriteFile(metaPath, []byte("{}\n"), 0o644); err != nil {
+			t.Fatalf("write meta file: %v", err)
+		}
+		if err := os.MkdirAll(filepath.Join(repoRoot, ".governator", ".local-state", "triage"), 0o755); err != nil {
+			t.Fatalf("mkdir triage dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(repoRoot, ".governator", ".local-state", "triage", "state.json"), []byte("{}\n"), 0o644); err != nil {
+			t.Fatalf("write triage state: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(repoRoot, ".governator", ".local-state", "dag.json"), []byte("{}\n"), 0o644); err != nil {
+			t.Fatalf("write triage dag: %v", err)
+		}
+		store, err := inflight.NewStore(repoRoot)
+		if err != nil {
+			t.Fatalf("create in-flight store: %v", err)
+		}
+		if err := store.Save(inflight.Set{"T-001": {ID: "T-001"}}); err != nil {
+			t.Fatalf("seed in-flight: %v", err)
+		}
+
+		now := time.Now().UTC()
+		if err := supervisor.SaveState(repoRoot, supervisor.SupervisorStateInfo{
+			Phase:          "start",
+			PID:            0,
+			State:          supervisor.SupervisorStateStopped,
+			StartedAt:      now,
+			LastTransition: now,
+		}); err != nil {
+			t.Fatalf("save supervisor state: %v", err)
+		}
+		lockPath := filepath.Join(repoRoot, ".governator", ".local-state", supervisor.SupervisorLockName)
+		if err := os.WriteFile(lockPath, []byte("stale\n"), 0o644); err != nil {
+			t.Fatalf("write lock file: %v", err)
+		}
+
+		gitRun(t, repoRoot, "branch", "T-001")
+		gitRun(t, repoRoot, "branch", "task-T-001")
+		gitRun(t, repoRoot, "branch", "T-002")
+
+		cmd := exec.Command(binaryPath, "reset")
+		cmd.Dir = repoRoot
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("reset failed: %v, output: %s", err, output)
+		}
+		if !strings.Contains(string(output), "reset complete") {
+			t.Fatalf("unexpected reset output: %s", output)
+		}
+
+		idx, err := index.Load(filepath.Join(repoRoot, ".governator", ".local-state", "index.json"))
+		if err != nil {
+			t.Fatalf("load index: %v", err)
+		}
+		taskByID := map[string]index.Task{}
+		for _, task := range idx.Tasks {
+			taskByID[task.ID] = task
+		}
+
+		task := taskByID["T-001"]
+		if task.State != index.TaskStateBacklog {
+			t.Fatalf("T-001 state = %s, want %s", task.State, index.TaskStateBacklog)
+		}
+		if task.Role != "" || task.AssignedRole != "" {
+			t.Fatalf("T-001 role fields not cleared: role=%q assigned=%q", task.Role, task.AssignedRole)
+		}
+		if task.BlockedReason != "" || task.MergeConflict || task.PID != 0 {
+			t.Fatalf("T-001 runtime fields not cleared: blocked=%q conflict=%v pid=%d", task.BlockedReason, task.MergeConflict, task.PID)
+		}
+		if task.Attempts.Total != 0 || task.Attempts.Failed != 0 {
+			t.Fatalf("T-001 attempts not reset: %#v", task.Attempts)
+		}
+
+		merged := taskByID["T-002"]
+		if merged.State != index.TaskStateMerged {
+			t.Fatalf("T-002 state = %s, want merged", merged.State)
+		}
+
+		inFlightSet, err := store.Load()
+		if err != nil {
+			t.Fatalf("load in-flight set: %v", err)
+		}
+		if len(inFlightSet) != 0 {
+			t.Fatalf("expected empty in-flight set after reset, got %#v", inFlightSet)
+		}
+
+		if _, err := os.Stat(worktreePath); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("expected task worktree removed, stat err=%v", err)
+		}
+		if _, err := os.Stat(metaPath); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("expected meta file removed, stat err=%v", err)
+		}
+		if _, err := os.Stat(filepath.Join(repoRoot, ".governator", ".local-state", "triage")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("expected triage dir removed, stat err=%v", err)
+		}
+		if _, err := os.Stat(filepath.Join(repoRoot, ".governator", ".local-state", "dag.json")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("expected triage dag removed, stat err=%v", err)
+		}
+		if _, err := os.Stat(filepath.Join(repoRoot, ".governator", ".local-state", "supervisor")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("expected supervisor state dir removed, stat err=%v", err)
+		}
+		if _, err := os.Stat(lockPath); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("expected supervisor lock removed, stat err=%v", err)
+		}
+
+		if gitBranchExists(t, repoRoot, "T-001") {
+			t.Fatal("expected branch T-001 to be removed")
+		}
+		if gitBranchExists(t, repoRoot, "task-T-001") {
+			t.Fatal("expected branch task-T-001 to be removed")
+		}
+		if !gitBranchExists(t, repoRoot, "T-002") {
+			t.Fatal("expected merged-task branch T-002 to remain")
+		}
+	})
+}
+
+func initResetRepo(t *testing.T, repoRoot string) {
+	t.Helper()
+	gitRun(t, repoRoot, "init", "--initial-branch=main")
+	gitRun(t, repoRoot, "config", "user.name", "Governator Test")
+	gitRun(t, repoRoot, "config", "user.email", "test@example.com")
+	if err := os.WriteFile(filepath.Join(repoRoot, "README.md"), []byte("# reset test\n"), 0o644); err != nil {
+		t.Fatalf("write README: %v", err)
+	}
+	gitRun(t, repoRoot, "add", "README.md")
+	gitRun(t, repoRoot, "commit", "-m", "Initial commit")
+}
+
+func writeResetIndex(t *testing.T, repoRoot string, tasks []index.Task) {
+	t.Helper()
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
+	if err := os.MkdirAll(filepath.Dir(indexPath), 0o755); err != nil {
+		t.Fatalf("mkdir index dir: %v", err)
+	}
+	idx := index.Index{
+		SchemaVersion: 1,
+		Digests: index.Digests{
+			PlanningDocs: map[string]string{},
+		},
+		Tasks: tasks,
+	}
+	if err := index.Save(indexPath, idx); err != nil {
+		t.Fatalf("save index: %v", err)
+	}
+}
+
+func gitRun(t *testing.T, repoRoot string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repoRoot
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s failed: %v: %s", strings.Join(args, " "), err, output)
+	}
+	return string(output)
+}
+
+func gitBranchExists(t *testing.T, repoRoot string, branch string) bool {
+	t.Helper()
+	cmd := exec.Command("git", "show-ref", "--verify", "--quiet", "refs/heads/"+branch)
+	cmd.Dir = repoRoot
+	err := cmd.Run()
+	return err == nil
+}
+
+func terminateProcessForTest(t *testing.T, cmd *exec.Cmd) {
+	t.Helper()
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+	_ = cmd.Process.Signal(syscall.SIGTERM)
+	_ = cmd.Process.Kill()
+	_ = cmd.Wait()
 }

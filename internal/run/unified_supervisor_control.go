@@ -66,7 +66,7 @@ func stopExecutionWorkers(repoRoot string) error {
 		return fmt.Errorf("load in-flight tasks: %w", err)
 	}
 	for _, entry := range set {
-		wrapperPID, _ := readDispatchWrapperPID(entry.WorkerStateDir)
+		wrapperPID, _, _ := ReadDispatchWrapperPID(entry.WorkerStateDir)
 		killWorkerProcess(wrapperPID, entry.WorkerStateDir, nil)
 	}
 	return nil

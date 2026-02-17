@@ -697,10 +697,7 @@ func migrateResetOpenTasksStripRoleSuffix(repoRoot string, opts InitOptions) err
 		return fmt.Errorf("save migrated task index %s: %w", indexPath, err)
 	}
 
-	if err := resetInFlightState(repoRoot); err != nil {
-		return err
-	}
-	if err := purgeTaskWorktreesAndBranches(repoRoot, openTaskIDs); err != nil {
+	if err := finalizeExecutionTaskReset(repoRoot, openTaskIDs, false); err != nil {
 		return err
 	}
 	opts.logf("reset %d non-merged task(s) to backlog", len(openTaskIDs))

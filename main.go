@@ -30,6 +30,7 @@ import (
 	"github.com/cmtonkinson/governator/internal/supervisor"
 	"github.com/cmtonkinson/governator/internal/supervisorlock"
 	"github.com/cmtonkinson/governator/internal/tui"
+	"github.com/cmtonkinson/governator/internal/worker"
 )
 
 const usage = `governator - AI-powered task orchestration engine
@@ -569,27 +570,33 @@ OPTIONS:
 
 func runReset(args []string) {
 	flags := flag.NewFlagSet("reset", flag.ExitOnError)
-	worker := flags.Bool("worker", false, "Also stop running worker agents")
-	workerShort := flags.Bool("w", false, "")
 	flags.Usage = func() {
 		fmt.Fprint(os.Stderr, `USAGE:
-    governator reset [options]
+    governator reset
 
 DESCRIPTION:
-    Nuclear option: stop the supervisor and clear all state.
-    This removes supervisor state files, clears locks, and prepares for a fresh start.
-    Use this when the supervisor is stuck or state is corrupted.
+    Reset all non-merged execution tasks back to backlog and clear transient execution state.
+    This command requires the supervisor to already be stopped and refuses to run while
+    any worker process is still alive.
 
-    WARNING: In-progress work may be lost. Use 'governator stop' for graceful shutdown.
+    Reset actions:
+    - Move execution tasks in non-backlog/non-merged states back to backlog
+    - Clear runtime task fields (role assignment, blocked/conflict state, pid, attempts)
+    - Clear in-flight tracking
+    - Remove per-task worktrees, work metadata, and task branches
+    - Clear persisted supervisor state and supervisor lock files
 
 OPTIONS:
-    -w, --worker    Also stop any running worker agents before reset
     -h, --help      Show this help message
 `)
 	}
+	if hasResetWorkerFlag(args) {
+		fmt.Fprintln(os.Stderr, "governator reset: -w/--worker is not supported; stop workers first")
+		fmt.Fprintln(os.Stderr)
+		flags.Usage()
+		os.Exit(2)
+	}
 	flags.Parse(args)
-
-	stopWorker := *worker || *workerShort
 
 	if flags.NArg() > 0 {
 		fmt.Fprintf(os.Stderr, "governator reset: unexpected arguments\n\n")
@@ -609,16 +616,23 @@ OPTIONS:
 	}
 	if running {
 		_ = phase
-		if err := run.StopUnifiedSupervisor(repoRoot, run.UnifiedSupervisorStopOptions{StopWorker: stopWorker}); err != nil && !errors.Is(err, supervisor.ErrSupervisorNotRunning) {
-			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
-		}
+		fmt.Fprintln(os.Stderr, "governator reset: supervisor is running; run governator stop first")
+		os.Exit(1)
 	}
-	if _, runningAfter, err := supervisor.AnyRunning(repoRoot); err != nil {
+	liveWorkers, err := detectLiveWorkers(repoRoot)
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
-	} else if runningAfter {
-		fmt.Fprintln(os.Stderr, "supervisor still running; retry reset after it exits")
+	}
+	if len(liveWorkers) > 0 {
+		fmt.Fprintln(os.Stderr, "governator reset: live workers are still running; stop them before reset")
+		for _, workerInfo := range liveWorkers {
+			fmt.Fprintf(os.Stderr, "  - %s pid=%d (%s)\n", workerInfo.TaskID, workerInfo.PID, workerInfo.Source)
+		}
+		os.Exit(1)
+	}
+	if err := config.ResetExecutionTasks(repoRoot, config.ResetExecutionTasksOptions{ClearTriageState: true}); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 	if err := supervisor.ClearState(repoRoot); err != nil {
@@ -629,7 +643,158 @@ OPTIONS:
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
-	fmt.Println("supervisor reset")
+	fmt.Println("reset complete")
+}
+
+type liveWorkerInfo struct {
+	TaskID string
+	PID    int
+	Source string
+}
+
+// hasResetWorkerFlag reports whether reset was invoked with the removed worker-stop option.
+func hasResetWorkerFlag(args []string) bool {
+	for _, arg := range args {
+		if arg == "-w" || arg == "--worker" || strings.HasPrefix(arg, "--worker=") {
+			return true
+		}
+	}
+	return false
+}
+
+// detectLiveWorkers gathers live worker processes from in-flight and triage runtime state.
+func detectLiveWorkers(repoRoot string) ([]liveWorkerInfo, error) {
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
+	idx := index.Index{}
+	if loaded, err := index.Load(indexPath); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("load task index %s: %w", indexPath, err)
+		}
+	} else {
+		idx = loaded
+	}
+	taskByID := make(map[string]index.Task, len(idx.Tasks))
+	for _, task := range idx.Tasks {
+		taskByID[task.ID] = task
+	}
+
+	live := make([]liveWorkerInfo, 0)
+	seen := map[string]struct{}{}
+	appendIfLive := func(taskID string, pid int, source string) error {
+		if pid <= 0 {
+			return nil
+		}
+		alive, err := processAlive(pid)
+		if err != nil {
+			return fmt.Errorf("check worker pid %d for %s: %w", pid, taskID, err)
+		}
+		if !alive {
+			return nil
+		}
+		key := fmt.Sprintf("%s:%d", taskID, pid)
+		if _, ok := seen[key]; ok {
+			return nil
+		}
+		seen[key] = struct{}{}
+		live = append(live, liveWorkerInfo{TaskID: taskID, PID: pid, Source: source})
+		return nil
+	}
+
+	store, err := inflight.NewStore(repoRoot)
+	if err != nil {
+		return nil, fmt.Errorf("create in-flight store: %w", err)
+	}
+	set, err := store.Load()
+	if err != nil {
+		return nil, fmt.Errorf("load in-flight tasks: %w", err)
+	}
+	for taskID, entry := range set {
+		if task, ok := taskByID[taskID]; ok && task.PID > 0 {
+			if err := appendIfLive(taskID, task.PID, "index"); err != nil {
+				return nil, err
+			}
+		}
+		if pid, ok, err := run.ReadDispatchWrapperPID(entry.WorkerStateDir); err != nil {
+			return nil, err
+		} else if ok {
+			if err := appendIfLive(taskID, pid, "dispatch wrapper"); err != nil {
+				return nil, err
+			}
+		}
+		if strings.TrimSpace(entry.WorkerStateDir) != "" {
+			if pid, ok, err := worker.ReadAgentPID(entry.WorkerStateDir); err != nil {
+				return nil, err
+			} else if ok {
+				if err := appendIfLive(taskID, pid, "agent pidfile"); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
+	triageState, ok, err := run.LoadTriageState(repoRoot)
+	if err != nil {
+		return nil, fmt.Errorf("load triage state: %w", err)
+	}
+	if ok {
+		if err := appendIfLive("triage-dag", triageState.RunningPID, "triage state"); err != nil {
+			return nil, err
+		}
+		if pid, found, err := run.ReadDispatchWrapperPID(triageState.WorkerStateDir); err != nil {
+			return nil, err
+		} else if found {
+			if err := appendIfLive("triage-dag", pid, "triage dispatch wrapper"); err != nil {
+				return nil, err
+			}
+		}
+		if strings.TrimSpace(triageState.WorkerStateDir) != "" {
+			if pid, found, err := worker.ReadAgentPID(triageState.WorkerStateDir); err != nil {
+				return nil, err
+			} else if found {
+				if err := appendIfLive("triage-dag", pid, "triage agent pidfile"); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
+	for _, task := range idx.Tasks {
+		if task.Kind != index.TaskKindExecution || task.PID <= 0 {
+			continue
+		}
+		if err := appendIfLive(task.ID, task.PID, "index"); err != nil {
+			return nil, err
+		}
+	}
+
+	sort.Slice(live, func(i, j int) bool {
+		if live[i].TaskID == live[j].TaskID {
+			if live[i].PID == live[j].PID {
+				return live[i].Source < live[j].Source
+			}
+			return live[i].PID < live[j].PID
+		}
+		return live[i].TaskID < live[j].TaskID
+	})
+	return live, nil
+}
+
+// processAlive reports whether a PID currently references a live process.
+func processAlive(pid int) (bool, error) {
+	if pid <= 0 {
+		return false, nil
+	}
+	err := syscall.Kill(pid, 0)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, syscall.ESRCH) {
+		return false, nil
+	}
+	if errors.Is(err, syscall.EPERM) {
+		return true, nil
+	}
+	return false, err
 }
 
 func runRetry(args []string) {
