@@ -764,6 +764,71 @@ func TestApplyRepoMigrationsCreatesCommitWhenApplied(t *testing.T) {
 	}
 }
 
+// TestApplyRepoMigrationsCommitsAllRepoChanges verifies migration commits include non-workspace paths.
+func TestApplyRepoMigrationsCommitsAllRepoChanges(t *testing.T) {
+	repoRoot := t.TempDir()
+	initGitRepo(t, repoRoot)
+
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".governator", "state", "migrations"), 0o755); err != nil {
+		t.Fatalf("mkdir migrations dir: %v", err)
+	}
+	for _, migrationID := range []string{layoutMigrationID, conflictResolutionMigrationID} {
+		markerPath := filepath.Join(repoRoot, ".governator", "state", "migrations", migrationID+".done")
+		if err := os.WriteFile(markerPath, []byte("ok\n"), 0o644); err != nil {
+			t.Fatalf("write marker %s: %v", migrationID, err)
+		}
+	}
+
+	taskID := "T-001-coder"
+	indexPath := filepath.Join(repoRoot, ".governator", ".local-state", "index.json")
+	if err := index.Save(indexPath, index.Index{
+		SchemaVersion: 1,
+		Digests:       index.Digests{PlanningDocs: map[string]string{}},
+		Tasks: []index.Task{
+			{
+				ID:           taskID,
+				Title:        "Example task",
+				Path:         ".governator/tasks/T-001-coder.md",
+				Kind:         index.TaskKindExecution,
+				State:        index.TaskStateBlocked,
+				Role:         "coder",
+				Dependencies: []string{},
+				Retries:      index.RetryPolicy{MaxAttempts: 3},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("write index: %v", err)
+	}
+	notesPath := filepath.Join(repoRoot, "notes.txt")
+	if err := os.WriteFile(notesPath, []byte("transient notes\n"), 0o644); err != nil {
+		t.Fatalf("write notes: %v", err)
+	}
+	runGitCommand(t, repoRoot, "add", ".")
+	runGitCommand(t, repoRoot, "commit", "-m", "seed migration fixture")
+
+	if err := os.WriteFile(notesPath, []byte(""), 0o644); err != nil {
+		t.Fatalf("truncate notes for deletion: %v", err)
+	}
+	if err := os.Remove(notesPath); err != nil {
+		t.Fatalf("remove notes file: %v", err)
+	}
+
+	if err := ApplyRepoMigrations(repoRoot, InitOptions{}); err != nil {
+		t.Fatalf("ApplyRepoMigrations: %v", err)
+	}
+
+	subject := runGitOutput(t, repoRoot, "log", "-1", "--pretty=%s")
+	wantSubject := "governator: apply repo migration " + resetOpenTasksMigrationID
+	if subject != wantSubject {
+		t.Fatalf("unexpected commit subject: got %q want %q", subject, wantSubject)
+	}
+
+	tree := runGitOutput(t, repoRoot, "show", "--name-status", "--pretty=format:", "HEAD")
+	if !strings.Contains(tree, "D\tnotes.txt") {
+		t.Fatalf("expected deletion of notes.txt in migration commit, got:\n%s", tree)
+	}
+}
+
 // TestApplyRepoMigrationsNoPendingDoesNotCreateCommit verifies no-op runs do not create extra commits.
 func TestApplyRepoMigrationsNoPendingDoesNotCreateCommit(t *testing.T) {
 	repoRoot := t.TempDir()
